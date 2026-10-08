@@ -8,7 +8,7 @@
 SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
        i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.metadata, i.stage, i.properties,
-       i.revision, i.duplicate_of_issue_id
+       i.revision, i.duplicate_of_issue_id, i.epic_id, i.sprint_id
 FROM issue i
 WHERE i.workspace_id = $1
   AND (sqlc.narg('status')::text IS NULL OR i.status = sqlc.narg('status'))
@@ -17,6 +17,8 @@ WHERE i.workspace_id = $1
   AND (sqlc.narg('assignee_ids')::uuid[] IS NULL OR i.assignee_id = ANY(sqlc.narg('assignee_ids')::uuid[]))
   AND (sqlc.narg('creator_id')::uuid IS NULL OR i.creator_id = sqlc.narg('creator_id'))
   AND (sqlc.narg('project_id')::uuid IS NULL OR i.project_id = sqlc.narg('project_id'))
+  AND (sqlc.narg('epic_id')::uuid IS NULL OR i.epic_id = sqlc.narg('epic_id'))
+  AND (sqlc.narg('sprint_id')::uuid IS NULL OR i.sprint_id = sqlc.narg('sprint_id'))
   AND (sqlc.narg('scheduled')::bool IS NULL OR (i.start_date IS NOT NULL OR i.due_date IS NOT NULL))
   AND (sqlc.narg('metadata_filter')::jsonb IS NULL OR i.metadata @> sqlc.narg('metadata_filter')::jsonb)
   AND (
@@ -182,10 +184,10 @@ INSERT INTO issue (
     workspace_id, title, description, status, priority,
     assignee_type, assignee_id, creator_type, creator_id,
     parent_issue_id, position, start_date, due_date, number, project_id,
-    stage, properties, last_activity_at, id
+    stage, properties, last_activity_at, id, epic_id, sprint_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-    sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
+    sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()), sqlc.narg('epic_id')::uuid, sqlc.narg('sprint_id')::uuid
 ) RETURNING *;
 
 -- name: GetIssueByNumber :one
@@ -241,6 +243,8 @@ WITH wakeup_source AS MATERIALIZED (SELECT set_config('multica.source_task_id', 
         sqlc.narg('due_date')::date AS next_due_date,
         sqlc.narg('parent_issue_id')::uuid AS next_parent_issue_id,
         sqlc.narg('project_id')::uuid AS next_project_id,
+        CASE WHEN sqlc.arg('set_epic')::boolean THEN sqlc.narg('epic_id')::uuid ELSE i.epic_id END AS next_epic_id,
+        CASE WHEN sqlc.arg('set_sprint')::boolean THEN sqlc.narg('sprint_id')::uuid ELSE i.sprint_id END AS next_sprint_id,
         sqlc.narg('stage')::integer AS next_stage,
         -- A supplied pointer marks the issue (the handler also sets cancelled).
         -- Otherwise a mark only survives a write that leaves an already
@@ -263,22 +267,22 @@ WITH wakeup_source AS MATERIALIZED (SELECT set_config('multica.source_task_id', 
         candidate.*,
         ROW(
             title, description, status, priority, assignee_type, assignee_id,
-            position, start_date, due_date, parent_issue_id, project_id, stage,
+            position, start_date, due_date, parent_issue_id, project_id, stage, epic_id, sprint_id,
             duplicate_of_issue_id
         ) IS DISTINCT FROM ROW(
             next_title, next_description, next_status, next_priority,
             next_assignee_type, next_assignee_id, next_position, next_start_date,
-            next_due_date, next_parent_issue_id, next_project_id, next_stage,
+            next_due_date, next_parent_issue_id, next_project_id, next_stage, next_epic_id, next_sprint_id,
             next_duplicate_of_issue_id
         ) AS did_change,
         ROW(
             title, description, status, priority, assignee_type, assignee_id,
-            start_date, due_date, parent_issue_id, project_id, stage,
+            start_date, due_date, parent_issue_id, project_id, stage, epic_id, sprint_id,
             duplicate_of_issue_id
         ) IS DISTINCT FROM ROW(
             next_title, next_description, next_status, next_priority,
             next_assignee_type, next_assignee_id, next_start_date, next_due_date,
-            next_parent_issue_id, next_project_id, next_stage,
+            next_parent_issue_id, next_project_id, next_stage, next_epic_id, next_sprint_id,
             next_duplicate_of_issue_id
         ) AS did_activity
     FROM candidate
@@ -295,6 +299,8 @@ UPDATE issue AS i SET
     due_date = changed.next_due_date,
     parent_issue_id = changed.next_parent_issue_id,
     project_id = changed.next_project_id,
+    epic_id = changed.next_epic_id,
+    sprint_id = changed.next_sprint_id,
     stage = changed.next_stage,
     duplicate_of_issue_id = changed.next_duplicate_of_issue_id,
     revision = i.revision + changed.did_change::integer,
@@ -410,10 +416,10 @@ INSERT INTO issue (
     workspace_id, title, description, status, priority,
     assignee_type, assignee_id, creator_type, creator_id,
     parent_issue_id, position, start_date, due_date, number, project_id,
-    origin_type, origin_id, stage, properties, last_activity_at, id
+    origin_type, origin_id, stage, properties, last_activity_at, id, epic_id, sprint_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-    sqlc.narg('origin_type'), sqlc.narg('origin_id'), sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
+    sqlc.narg('origin_type'), sqlc.narg('origin_id'), sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()), sqlc.narg('epic_id')::uuid, sqlc.narg('sprint_id')::uuid
 ) RETURNING *;
 
 -- name: LockIssueDuplicateKey :exec
@@ -510,7 +516,7 @@ DELETE FROM issue WHERE issue.id IN (SELECT target.id FROM target);
 SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
        i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.metadata, i.stage, i.properties,
-       i.revision, i.duplicate_of_issue_id
+       i.revision, i.duplicate_of_issue_id, i.epic_id, i.sprint_id
 FROM issue i
 WHERE i.workspace_id = $1
   -- Negate only known terminal keys so an unknown legacy key remains visible.

@@ -1,4 +1,6 @@
 "use client";
+
+import { usePlanningEnabled } from "@multica/core/epics/config";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 
 import { issueStatusCategory } from "@multica/core/issues";
@@ -117,6 +119,8 @@ type NavKey =
   | "myIssues"
   | "issues"
   | "projects"
+  | "epics"
+  | "sprints"
   | "autopilots"
   | "agents"
   | "squads"
@@ -133,6 +137,8 @@ type NavLabelKey =
   | "my_issues"
   | "issues"
   | "projects"
+  | "epics"
+  | "sprints"
   | "autopilots"
   | "agents"
   | "squads"
@@ -153,6 +159,8 @@ const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
 const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
+  { key: "epics", labelKey: "epics" },
+  { key: "sprints", labelKey: "sprints" },
   { key: "autopilots", labelKey: "autopilots" },
 ];
 
@@ -433,6 +441,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }: AppSidebarProps = {}) {
+  const planningEnabled = usePlanningEnabled();
   const { t } = useT("layout");
   const { pathname, push } = useNavigation();
   const user = useAuthStore((s) => s.user);
@@ -861,7 +870,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupLabel>{t(($) => $.sidebar.work_group)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {workNav.map((item) => {
+                {workNav.filter((item) => planningEnabled || (item.key !== "epics" && item.key !== "sprints")).map((item) => {
                   const href = p[item.key]();
                   const Icon = routeIconForPath(href);
                   const isActive = !isActivePinnedRoute && isNavActive(pathname, href);

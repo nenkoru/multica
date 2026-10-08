@@ -11,7 +11,8 @@ import (
 )
 
 type AppConfig struct {
-	CdnDomain string `json:"cdn_domain"`
+	PlanningEnabled bool   `json:"planning_enabled"`
+	CdnDomain       string `json:"cdn_domain"`
 	// CdnSigned tells clients that the CDN domain above serves PRIVATE
 	// content through time-bounded signed URLs (CloudFront signing is
 	// enabled). When true, a raw storage URL on the CDN domain is NOT
@@ -123,6 +124,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	config.CdnSigned = h.CFSigner != nil
 	config.DaemonServerURL, config.DaemonAppURL = daemonSetupURLsFromEnv()
+	config.PlanningEnabled = h.cfg.PlanningEnabled
 	config.VCSIntegrationAvailable = h.cfg.VCSIntegrationEnabled
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	// Only surface the build version on self-hosted deployments. The managed

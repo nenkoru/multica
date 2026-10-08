@@ -73,6 +73,8 @@ type IssueResponse struct {
 	// an endpoint that skips the filler emits null rather than a bare pointer.
 	DuplicateOf *IssueRefResponse `json:"duplicate_of"`
 	ProjectID   *string           `json:"project_id"`
+	EpicID      *string           `json:"epic_id"`
+	SprintID    *string           `json:"sprint_id"`
 	Position    float64           `json:"position"`
 	// Stage groups sub-issues under the same parent into ordered barrier
 	// groups (null = unstaged). See service/issue_wakeup_system.go for how a
@@ -500,6 +502,8 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		ParentIssueID:      uuidToPtr(i.ParentIssueID),
 		duplicateOfIssueID: duplicateOfPointer(i.Status, i.DuplicateOfIssueID),
 		ProjectID:          uuidToPtr(i.ProjectID),
+		EpicID:             uuidToPtr(i.EpicID),
+		SprintID:           uuidToPtr(i.SprintID),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -538,6 +542,8 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		ParentIssueID:      uuidToPtr(i.ParentIssueID),
 		duplicateOfIssueID: duplicateOfPointer(i.Status, i.DuplicateOfIssueID),
 		ProjectID:          uuidToPtr(i.ProjectID),
+		EpicID:             uuidToPtr(i.EpicID),
+		SprintID:           uuidToPtr(i.SprintID),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -608,6 +614,8 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		ParentIssueID:      uuidToPtr(i.ParentIssueID),
 		duplicateOfIssueID: duplicateOfPointer(i.Status, i.DuplicateOfIssueID),
 		ProjectID:          uuidToPtr(i.ProjectID),
+		EpicID:             uuidToPtr(i.EpicID),
+		SprintID:           uuidToPtr(i.SprintID),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -1100,7 +1108,7 @@ func buildSearchQuery(phrase string, terms []string, queryNum int, hasNum bool, 
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position,
 		i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id,
-		i.revision, i.duplicate_of_issue_id,
+		i.revision, i.duplicate_of_issue_id, i.epic_id, i.sprint_id,
 		pc.match_source,
 		COALESCE(c.content, '') AS matched_comment_content
 	FROM page_candidates pc
@@ -1197,6 +1205,8 @@ func (h *Handler) SearchIssues(w http.ResponseWriter, r *http.Request) {
 				&sr.issue.ProjectID,
 				&sr.issue.Revision,
 				&sr.issue.DuplicateOfIssueID,
+				&sr.issue.EpicID,
+				&sr.issue.SprintID,
 				&sr.matchSource,
 				&sr.matchedCommentContent,
 			); err != nil {
@@ -1333,6 +1343,22 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		projectFilter = id
+	}
+	var epicFilter pgtype.UUID
+	if e := r.URL.Query().Get("epic_id"); e != "" {
+		id, ok := parseUUIDOrBadRequest(w, e, "epic_id")
+		if !ok {
+			return
+		}
+		epicFilter = id
+	}
+	var sprintFilter pgtype.UUID
+	if s := r.URL.Query().Get("sprint_id"); s != "" {
+		id, ok := parseUUIDOrBadRequest(w, s, "sprint_id")
+		if !ok {
+			return
+		}
+		sprintFilter = id
 	}
 	// involves_user_id widens the assignee filter to surface issues where the
 	// user is the indirect assignee (their owned agent, or a squad they belong
@@ -1582,6 +1608,12 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 		where = append(where, fmt.Sprintf("i.project_id = %s::uuid", addArg(projectFilter)))
 	}
 
+	if epicFilter.Valid {
+		where = append(where, fmt.Sprintf("i.epic_id = %s::uuid", addArg(epicFilter)))
+	}
+	if sprintFilter.Valid {
+		where = append(where, fmt.Sprintf("i.sprint_id = %s::uuid", addArg(sprintFilter)))
+	}
 	// Table facets must be part of the server window. Applying them after
 	// LIMIT/OFFSET hides matches that live on later pages and makes `total`
 	// disagree with the rows the user sees/exports.
@@ -1750,7 +1782,7 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf(`SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
        i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.metadata, i.stage, i.properties,
-	   i.revision, i.duplicate_of_issue_id
+	   i.revision, i.duplicate_of_issue_id, i.epic_id, i.sprint_id
 FROM issue i
 WHERE %s
 ORDER BY %s
@@ -1792,6 +1824,8 @@ LIMIT %s OFFSET %s`, whereSql, orderBy, limitRef, offsetRef)
 			&row.Properties,
 			&row.Revision,
 			&row.DuplicateOfIssueID,
+			&row.EpicID,
+			&row.SprintID,
 		); err != nil {
 			slog.Warn("ListIssues scan failed", "error", err)
 			writeError(w, http.StatusInternalServerError, "failed to list issues")
@@ -2350,7 +2384,7 @@ WITH ranked AS (
 		i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at,
-		i.number, i.project_id, i.metadata, i.stage, i.properties, i.revision, i.duplicate_of_issue_id,
+		i.number, i.project_id, i.metadata, i.stage, i.properties, i.revision, i.duplicate_of_issue_id, i.epic_id, i.sprint_id,
 		COUNT(*) OVER (PARTITION BY i.assignee_type, i.assignee_id) AS group_total,
 		ROW_NUMBER() OVER (
 			PARTITION BY i.assignee_type, i.assignee_id
@@ -2363,7 +2397,7 @@ SELECT
 	id, workspace_id, title, description, status, priority,
 	assignee_type, assignee_id, creator_type, creator_id,
 	parent_issue_id, position, start_date, due_date, created_at, updated_at, last_activity_at,
-	number, project_id, metadata, stage, properties, revision, duplicate_of_issue_id, group_total
+	number, project_id, metadata, stage, properties, revision, duplicate_of_issue_id, epic_id, sprint_id, group_total
 FROM ranked
 WHERE rn > %s AND rn <= %s + %s
 ORDER BY
@@ -2413,6 +2447,8 @@ ORDER BY
 			&row.Properties,
 			&row.Revision,
 			&row.DuplicateOfIssueID,
+			&row.EpicID,
+			&row.SprintID,
 			&row.GroupTotal,
 		); err != nil {
 			slog.Warn("ListGroupedIssues scan failed", "error", err)
@@ -3032,6 +3068,8 @@ type CreateIssueRequest struct {
 	AssigneeID    *string  `json:"assignee_id"`
 	ParentIssueID *string  `json:"parent_issue_id"`
 	ProjectID     *string  `json:"project_id"`
+	EpicID        *string  `json:"epic_id"`
+	SprintID      *string  `json:"sprint_id"`
 	Stage         *int32   `json:"stage,omitempty"`
 	StartDate     *string  `json:"start_date"`
 	DueDate       *string  `json:"due_date"`
@@ -3273,6 +3311,25 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		projectID = id
 	}
+	if !h.cfg.PlanningEnabled && (req.EpicID != nil || req.SprintID != nil) {
+		writeError(w, http.StatusForbidden, "planning is disabled")
+		return
+	}
+	var epicID, sprintID pgtype.UUID
+	for field, value := range map[string]*string{"epic_id": req.EpicID, "sprint_id": req.SprintID} {
+		if value == nil {
+			continue
+		}
+		id, ok := parseUUIDOrBadRequest(w, *value, field)
+		if !ok {
+			return
+		}
+		if field == "epic_id" {
+			epicID = id
+		} else {
+			sprintID = id
+		}
+	}
 	// Project existence and the final parent boundary check are enforced inside
 	// IssueService.Create atomically with the create. The handler preloads a
 	// supplied parent only because the assignee gate must bind any autopilot
@@ -3410,6 +3467,8 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		CreatorID:      parseUUID(actualCreatorID),
 		ParentIssueID:  parentIssueID,
 		ProjectID:      projectID,
+		EpicID:         epicID,
+		SprintID:       sprintID,
 		StartDate:      startDate,
 		DueDate:        dueDate,
 		OriginType:     originType,
@@ -3451,6 +3510,10 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 			"error": duplicateIssueMessage(existing),
 			"issue": existing,
 		})
+		return
+	}
+	if errors.Is(err, service.ErrPlanningRelationNotFound) {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if errors.Is(err, service.ErrParentIssueNotFound) {
@@ -3518,6 +3581,8 @@ type UpdateIssueRequest struct {
 	DueDate         *string  `json:"due_date"`
 	ParentIssueID   *string  `json:"parent_issue_id"`
 	ProjectID       *string  `json:"project_id"`
+	EpicID          *string  `json:"epic_id"`
+	SprintID        *string  `json:"sprint_id"`
 	Stage           *int32   `json:"stage"`
 	// AttachmentIDs lets the description editor bind newly uploaded files to
 	// this issue so they surface in `GET /api/issues/:id/attachments` and the
@@ -3633,6 +3698,12 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 	defer tx.Rollback(ctx)
 
 	qtx := h.Queries.WithTx(tx)
+	if params.SetEpic || params.SetSprint {
+		if err := service.ValidatePlanningRelations(ctx, qtx, workspaceID, params.EpicID, params.SprintID); err != nil {
+			return db.Issue{}, db.Issue{}, false, err
+		}
+	}
+
 	// This path opens its own transaction, so it carries the archive-race guard
 	// itself rather than going through runWithIssueStatusGuard. The catalog lock
 	// must precede both attachment and issue row locks everywhere. (MUL-6243)
@@ -3927,6 +3998,30 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			params.ProjectID = pgtype.UUID{Valid: false}
 		}
 	}
+	if !h.cfg.PlanningEnabled && (req.EpicID != nil || req.SprintID != nil) {
+		writeError(w, http.StatusForbidden, "planning is disabled")
+		return
+	}
+	if _, touched := rawFields["epic_id"]; touched {
+		params.SetEpic = true
+		if req.EpicID != nil {
+			id, ok := parseUUIDOrBadRequest(w, *req.EpicID, "epic_id")
+			if !ok {
+				return
+			}
+			params.EpicID = id
+		}
+	}
+	if _, touched := rawFields["sprint_id"]; touched {
+		params.SetSprint = true
+		if req.SprintID != nil {
+			id, ok := parseUUIDOrBadRequest(w, *req.SprintID, "sprint_id")
+			if !ok {
+				return
+			}
+			params.SprintID = id
+		}
+	}
 	if _, ok := rawFields["stage"]; ok {
 		if req.Stage != nil {
 			if *req.Stage < 1 {
@@ -3964,7 +4059,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	var issue db.Issue
 	attachmentsChanged := false
-	if req.Description != nil || req.TitleBase != nil || req.DescriptionBase != nil || len(attachmentIDs) > 0 {
+	if params.SetEpic || params.SetSprint || req.Description != nil || req.TitleBase != nil || req.DescriptionBase != nil || len(attachmentIDs) > 0 {
 		var lockedPrev db.Issue
 		issue, lockedPrev, attachmentsChanged, err = h.updateIssueAtomically(
 			r.Context(), prevIssue.WorkspaceID, params, rawFields, req.TitleBase, req.DescriptionBase, attachmentIDs, statusKeyForGuard,
@@ -3976,6 +4071,10 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		issue, err = h.updateIssueWithStatusGuard(r.Context(), prevIssue.WorkspaceID, statusKeyForGuard, params)
 	}
 	if err != nil {
+		if errors.Is(err, service.ErrPlanningRelationNotFound) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if writeIssueStatusRaceError(w, err) {
 			return
 		}
@@ -4513,6 +4612,12 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 	if raw, exists := rawTop["updates"]; exists {
 		json.Unmarshal(raw, &rawUpdates)
 	}
+	for _, field := range []string{"epic_id", "sprint_id"} {
+		if _, ok := rawUpdates[field]; ok {
+			writeError(w, http.StatusBadRequest, field+" is not supported in batch updates; update each issue individually")
+			return
+		}
+	}
 	if _, ok := rawUpdates["duplicate_of_issue_id"]; ok {
 		writeError(w, http.StatusBadRequest, "duplicate_of_issue_id is not supported in batch updates")
 		return
@@ -4772,6 +4877,10 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			// The archive race is a property of the batch's shared target
 			// status, not of one issue, so every remaining item would fail the
 			// same way. Abort with 409 instead of reporting a partial update.
+			if errors.Is(err, service.ErrPlanningRelationNotFound) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			if writeIssueStatusRaceError(w, err) {
 				return
 			}

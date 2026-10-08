@@ -428,6 +428,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmails:            splitAndTrim(os.Getenv("ALLOWED_EMAILS")),
 		AllowedEmailDomains:      splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation: os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
+		PlanningEnabled:          os.Getenv("MULTICA_PLANNING_ENABLED") == "true",
 		VCSIntegrationEnabled:    os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		AppURL:                   appURLFromEnv(),
@@ -2133,6 +2134,28 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Post("/resources", h.CreateProjectResource)
 					r.Put("/resources/{resourceId}", h.UpdateProjectResource)
 					r.Delete("/resources/{resourceId}", h.DeleteProjectResource)
+				})
+			})
+
+			// Epics
+			r.Route("/api/epics", func(r chi.Router) {
+				r.Get("/", h.ListEpics)
+				r.Post("/", h.CreateEpic)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetEpic)
+					r.Put("/", h.UpdateEpic)
+					r.Delete("/", h.DeleteEpic)
+				})
+			})
+
+			// Sprints
+			r.Route("/api/sprints", func(r chi.Router) {
+				r.Get("/", h.ListSprints)
+				r.Post("/", h.CreateSprint)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetSprint)
+					r.Put("/", h.UpdateSprint)
+					r.Delete("/", h.DeleteSprint)
 				})
 			})
 

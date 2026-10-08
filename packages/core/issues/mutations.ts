@@ -162,6 +162,8 @@ function useIssueCreateMutation<TVariables>(
       }
     },
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["epics", wsId] });
+      qc.invalidateQueries({ queryKey: ["sprints", wsId] });
       qc.invalidateQueries({ queryKey: issueKeys.list(wsId) });
       qc.invalidateQueries({ queryKey: issueKeys.flatAll(wsId) });
       qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
@@ -352,6 +354,8 @@ export function useUpdateIssue() {
       invalidateStaleListKeys(qc, reconcile.staleKeys);
     },
     onSettled: (_data, err, vars, ctx) => {
+      qc.invalidateQueries({ queryKey: ["epics", wsId] });
+      qc.invalidateQueries({ queryKey: ["sprints", wsId] });
       settleInboxAfterIssueWrite(qc, wsId, ctx?.inboxWrite, err !== null);
       // The issue's own list + detail caches are reconciled surgically in
       // onSuccess / onError, so they are deliberately NOT invalidated here — a
@@ -491,6 +495,8 @@ export function useDeleteIssue() {
       cleanupDeletedIssueCaches(qc, wsId, id, ctx?.metadata);
     },
     onSettled: (_data, _err, _id, ctx) => {
+      qc.invalidateQueries({ queryKey: ["epics", wsId] });
+      qc.invalidateQueries({ queryKey: ["sprints", wsId] });
       qc.invalidateQueries({ queryKey: issueKeys.list(wsId) });
       qc.invalidateQueries({ queryKey: issueKeys.flatAll(wsId) });
       qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
@@ -800,6 +806,8 @@ export function useBatchDeleteIssues() {
       invalidateDeletedIssueDependentCaches(qc, wsId);
     },
     onSettled: (_data, _err, _ids, ctx) => {
+      qc.invalidateQueries({ queryKey: ["epics", wsId] });
+      qc.invalidateQueries({ queryKey: ["sprints", wsId] });
       qc.invalidateQueries({ queryKey: issueKeys.list(wsId) });
       qc.invalidateQueries({ queryKey: issueKeys.flatAll(wsId) });
       qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });

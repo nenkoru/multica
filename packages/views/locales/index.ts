@@ -24,6 +24,8 @@ import enUsage from "./en/usage.json";
 import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
 import enBilling from "./en/billing.json";
+import enEpics from "./en/epics.json";
+import enSprints from "./en/sprints.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
 import zhHansSettings from "./zh-Hans/settings.json";
@@ -49,6 +51,8 @@ import zhHansUsage from "./zh-Hans/usage.json";
 import zhHansUi from "./zh-Hans/ui.json";
 import zhHansSquads from "./zh-Hans/squads.json";
 import zhHansBilling from "./zh-Hans/billing.json";
+import zhHansEpics from "./zh-Hans/epics.json";
+import zhHansSprints from "./zh-Hans/sprints.json";
 import koCommon from "./ko/common.json";
 import koAuth from "./ko/auth.json";
 import koSettings from "./ko/settings.json";
@@ -74,6 +78,8 @@ import koUsage from "./ko/usage.json";
 import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
 import koBilling from "./ko/billing.json";
+import koEpics from "./ko/epics.json";
+import koSprints from "./ko/sprints.json";
 import jaCommon from "./ja/common.json";
 import jaAuth from "./ja/auth.json";
 import jaSettings from "./ja/settings.json";
@@ -124,6 +130,8 @@ import frUsage from "./fr/usage.json";
 import frUi from "./fr/ui.json";
 import frSquads from "./fr/squads.json";
 import frBilling from "./fr/billing.json";
+import jaEpics from "./ja/epics.json";
+import jaSprints from "./ja/sprints.json";
 
 // Single source of truth for the resource bundle. Both apps (web layout +
 // desktop App.tsx) import from here so adding a locale or namespace happens
@@ -155,6 +163,8 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: enUi,
     squads: enSquads,
     billing: enBilling,
+    epics: enEpics,
+    sprints: enSprints,
   },
   "zh-Hans": {
     common: zhHansCommon,
@@ -182,6 +192,8 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHansUi,
     squads: zhHansSquads,
     billing: zhHansBilling,
+    epics: zhHansEpics,
+    sprints: zhHansSprints,
   },
   ko: {
     common: koCommon,
@@ -209,6 +221,8 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: koUi,
     squads: koSquads,
     billing: koBilling,
+    epics: koEpics,
+    sprints: koSprints,
   },
   ja: {
     common: jaCommon,
@@ -236,8 +250,12 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: jaUi,
     squads: jaSquads,
     billing: jaBilling,
+    epics: jaEpics,
+    sprints: jaSprints,
   },
   fr: {
+    epics: enEpics,
+    sprints: enSprints,
     common: frCommon,
     auth: frAuth,
     settings: frSettings,

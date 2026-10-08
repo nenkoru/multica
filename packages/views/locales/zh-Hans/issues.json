@@ -194,7 +194,13 @@
     "active_count_other": "{{count}} 个筛选",
     "in_view": "已包含在视图中",
     "chip_edit": "编辑",
-    "chip_save_as": "另存"
+    "chip_save_as": "另存",
+    "section_epic": "Epic",
+    "section_sprint": "Sprint",
+    "epic": "Epic",
+    "no_epic": "无 Epic",
+    "sprint": "Sprint",
+    "no_sprint": "无 Sprint"
   },
   "display": {
     "tooltip": "显示设置",
@@ -234,7 +240,8 @@
     "card_project": "项目",
     "card_labels": "标签",
     "card_child_progress": "子任务进度",
-    "show_sub_issues": "显示子任务"
+    "show_sub_issues": "显示子任务",
+    "group_epic": "Epic"
   },
   "view": {
     "tooltip_board": "看板视图",
@@ -479,7 +486,10 @@
     "workdir_path_unavailable": "暂无本地 workdir — 这个任务还没被本地智能体运行过",
     "unsubscribe_subtree_succeeded": "已取消订阅此任务及其子任务。",
     "subscription_update_failed": "无法更新订阅状态，请重试。",
-    "pull_requests_empty_title": "暂无关联 PR。"
+    "pull_requests_empty_title": "暂无关联 PR。",
+    "planning": "规划",
+    "prop_epic": "史诗",
+    "prop_sprint": "迭代"
   },
   "timeline": {
     "loading": "加载中…"
@@ -1394,5 +1404,20 @@
     "overview_close": "关闭",
     "overview_empty": "没有这类产物。",
     "group_comment_by": "{{name}} 的评论"
+  },
+  "epic_picker": {
+    "none": "无 Epic",
+    "remove": "移除 Epic",
+    "empty": "该工作区暂无 Epic"
+  },
+  "sprint_picker": {
+    "none": "无 Sprint",
+    "remove": "移除 Sprint",
+    "empty": "该工作区暂无 Sprint"
+  },
+  "sections": {
+    "properties": "属性",
+    "planning": "规划",
+    "dates": "日期"
   }
 }

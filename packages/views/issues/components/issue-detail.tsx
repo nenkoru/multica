@@ -1,5 +1,7 @@
 "use client";
 
+import { usePlanningEnabled } from "@multica/core/epics/config";
+
 import {
   issueBehavesAs,
   issueBehavesAsAny,
@@ -91,7 +93,6 @@ import { IssueActionsDropdown, useIssueActions, IssueActionsContextMenu, IssueCo
 import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
-import { ProjectPicker } from "../../projects/components/project-picker";
 import { IssuePropertyPills } from "./issue-property-pills";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
 import { useNewRunIds } from "./use-run-comment-motion";
@@ -100,6 +101,9 @@ import { EMPTY_COMMENT_RUNS, buildCommentRunView, orderTimelineWithRuns, type Co
 import { issueTasksOptions } from "@multica/core/issues/queries";
 import { SourceContextBadge } from "./source-context-viewer";
 import { RevisionConflictCompare } from "./revision-conflict-compare";
+import { SidebarSection } from "./sidebar-section";
+import { EpicPicker } from "./epic-picker";
+import { SprintPicker } from "./sprint-picker";
 import { CommentInput } from "./comment-input";
 import { useCommentAnnotations } from "./use-comment-annotations";
 import { CurrentIssueRenderContextProvider } from "../current-issue-render-context";
@@ -1302,6 +1306,7 @@ export function IssueDetailSkeleton({
 // ---------------------------------------------------------------------------
 
 export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId, highlightRequestToken, leadingAction, variant = "page", trailingActions }: IssueDetailProps) {
+  const planningEnabled = usePlanningEnabled();
   const isPeek = variant === "peek";
   const { t } = useT("issues");
   const locale = useLocale();
@@ -2687,12 +2692,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           <PropRow label={t(($) => $.detail.prop_assignee)}>
             <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" />
           </PropRow>
-          <PropRow label={t(($) => $.detail.prop_project)}>
-            <ProjectPicker
-              projectId={issue.project_id}
-              onUpdate={handleUpdateField}
-            />
-          </PropRow>
 
           {/* Optional props — rendered only when set on the issue OR added
               via "+ Add property" in this session. Row order follows the
@@ -2776,7 +2775,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
           {/* "+ Add property" — opens a Popover listing optional fields
               not yet displayed. Hidden once every optional field is on
-              screen. Sits inside the same grid as a full-row, with its
+              the screen. Sits inside the same grid as a full-row, with its
               own padding so the visual rhythm follows the rows above. */}
           {(OPTIONAL_PROP_KEYS.some((k) => !visibleOptionalProps.has(k) && (k !== "stage" || issue.parent_issue_id != null)) ||
             workspaceProperties.some((p) => !p.archived && !visibleCustomProps.has(p.id) && issue.properties?.[p.id] === undefined)) && (
@@ -2858,6 +2857,17 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             </div>
           )}
         </div>}
+
+        {planningEnabled && <SidebarSection title={t(($) => $.detail.planning)}>
+          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 pl-2">
+            <PropRow label={t(($) => $.detail.prop_epic)}>
+              <EpicPicker epicId={issue.epic_id ?? null} onUpdate={handleUpdateField} />
+            </PropRow>
+            <PropRow label={t(($) => $.detail.prop_sprint)}>
+              <SprintPicker sprintId={issue.sprint_id ?? null} onUpdate={handleUpdateField} />
+            </PropRow>
+          </div>
+        </SidebarSection>}
       </div>
 
       {/* Quick actions — the sidebar's only "do something" block, so it sits

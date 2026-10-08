@@ -75,6 +75,8 @@ const baseIssue: Issue = {
   creator_id: "user-1",
   parent_issue_id: null,
   project_id: null,
+  epic_id: null,
+  sprint_id: null,
   position: 0,
   stage: null,
   start_date: null,

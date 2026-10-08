@@ -1,5 +1,7 @@
 "use client";
 
+import { usePlanningEnabled } from "@multica/core/epics/config";
+
 import { issueStatusCategory } from "@multica/core/issues";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -94,6 +96,8 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   chat: ["chat", "messages", "conversation", "聊天", "消息", "对话"],
   myIssues: ["my", "issues", "assigned", "mine", "我的", "任务"],
   issues: ["issues", "tasks", "bugs", "任务"],
+  epics: ["epic", "epics"],
+  sprints: ["sprint", "sprints"],
   projects: ["projects", "kanban", "项目"],
   autopilots: ["autopilot", "autopilots", "automation", "schedule", "cron", "webhook", "自动化", "定时"],
   agents: ["agents", "bots", "ai", "智能体"],
@@ -317,14 +321,15 @@ export function SearchCommand() {
   // copy under `search.pages`: one translated string per page, so the palette
   // can never disagree with the sidebar about what a page is called.
   const { t: tNav } = useT("layout");
+  const planningEnabled = usePlanningEnabled();
   const navPages = useMemo<NavPage[]>(
     () =>
-      NAV_PAGE_KEYS.map((key) => ({
+      NAV_PAGE_KEYS.filter((key) => planningEnabled || (key !== "epics" && key !== "sprints")).map((key) => ({
         key,
         label: tNav(($) => $.nav[WORKSPACE_PAGES[key].navKey]),
         keywords: PAGE_KEYWORDS[key],
       })),
-    [tNav],
+    [tNav, planningEnabled],
   );
   const { pathname, getShareableUrl } = useNavigation();
   const intentNavigate = useIntentNavigate();

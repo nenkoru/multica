@@ -1,0 +1,21 @@
+# Candidate build override. Combine with docker-compose.selfhost.yml.
+# Supply an exact clean source commit, never a moving image tag.
+services:
+  backend:
+    image: multica-planning-backend:${PLANNING_SOURCE_SHA:?Set PLANNING_SOURCE_SHA to the source commit}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: planning-${PLANNING_SOURCE_SHA}
+        COMMIT: ${PLANNING_SOURCE_SHA}
+        DATE: ${PLANNING_BUILD_DATE:-unknown}
+    environment:
+      MULTICA_PLANNING_ENABLED: ${MULTICA_PLANNING_ENABLED:-false}
+  frontend:
+    image: multica-planning-web:${PLANNING_SOURCE_SHA:?Set PLANNING_SOURCE_SHA to the source commit}
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_APP_VERSION: planning-${PLANNING_SOURCE_SHA}

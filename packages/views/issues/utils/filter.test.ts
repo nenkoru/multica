@@ -20,6 +20,10 @@ const NO_FILTER: IssueFilters = {
   projectFilters: [],
   includeNoProject: false,
   labelFilters: [],
+    epicFilters: [],
+    includeNoEpic: false,
+    sprintFilters: [],
+    includeNoSprint: false,
 };
 
 const NO_FILTER_STATE: IssueFilterState = { ...NO_FILTER, workingOnly: false };
@@ -40,6 +44,8 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     creator_id: "u-1",
     parent_issue_id: null,
     project_id: null,
+    epic_id: null,
+    sprint_id: null,
     position: 0,
     stage: null,
     start_date: null,
@@ -712,5 +718,24 @@ describe("scalar operator filters", () => {
       },
     });
     expect(result.map((i) => i.id)).toEqual(["B"]);
+  });
+});
+
+
+describe("planning membership on the shared issue surface", () => {
+  const rows = [
+    makeIssue({ id: "both", epic_id: "epic", sprint_id: "sprint", parent_issue_id: "parent", stage: 2 }),
+    makeIssue({ id: "epic-only", epic_id: "epic", sprint_id: null }),
+    makeIssue({ id: "other", epic_id: "other", sprint_id: "sprint" }),
+    makeIssue({ id: "imported", epic_id: null, sprint_id: null, parent_issue_id: "parent", stage: 3 }),
+  ];
+  it("combines independent dimensions with AND without changing parent/stage", () => {
+    const result = applyIssueFilters(rows, { ...NO_FILTER_STATE, epicFilters: ["epic"], sprintFilters: ["sprint"] });
+    expect(result.map((r) => r.id)).toEqual(["both"]);
+    expect(result[0]).toMatchObject({ parent_issue_id: "parent", stage: 2 });
+  });
+  it("ORs selected values and null inside each dimension", () => {
+    expect(filterIssues(rows, { ...NO_FILTER, epicFilters: ["epic"], includeNoEpic: true }).map((r) => r.id)).toEqual(["both", "epic-only", "imported"]);
+    expect(filterIssues(rows, { ...NO_FILTER, includeNoEpic: true, includeNoSprint: true }).map((r) => r.id)).toEqual(["imported"]);
   });
 });

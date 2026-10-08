@@ -111,6 +111,7 @@ export function useIssueSurfaceData({
   includeNoAssignee,
   agentRunningFilter,
   creatorFilters,
+  epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
   projectFilters,
   includeNoProject,
   projectStatusFilters,
@@ -141,6 +142,7 @@ export function useIssueSurfaceData({
   includeNoAssignee: boolean;
   agentRunningFilter: boolean;
   creatorFilters: IssueFilterState["creatorFilters"];
+  epicFilters?: string[]; includeNoEpic?: boolean; sprintFilters?: string[]; includeNoSprint?: boolean;
   projectFilters: string[];
   includeNoProject: boolean;
   projectStatusFilters: ProjectStatus[];
@@ -224,7 +226,8 @@ export function useIssueSurfaceData({
       assigneeFilters,
       includeNoAssignee,
       creatorFilters,
-      projectFilters,
+      epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
+  projectFilters,
       includeNoProject,
       projectStatusFilters,
       labelFilters,
@@ -240,7 +243,8 @@ export function useIssueSurfaceData({
       includeNoProject,
       labelFilters,
       priorityFilters,
-      projectFilters,
+      epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
+  projectFilters,
       projectStatusFilters,
       propertyFilters,
       showSubIssues,
@@ -394,7 +398,8 @@ export function useIssueSurfaceData({
       agentRunningFilter,
       runningIssueIds: workingIssueIDs,
       creatorFilters,
-      projectFilters,
+      epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
+  projectFilters,
       includeNoProject,
       projectStatusFilters,
       projectStatusById,
@@ -411,7 +416,8 @@ export function useIssueSurfaceData({
       labelFilters,
       propertyFilters,
       priorityFilters,
-      projectFilters,
+      epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
+  projectFilters,
       projectStatusById,
       projectStatusFilters,
       showSubIssues,

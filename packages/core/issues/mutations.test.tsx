@@ -59,6 +59,8 @@ function makeIssue(idx: number, overrides: Partial<Issue> = {}): Issue {
     creator_id: "user-1",
     parent_issue_id: null,
     project_id: null,
+    epic_id: null,
+    sprint_id: null,
     position: idx,
     stage: null,
     start_date: null,

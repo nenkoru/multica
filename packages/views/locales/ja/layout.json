@@ -5,6 +5,8 @@
     "my_issues": "マイタスク",
     "issues": "タスク",
     "projects": "プロジェクト",
+    "epics": "Epics",
+    "sprints": "Sprints",
     "autopilots": "オートパイロット",
     "agents": "エージェント",
     "squads": "スクワッド",

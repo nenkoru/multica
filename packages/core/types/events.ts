@@ -64,6 +64,8 @@ export type WSEventType =
   | "chat:session_read"
   | "chat:session_deleted"
   | "chat:session_updated"
+  | "epic:created" | "epic:updated" | "epic:deleted"
+  | "sprint:created" | "sprint:updated" | "sprint:deleted"
   | "project:created"
   | "project:updated"
   | "project:deleted"
@@ -623,6 +625,8 @@ export interface WSEventPayloadMap {
   "chat:session_read": ChatSessionReadPayload;
   "chat:session_deleted": ChatSessionDeletedPayload;
   "chat:session_updated": unknown;
+  "epic:created": unknown; "epic:updated": unknown; "epic:deleted": unknown;
+  "sprint:created": unknown; "sprint:updated": unknown; "sprint:deleted": unknown;
   "project:created": ProjectCreatedPayload;
   "project:updated": ProjectUpdatedPayload;
   "project:deleted": ProjectDeletedPayload;

@@ -162,6 +162,9 @@ func TestDeleteWorkspace_OwnerSucceeds(t *testing.T) {
 		"description": "DeleteWorkspace handler owner test",
 	})
 
+	dbfx.Insert(t, "epic", testutil.Cols{"workspace_id": wsID, "title": "Workspace planning cleanup"})
+	dbfx.Insert(t, "sprint", testutil.Cols{"workspace_id": wsID, "name": "Workspace planning cleanup", "start_date": "2026-10-09", "end_date": "2026-10-16"})
+
 	dbfx.Exec(t, `
 INSERT INTO member (workspace_id, user_id, role)
 VALUES ($1, $2, 'owner')
@@ -348,6 +351,7 @@ VALUES ($1, $2, gen_random_uuid(), gen_random_uuid(), 's3://workspace-delete/sou
 	}
 
 	for _, table := range []string{
+		"epic", "sprint",
 		"task_usage_hourly_dirty",
 		"task_usage_hourly",
 		"runtime_profile",
