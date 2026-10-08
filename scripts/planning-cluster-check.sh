@@ -5,9 +5,11 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq postgresql postgresql-contrib > /work/planning-postgres-install.log
 pg_bindir=$(pg_config --bindir)
-install -d -o postgres -g postgres /work/planning-pg
-runuser -u postgres -- "$pg_bindir/initdb" -D /work/planning-pg -A trust > /work/planning-pg-init.log
-runuser -u postgres -- "$pg_bindir/pg_ctl" -D /work/planning-pg -l /work/planning-pg.log -o '-h 127.0.0.1 -p 5432' start
+pg_data=/var/lib/postgresql/planning-kjob
+install -d -o postgres -g postgres "$pg_data"
+runuser -u postgres -- "$pg_bindir/initdb" -D "$pg_data" -A trust > /work/planning-pg-init.log
+runuser -u postgres -- "$pg_bindir/pg_ctl" -D "$pg_data" -l /var/log/postgresql/planning-kjob.log -o '-h 127.0.0.1 -p 5432' start
+trap 'runuser -u postgres -- "$pg_bindir/pg_ctl" -D "$pg_data" -m fast stop' EXIT
 "$pg_bindir/createdb" -h 127.0.0.1 -U postgres multica_planning
 export DATABASE_URL='postgres://postgres@127.0.0.1:5432/multica_planning?sslmode=disable'
 export GOMAXPROCS=2
@@ -24,5 +26,7 @@ cat /work/planning-tests.log
 cd ..
 export GOFLAGS='-p=2'
 useradd -m -d /work/planning-test-home planningtests
+# PostgreSQL data stays outside /work: changing its ownership kills the server.
 chown -R planningtests:planningtests /work
+"$pg_bindir/pg_isready" -h 127.0.0.1 -p 5432
 runuser -u planningtests -- env GOCACHE=/work/planning-go-cache GOMODCACHE=/go/pkg/mod GOFLAGS=-p=2 GOMAXPROCS=2 DATABASE_URL="$DATABASE_URL" bash scripts/test-go.sh --race > /work/planning-full-go-tests.log 2>&1
