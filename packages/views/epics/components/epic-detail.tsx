@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { TitleEditor, ContentEditor, type ContentEditorRef } from "../../editor";
-import { useNavigation } from "../../navigation";
+import { currentPath, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 
 export function EpicDetail({ epicId }: { epicId: string }) {
@@ -91,9 +91,9 @@ export function EpicDetail({ epicId }: { epicId: string }) {
             variant="ghost"
             size="sm"
             onClick={() =>
-              copyText(window.location.href).then(() =>
-                toast.success(t(($) => $.detail.copy_link)),
-              )
+              copyText(router.getShareableUrl(currentPath(router))).then((ok) => {
+                if (ok) toast.success(t(($) => $.detail.copy_link));
+              })
             }
           >
             <Link2 className="h-3.5 w-3.5" />

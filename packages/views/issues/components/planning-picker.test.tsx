@@ -21,7 +21,7 @@ vi.mock("@multica/core/epics/queries", () => ({
 vi.mock("@multica/core/sprints/queries", () => ({
   sprintListOptions: (wsId: string) => ({
     queryKey: ["sprints", wsId],
-    queryFn: async () => [{ id: "sprint-one", name: "Sprint One", status: "planned" }],
+    queryFn: async () => [{ id: "sprint-one", name: "Sprint One", status: "planned", start_date: "2026-10-09", end_date: "2026-10-16" }],
   }),
 }));
 
@@ -47,7 +47,7 @@ describe("planning issue pickers", () => {
     fireEvent.click(await screen.findByText("Sprint One"));
     expect(onUpdate).toHaveBeenLastCalledWith({ sprint_id: "sprint-one" });
     sprint.rerender(<SprintPicker sprintId="sprint-one" onUpdate={onUpdate} />);
-    fireEvent.click(screen.getByRole("button", { name: "Sprint One" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Sprint One ·/ }));
     fireEvent.click(await screen.findByText("Remove sprint"));
     expect(onUpdate).toHaveBeenLastCalledWith({ sprint_id: null });
     client.clear();

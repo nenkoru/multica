@@ -52,7 +52,7 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog open onOpenChange={(v) => { if (!v && !createEpic.isPending) onClose(); }}>
       <DialogContent className="p-0 gap-0 flex flex-col overflow-hidden !top-1/2 !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !w-full !max-w-lg">
         <DialogHeader className="border-b px-5 py-3 space-y-0">
           <DialogTitle className="text-base font-semibold">
@@ -111,7 +111,7 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t bg-background px-5 py-3">
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={createEpic.isPending}>
             {t(($) => $.create.cancel)}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
