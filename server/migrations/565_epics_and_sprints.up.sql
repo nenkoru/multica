@@ -29,4 +29,3 @@ CREATE TABLE sprint (
 -- Issue table: add FK columns
 ALTER TABLE issue ADD COLUMN epic_id UUID;
 ALTER TABLE issue ADD COLUMN sprint_id UUID;
-
