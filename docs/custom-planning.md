@@ -152,6 +152,14 @@ merge, preserving custom history. The preflight detects migration numbering
 collisions. Conflicts fail without pushing an unresolved merge; resolve them
 in a separate reviewed port. Nothing force-pushes or rebases the working branch.
 
+The heavy verify/image jobs require an existing authorized Proxmox GitHub
+runner labeled `planning-build`, with Docker, Go and Node toolchain support.
+This change provisions no runner or credentials. The lightweight sync/PR jobs
+use hosted runners. PR events in this same fork rerun checks against the PR
+head so branch protection receives candidate checks rather than only a scheduled
+run on the default branch. External-repository PR heads do not run on that
+self-hosted runner.
+
 Clean candidates run sqlc drift checks, migration/Go race tests, frontend checks,
 web/Desktop builds and backend/web Docker builds. Image archives are artifacts,
 not registry publications. Only then does the workflow open a PR inside its own
