@@ -90,6 +90,7 @@ export function EpicDetail({ epicId }: { epicId: string }) {
           <Button
             variant="ghost"
             size="sm"
+            aria-label={t(($) => $.detail.copy_link)}
             onClick={() =>
               copyText(router.getShareableUrl(currentPath(router))).then((ok) => {
                 if (ok) toast.success(t(($) => $.detail.copy_link));
@@ -100,7 +101,7 @@ export function EpicDetail({ epicId }: { epicId: string }) {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<Button variant="ghost" size="sm"><Trash2 className="h-3.5 w-3.5" /></Button>}
+              render={<Button variant="ghost" size="sm" aria-label={t(($) => $.detail.delete_action)}><Trash2 className="h-3.5 w-3.5" /></Button>}
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem

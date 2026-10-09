@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useCreateSprint } from "@multica/core/sprints";
 import {
@@ -21,6 +21,7 @@ export function CreateSprintModal({ onClose }: { onClose: () => void }) {
   const router = useNavigation();
   const wsPaths = useWorkspacePaths();
   const createSprint = useCreateSprint();
+  const formId = useId();
 
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
@@ -67,8 +68,9 @@ export function CreateSprintModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
-            <Label className="text-xs text-muted-foreground">{t(($) => $.create.label_name)}</Label>
+            <Label htmlFor={`${formId}-name`} className="text-xs text-muted-foreground">{t(($) => $.create.label_name)}</Label>
             <Input
+              id={`${formId}-name`}
               autoFocus
               type="text"
               value={name}
@@ -82,8 +84,9 @@ export function CreateSprintModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div>
-            <Label className="text-xs text-muted-foreground">{t(($) => $.create.label_goal)}</Label>
+            <Label htmlFor={`${formId}-goal`} className="text-xs text-muted-foreground">{t(($) => $.create.label_goal)}</Label>
             <Input
+              id={`${formId}-goal`}
               type="text"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
@@ -94,10 +97,11 @@ export function CreateSprintModal({ onClose }: { onClose: () => void }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor={`${formId}-start`} className="text-xs text-muted-foreground">
                 {t(($) => $.create.start_date)}
               </Label>
               <Input
+                id={`${formId}-start`}
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -105,10 +109,11 @@ export function CreateSprintModal({ onClose }: { onClose: () => void }) {
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor={`${formId}-end`} className="text-xs text-muted-foreground">
                 {t(($) => $.create.end_date)}
               </Label>
               <Input
+                id={`${formId}-end`}
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}

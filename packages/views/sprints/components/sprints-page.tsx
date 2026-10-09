@@ -16,11 +16,7 @@ import { Input } from "@multica/ui/components/ui/input";
 import { PageHeader } from "../../layout/page-header";
 import { useT } from "../../i18n";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
+import { formatSprintDate } from "../format-date";
 
 function SprintCard({ sprint }: { sprint: Sprint }) {
   const { t } = useT("sprints");
@@ -50,9 +46,9 @@ function SprintCard({ sprint }: { sprint: Sprint }) {
         </div>
 
         <div className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
-          <span>{formatDate(sprint.start_date)}</span>
+          <span>{formatSprintDate(sprint.start_date)}</span>
           <span>—</span>
-          <span>{formatDate(sprint.end_date)}</span>
+          <span>{formatSprintDate(sprint.end_date)}</span>
         </div>
 
         {sprint.goal && (

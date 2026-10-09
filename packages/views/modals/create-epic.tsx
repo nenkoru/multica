@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useCreateEpic } from "@multica/core/epics";
 import { DEFAULT_EPIC_COLORS } from "@multica/core/epics/config";
@@ -23,6 +23,7 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
   const router = useNavigation();
   const wsPaths = useWorkspacePaths();
   const createEpic = useCreateEpic();
+  const formId = useId();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -62,8 +63,9 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
-            <Label className="text-xs text-muted-foreground">{t(($) => $.create.label_title)}</Label>
+            <Label htmlFor={`${formId}-title`} className="text-xs text-muted-foreground">{t(($) => $.create.label_title)}</Label>
             <Input
+              id={`${formId}-title`}
               autoFocus
               type="text"
               value={title}
@@ -77,8 +79,9 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div>
-            <Label className="text-xs text-muted-foreground">{t(($) => $.create.label_description)}</Label>
+            <Label htmlFor={`${formId}-description`} className="text-xs text-muted-foreground">{t(($) => $.create.label_description)}</Label>
             <Input
+              id={`${formId}-description`}
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -96,6 +99,7 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
                 <button
                   key={c}
                   type="button"
+                  aria-label={`${t(($) => $.create.color)} ${c}`}
                   onClick={() => setColor(c)}
                   className={cn(
                     "size-6 rounded-full transition-all",

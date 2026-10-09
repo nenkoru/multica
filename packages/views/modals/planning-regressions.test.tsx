@@ -48,10 +48,23 @@ beforeEach(() => { mocks.pending = true; });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("planning modal and Desktop regressions", () => {
+  it("gives each sprint form uniquely labeled date fields", () => {
+    const first = render(<CreateSprintModal onClose={mocks.close} />);
+    const start = screen.getByLabelText(sprints.create.start_date);
+    const end = screen.getByLabelText(sprints.create.end_date);
+    expect(start).toHaveAttribute("type", "date");
+    expect(end).toHaveAttribute("type", "date");
+    expect(start.id).not.toBe(end.id);
+    const firstId = start.id;
+    first.unmount();
+    render(<CreateSprintModal onClose={mocks.close} />);
+    expect(screen.getByLabelText(sprints.create.start_date).id).not.toBe(firstId);
+  });
+
   it.each([["epic", CreateEpicModal], ["sprint", CreateSprintModal]] as const)(
     "%s preserves the form during pending dismissal and permits closing afterwards", (_name, Modal) => {
       const view = render(<Modal onClose={mocks.close} />);
-      const name = screen.getAllByRole("textbox")[0];
+      const name = screen.getByLabelText(_name === "epic" ? epics.create.label_title : sprints.create.label_name);
       fireEvent.change(name, { target: { value: "Keep this input" } });
       expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -71,12 +84,11 @@ describe("planning modal and Desktop regressions", () => {
     "%s retains input on server failure and closes after success", (noun, Modal) => {
       mocks.pending = false;
       render(<Modal onClose={mocks.close} />);
-      const name = screen.getAllByRole("textbox")[0];
+      const name = screen.getByLabelText(noun === "epic" ? epics.create.label_title : sprints.create.label_name);
       fireEvent.change(name, { target: { value: "Keep this input" } });
       if (noun === "sprint") {
-        const dates = document.querySelectorAll("input[type=date]");
-        fireEvent.change(dates[0], { target: { value: "2026-10-09" } });
-        fireEvent.change(dates[1], { target: { value: "2026-10-16" } });
+        fireEvent.change(screen.getByLabelText(sprints.create.start_date), { target: { value: "2026-10-09" } });
+        fireEvent.change(screen.getByLabelText(sprints.create.end_date), { target: { value: "2026-10-16" } });
       }
       fireEvent.click(screen.getByRole("button", { name: noun === "epic" ? epics.create.submit : sprints.create.submit }));
       expect(mocks.create).toHaveBeenCalledOnce();
@@ -93,13 +105,14 @@ describe("planning modal and Desktop regressions", () => {
   it.each(["epic", "sprint"])("%s copies a shareable route including query and hash", async (noun) => {
     mocks.pathname = `/acme/${noun}s/entity`;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { container } = render(
+    render(
       <QueryClientProvider client={client}>
         {noun === "epic" ? <EpicDetail epicId="entity" /> : <SprintDetail sprintId="entity" />}
       </QueryClientProvider>,
     );
     await screen.findByText(noun === "epic" ? "Open" : "Planned");
-    fireEvent.click(container.querySelector("button")!);
+    expect(screen.getByRole("button", { name: noun === "epic" ? epics.detail.delete_action : sprints.detail.delete_action })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: noun === "epic" ? epics.detail.copy_link : sprints.detail.copy_link }));
     expect(mocks.copy).toHaveBeenCalledWith(`https://app.example.test/acme/${noun}s/entity?from=desktop#notes`);
     client.clear();
   });
