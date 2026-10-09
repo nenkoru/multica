@@ -93,6 +93,7 @@ import { IssueActionsDropdown, useIssueActions, IssueActionsContextMenu, IssueCo
 import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
+import { ProjectPicker } from "../../projects/components/project-picker";
 import { IssuePropertyPills } from "./issue-property-pills";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
 import { useNewRunIds } from "./use-run-comment-motion";
@@ -2691,6 +2692,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_assignee)}>
             <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" />
+          </PropRow>
+          <PropRow label={t(($) => $.detail.prop_project)}>
+            <ProjectPicker projectId={issue.project_id} onUpdate={handleUpdateField} />
           </PropRow>
 
           {/* Optional props — rendered only when set on the issue OR added

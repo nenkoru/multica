@@ -11,6 +11,8 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { WORKSPACE_PAGES } from "@multica/core/paths";
 import { SearchCommand } from "./search-command";
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+const planningFlag = vi.hoisted(() => ({ current: false }));
+vi.mock("@multica/core/epics/config", () => ({ usePlanningEnabled: () => planningFlag.current }));
 import { useSearchStore } from "./search-store";
 import enCommon from "../locales/en/common.json";
 import enAuth from "../locales/en/auth.json";
@@ -311,6 +313,7 @@ vi.mock("sonner", () => ({
 
 describe("SearchCommand", () => {
   beforeEach(() => {
+    planningFlag.current = false;
     mockPush.mockReset();
     mockSearchIssues.mockReset().mockResolvedValue({ issues: [] });
     mockSearchProjects.mockReset().mockResolvedValue({ projects: [] });
@@ -389,6 +392,7 @@ describe("SearchCommand", () => {
   });
 
   it("offers every workspace nav page, not a hand-maintained subset", async () => {
+    planningFlag.current = true;
     const user = userEvent.setup();
     renderSearch();
     const input = screen.getByPlaceholderText("Type a command or search...");
@@ -407,6 +411,13 @@ describe("SearchCommand", () => {
         ),
       ).toBeInTheDocument();
     }
+  });
+
+  it.each(["Epics", "Sprints"])("hides %s when planning is disabled", async (label) => {
+    const user = userEvent.setup();
+    renderSearch();
+    await user.type(screen.getByPlaceholderText("Type a command or search..."), label);
+    expect(screen.queryByText((_, el) => el?.textContent === label && el?.tagName === "SPAN")).not.toBeInTheDocument();
   });
 
   it("does not surface a page on an incidental substring of a hidden keyword", async () => {

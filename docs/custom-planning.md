@@ -34,9 +34,8 @@ Values and null are OR within a dimension, dimensions are AND. Existing batch
 issue updates reject planning fields explicitly: use individual atomic updates.
 No planning swimlane/grouping mode is introduced. Saved view JSON stores and
 restores planning selections; its existing chip editor has no planning-specific
-fixed-value chips yet. English, Japanese, Korean and Simplified Chinese have
-planning namespaces; French uses English namespace fallback with French nav and
-issue-property labels.
+fixed-value chips yet. English, French, Japanese, Korean and Simplified Chinese
+have planning namespaces, navigation and issue-property labels.
 
 The backend flag `MULTICA_PLANNING_ENABLED=true` enables planning CRUD and new
 issue attachments. It defaults to false and is advertised by `/api/config`.

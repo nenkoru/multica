@@ -26,6 +26,8 @@ import enSquads from "./en/squads.json";
 import enBilling from "./en/billing.json";
 import enEpics from "./en/epics.json";
 import enSprints from "./en/sprints.json";
+import frEpics from "./fr/epics.json";
+import frSprints from "./fr/sprints.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
 import zhHansSettings from "./zh-Hans/settings.json";
@@ -254,8 +256,8 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     sprints: jaSprints,
   },
   fr: {
-    epics: enEpics,
-    sprints: enSprints,
+    epics: frEpics,
+    sprints: frSprints,
     common: frCommon,
     auth: frAuth,
     settings: frSettings,
