@@ -92,7 +92,7 @@ describe("planning modal and Desktop regressions", () => {
       }
       fireEvent.click(screen.getByRole("button", { name: noun === "epic" ? epics.create.submit : sprints.create.submit }));
       expect(mocks.create).toHaveBeenCalledOnce();
-      const callbacks = mocks.create.mock.calls[0][1];
+      const callbacks = mocks.create.mock.calls[0]![1];
       act(() => callbacks.onError(new Error("Server failure")));
       expect(name).toHaveValue("Keep this input");
       expect(mocks.close).not.toHaveBeenCalled();
