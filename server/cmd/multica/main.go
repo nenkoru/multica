@@ -73,6 +73,7 @@ func init() {
 
 	rootCmd.AddCommand(issueCmd)
 	rootCmd.AddCommand(projectCmd)
+	rootCmd.AddCommand(newPlanningCommand("epic"), newPlanningCommand("sprint"))
 	rootCmd.AddCommand(labelCmd)
 	rootCmd.AddCommand(propertyCmd)
 	rootCmd.AddCommand(agentCmd)

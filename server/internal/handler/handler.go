@@ -66,6 +66,7 @@ type dbExecutor interface {
 }
 
 type Config struct {
+	PlanningEnabled     bool
 	AllowSignup         bool
 	AllowedEmails       []string
 	AllowedEmailDomains []string

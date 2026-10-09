@@ -194,7 +194,13 @@
     "active_count_other": "フィルター {{count}} 件",
     "in_view": "このビューに含まれています",
     "chip_edit": "編集",
-    "chip_save_as": "別名で保存"
+    "chip_save_as": "別名で保存",
+    "section_epic": "エピック",
+    "section_sprint": "スプリント",
+    "epic": "エピック",
+    "no_epic": "エピックなし",
+    "sprint": "スプリント",
+    "no_sprint": "スプリントなし"
   },
   "display": {
     "tooltip": "表示設定",
@@ -234,7 +240,8 @@
     "card_project": "プロジェクト",
     "card_labels": "ラベル",
     "card_child_progress": "サブタスクの進捗",
-    "show_sub_issues": "サブタスクを表示"
+    "show_sub_issues": "サブタスクを表示",
+    "group_epic": "エピック"
   },
   "view": {
     "tooltip_board": "ボード表示",
@@ -479,7 +486,10 @@
     "project_directory_path_copied_with_branch": "プロジェクトディレクトリのパスをコピーしました — 作業は {{branch}} ブランチにあります",
     "workdir_path_copy_failed": "作業ディレクトリのパスをコピーできませんでした",
     "workdir_path_unavailable": "まだローカルの作業ディレクトリがありません。ローカルエージェントがこのタスクを実行していません",
-    "pull_requests_empty_title": "関連する PR はありません。"
+    "pull_requests_empty_title": "関連する PR はありません。",
+    "planning": "計画",
+    "prop_epic": "エピック",
+    "prop_sprint": "スプリント"
   },
   "timeline": {
     "loading": "読み込み中..."
@@ -1394,5 +1404,20 @@
     "overview_close": "閉じる",
     "overview_empty": "この種類の成果物はありません。",
     "group_comment_by": "{{name}} のコメント"
+  },
+  "epic_picker": {
+    "none": "エピックなし",
+    "remove": "エピックを削除",
+    "empty": "このワークスペースにはエピックがありません"
+  },
+  "sprint_picker": {
+    "none": "スプリントなし",
+    "remove": "スプリントを削除",
+    "empty": "このワークスペースにはスプリントがありません"
+  },
+  "sections": {
+    "properties": "プロパティ",
+    "planning": "計画",
+    "dates": "日付"
   }
 }

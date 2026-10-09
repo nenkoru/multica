@@ -198,7 +198,13 @@
     "active_count_other": "{{count}} filters",
     "in_view": "Already in this view",
     "chip_edit": "Edit",
-    "chip_save_as": "Save as"
+    "chip_save_as": "Save as",
+    "section_epic": "Epic",
+    "section_sprint": "Sprint",
+    "epic": "Epic",
+    "no_epic": "No Epic",
+    "sprint": "Sprint",
+    "no_sprint": "No Sprint"
   },
   "display": {
     "tooltip": "Display settings",
@@ -238,7 +244,8 @@
     "card_project": "Project",
     "card_labels": "Labels",
     "card_child_progress": "Sub-issue progress",
-    "show_sub_issues": "Show sub-issues"
+    "show_sub_issues": "Show sub-issues",
+    "group_epic": "Epic"
   },
   "view": {
     "tooltip_board": "Board view",
@@ -484,7 +491,10 @@
     "project_directory_path_copied_with_branch": "Project directory path copied — work is on {{branch}}",
     "workdir_path_copy_failed": "Failed to copy workdir path",
     "workdir_path_unavailable": "No local workdir yet — issue has not been run by a local agent",
-    "pull_requests_empty_title": "No linked pull requests."
+    "pull_requests_empty_title": "No linked pull requests.",
+    "planning": "Planning",
+    "prop_epic": "Epic",
+    "prop_sprint": "Sprint"
   },
   "timeline": {
     "loading": "Loading..."
@@ -1441,5 +1451,20 @@
     "overview_close": "Close",
     "overview_empty": "No deliverables of this type.",
     "group_comment_by": "Comment by {{name}}"
+  },
+  "epic_picker": {
+    "none": "No epic",
+    "remove": "Remove epic",
+    "empty": "No epics in this workspace"
+  },
+  "sprint_picker": {
+    "none": "No sprint",
+    "remove": "Remove sprint",
+    "empty": "No sprints in this workspace"
+  },
+  "sections": {
+    "properties": "Properties",
+    "planning": "Planning",
+    "dates": "Dates"
   }
 }

@@ -15,6 +15,8 @@ export interface CreateIssueRequest {
   project_id?: string;
   /** Ordered stage (>= 1) grouping this sub-issue under its parent. */
   stage?: number;
+  epic_id?: string;
+  sprint_id?: string;
   start_date?: string;
   due_date?: string;
   attachment_ids?: string[];
@@ -72,6 +74,8 @@ export interface UpdateIssueRequest {
   project_id?: string | null;
   /** Ordered stage (>= 1); null clears it (unstaged). */
   stage?: number | null;
+  epic_id?: string | null;
+  sprint_id?: string | null;
   /** Attachment IDs to bind to this issue alongside the description update.
    *  Used by the description editor to register newly uploaded files so they
    *  surface in `issueAttachments` and keep their preview Eye on refresh. */
@@ -183,6 +187,8 @@ export interface ListIssuesParams {
    * restriction".
    */
   ids?: string[];
+  epic_id?: string;
+  sprint_id?: string;
   /**
    * Widen the assignee filter to issues where the user is the *indirect*
    * assignee — assignee is one of the user's owned agents, or a squad that
@@ -309,6 +315,10 @@ export interface IssueTableFilters {
   include_no_assignee?: boolean;
   creators?: IssueActorRef[];
   project_ids?: string[];
+  epic_ids?: string[];
+  include_no_epic?: boolean;
+  sprint_ids?: string[];
+  include_no_sprint?: boolean;
   include_no_project?: boolean;
   /** Lifecycle status of the parent project. A separate dimension from
    *  `project_ids` (AND across the two); an issue with no project never

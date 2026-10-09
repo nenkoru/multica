@@ -1,5 +1,7 @@
 "use client";
 
+import { usePlanningEnabled } from "@multica/core/epics/config";
+
 import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
@@ -8,6 +10,7 @@ import {
   CircleDashed,
   CircleDot,
   Columns3,
+  Diamond,
   Filter,
   FolderKanban,
   FolderMinus,
@@ -17,6 +20,7 @@ import {
   SlidersHorizontal,
   Tag,
   Table2,
+  Timer,
   User,
   UserMinus,
   UserPen,
@@ -65,6 +69,8 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { memberListOptions, agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { PROJECT_STATUS_CONFIG, PROJECT_STATUS_ORDER } from "@multica/core/projects/config";
+import { epicListOptions } from "@multica/core/epics/queries";
+import { sprintListOptions } from "@multica/core/sprints/queries";
 import { labelListOptions } from "@multica/core/labels/queries";
 import { propertyListOptions } from "@multica/core/properties";
 import { propertyIdFromViewKey } from "@multica/core/issues/stores/view-store";
@@ -150,6 +156,7 @@ function getActiveFilterCount(
     labelFilters: string[];
     propertyFilters?: Record<string, PropertyFilterValue[]>;
     dateFilter?: IssueDateFilter | null;
+    epicFilters?: string[]; includeNoEpic?: boolean; sprintFilters?: string[]; includeNoSprint?: boolean;
   },
   // Inside a saved view only the user's additions on top of the view's own
   // query count — the baseline is the view, not "active filtering".
@@ -181,6 +188,8 @@ function getActiveFilterCount(
     if (deltaCount > 0) count++;
   }
   if (state.dateFilter) count++;
+  if (state.epicFilters?.length || state.includeNoEpic) count++;
+  if (state.sprintFilters?.length || state.includeNoSprint) count++;
   return count;
 }
 
@@ -215,8 +224,12 @@ function useIssueCounts(
     // property definition id → option key → count. Checkbox values count
     // under the "true"/"false" pseudo-option keys the filter store uses.
     const property = new Map<string, Map<string, number>>();
+    const epic = new Map<string, number>();
+    const sprint = new Map<string, number>();
     let noAssignee = 0;
     let noProject = 0;
+    let noEpic = 0;
+    let noSprint = 0;
 
     if (serverFacets) {
       for (const facet of serverFacets.facets) {
@@ -251,7 +264,7 @@ function useIssueCounts(
           }
         }
       }
-      return { status, priority, assignee, creator, noAssignee, project, noProject, label, property };
+      return { status, priority, assignee, creator, noAssignee, project, noProject, label, property, epic, sprint, noEpic, noSprint };
     }
 
     for (const issue of allIssues) {
@@ -268,6 +281,8 @@ function useIssueCounts(
       const cKey = `${issue.creator_type}:${issue.creator_id}`;
       creator.set(cKey, (creator.get(cKey) ?? 0) + 1);
 
+      if (!issue.epic_id) noEpic++; else epic.set(issue.epic_id, (epic.get(issue.epic_id) ?? 0) + 1);
+      if (!issue.sprint_id) noSprint++; else sprint.set(issue.sprint_id, (sprint.get(issue.sprint_id) ?? 0) + 1);
       if (!issue.project_id) {
         noProject++;
       } else {
@@ -301,7 +316,7 @@ function useIssueCounts(
       }
     }
 
-    return { status, priority, assignee, creator, noAssignee, project, noProject, label, property };
+    return { status, priority, assignee, creator, noAssignee, project, noProject, label, property, epic, sprint, noEpic, noSprint };
   }, [allIssues, serverFacets]);
 }
 
@@ -1192,6 +1207,191 @@ export function ViewRefreshIndicator({ active }: { active: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Epic sub-menu content
+// ---------------------------------------------------------------------------
+
+function EpicSubContent({
+  counts,
+  selected,
+  onToggle,
+  includeNoEpic,
+  onToggleNoEpic,
+  noEpicCount,
+}: {
+  counts: Map<string, number>;
+  selected: string[];
+  onToggle: (epicId: string) => void;
+  includeNoEpic: boolean;
+  onToggleNoEpic: () => void;
+  noEpicCount: number;
+}) {
+  const { t } = useT("issues");
+  const [search, setSearch] = useState("");
+  const wsId = useWorkspaceId();
+  const { data: epics = [] } = useQuery(epicListOptions(wsId));
+  const query = search.trim().toLowerCase();
+  const filtered = epics.filter((e) =>
+    e.title.toLowerCase().includes(query),
+  );
+
+  return (
+    <>
+      <div className="px-2 py-1.5 border-b border-foreground/5">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t(($) => $.filters.placeholder)}
+          className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
+          autoFocus
+        />
+      </div>
+
+      <div className="max-h-64 overflow-y-auto p-1">
+        {(!query || "no epic".includes(query)) && (
+          <DropdownMenuCheckboxItem
+            checked={includeNoEpic}
+            onCheckedChange={() => onToggleNoEpic()}
+            className={FILTER_ITEM_CLASS}
+          >
+            <HoverCheck checked={includeNoEpic} />
+            <Diamond className="size-3.5 text-muted-foreground" />
+            {t(($) => $.filters.no_epic)}
+            {noEpicCount > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {noEpicCount}
+              </span>
+            )}
+          </DropdownMenuCheckboxItem>
+        )}
+
+        {filtered.map((e) => {
+          const checked = selected.includes(e.id);
+          const count = counts.get(e.id) ?? 0;
+          return (
+            <DropdownMenuCheckboxItem
+              key={e.id}
+              checked={checked}
+              onCheckedChange={() => onToggle(e.id)}
+              className={FILTER_ITEM_CLASS}
+            >
+              <HoverCheck checked={checked} />
+              <span
+                className="inline-block size-3.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: e.color }}
+              />
+              <span className="truncate">{e.title}</span>
+              {count > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {count}
+                </span>
+              )}
+            </DropdownMenuCheckboxItem>
+          );
+        })}
+
+        {filtered.length === 0 && search && (
+          <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+            {t(($) => $.filters.no_results)}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sprint sub-menu content
+// ---------------------------------------------------------------------------
+
+function SprintSubContent({
+  counts,
+  selected,
+  onToggle,
+  includeNoSprint,
+  onToggleNoSprint,
+  noSprintCount,
+}: {
+  counts: Map<string, number>;
+  selected: string[];
+  onToggle: (sprintId: string) => void;
+  includeNoSprint: boolean;
+  onToggleNoSprint: () => void;
+  noSprintCount: number;
+}) {
+  const { t } = useT("issues");
+  const [search, setSearch] = useState("");
+  const wsId = useWorkspaceId();
+  const { data: sprints = [] } = useQuery(sprintListOptions(wsId));
+  const query = search.trim().toLowerCase();
+  const filtered = sprints.filter((s) =>
+    s.name.toLowerCase().includes(query),
+  );
+
+  return (
+    <>
+      <div className="px-2 py-1.5 border-b border-foreground/5">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t(($) => $.filters.placeholder)}
+          className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
+          autoFocus
+        />
+      </div>
+
+      <div className="max-h-64 overflow-y-auto p-1">
+        {(!query || "no sprint".includes(query)) && (
+          <DropdownMenuCheckboxItem
+            checked={includeNoSprint}
+            onCheckedChange={() => onToggleNoSprint()}
+            className={FILTER_ITEM_CLASS}
+          >
+            <HoverCheck checked={includeNoSprint} />
+            <Timer className="size-3.5 text-muted-foreground" />
+            {t(($) => $.filters.no_sprint)}
+            {noSprintCount > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {noSprintCount}
+              </span>
+            )}
+          </DropdownMenuCheckboxItem>
+        )}
+
+        {filtered.map((s) => {
+          const checked = selected.includes(s.id);
+          const count = counts.get(s.id) ?? 0;
+          return (
+            <DropdownMenuCheckboxItem
+              key={s.id}
+              checked={checked}
+              onCheckedChange={() => onToggle(s.id)}
+              className={FILTER_ITEM_CLASS}
+            >
+              <HoverCheck checked={checked} />
+              <Timer className="size-3.5 text-muted-foreground" />
+              <span className="truncate">{s.name}</span>
+              {count > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {count}
+                </span>
+              )}
+            </DropdownMenuCheckboxItem>
+          );
+        })}
+
+        {filtered.length === 0 && search && (
+          <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+            {t(($) => $.filters.no_results)}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // IssuesHeader
 // ---------------------------------------------------------------------------
 
@@ -1473,6 +1673,7 @@ export function IssueFilterMenu({
    *  ("already in this view"); everything else stays selectable. */
   viewBaseline?: IssueViewBaseline;
 }) {
+  const planningEnabled = usePlanningEnabled();
   const { t } = useT("issues");
   const triggerRef = useRef<HTMLElement>(null);
   const [frozenAnchor, setFrozenAnchor] = useState<{ getBoundingClientRect: () => DOMRect } | null>(null);
@@ -1485,6 +1686,10 @@ export function IssueFilterMenu({
   const includeNoProject = useViewStore((s) => s.includeNoProject);
   const projectStatusFilters = useViewStore((s) => s.projectStatusFilters);
   const labelFilters = useViewStore((s) => s.labelFilters);
+  const epicFilters = useViewStore((s) => planningEnabled ? (s.epicFilters ?? EMPTY_PLANNING_FILTERS) : EMPTY_PLANNING_FILTERS);
+  const includeNoEpic = useViewStore((s) => planningEnabled && s.includeNoEpic);
+  const sprintFilters = useViewStore((s) => planningEnabled ? (s.sprintFilters ?? EMPTY_PLANNING_FILTERS) : EMPTY_PLANNING_FILTERS);
+  const includeNoSprint = useViewStore((s) => planningEnabled && s.includeNoSprint);
   const propertyFilters = useViewStore((s) => s.propertyFilters);
   const viewStoreApi = useViewStoreApi();
   const act = viewStoreApi.getState();
@@ -1519,7 +1724,7 @@ export function IssueFilterMenu({
         projectFilters,
         includeNoProject,
         projectStatusFilters,
-        labelFilters,
+        labelFilters, epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
         dateFilter: showDateFilter ? dateFilter : null,
       },
       viewBaseline,
@@ -1860,6 +2065,51 @@ export function IssueFilterMenu({
                 </DropdownMenuSub>
               );
             })}
+            {/* Epic */}
+            {planningEnabled && <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Diamond className="size-3.5" />
+                <span className="flex-1">{t(($) => $.filters.epic)}</span>
+                {(epicFilters.length > 0 || includeNoEpic) && (
+                  <span className="text-xs text-primary font-medium">
+                    {epicFilters.length + (includeNoEpic ? 1 : 0)}
+                  </span>
+                )}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-auto min-w-52 p-0">
+                <EpicSubContent
+                  counts={counts.epic}
+                  selected={epicFilters}
+                  onToggle={act.toggleEpicFilter}
+                  includeNoEpic={includeNoEpic}
+                  onToggleNoEpic={act.toggleNoEpic}
+                  noEpicCount={counts.noEpic}
+                />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>}
+
+            {/* Sprint */}
+            {planningEnabled && <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Timer className="size-3.5" />
+                <span className="flex-1">{t(($) => $.filters.sprint)}</span>
+                {(sprintFilters.length > 0 || includeNoSprint) && (
+                  <span className="text-xs text-primary font-medium">
+                    {sprintFilters.length + (includeNoSprint ? 1 : 0)}
+                  </span>
+                )}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-auto min-w-52 p-0">
+                <SprintSubContent
+                  counts={counts.sprint}
+                  selected={sprintFilters}
+                  onToggle={act.toggleSprintFilter}
+                  includeNoSprint={includeNoSprint}
+                  onToggleNoSprint={act.toggleNoSprint}
+                  noSprintCount={counts.noSprint}
+                />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>}
 
             {/* Reset */}
             {hasActiveFilters && (
@@ -1918,6 +2168,7 @@ export function IssueDisplayControls({
   tableFacetCounts?: IssueTableFacetsResponse;
   onTableFacetChange?: (facet: IssueTableFacetSpec | null) => void;
 }) {
+  const planningEnabled = usePlanningEnabled();
   const { t } = useT("issues");
   const [tableGroupMenuOpen, setTableGroupMenuOpen] = useState(false);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
@@ -1930,6 +2181,10 @@ export function IssueDisplayControls({
   const projectFilters = useViewStore((s) => s.projectFilters);
   const includeNoProject = useViewStore((s) => s.includeNoProject);
   const projectStatusFilters = useViewStore((s) => s.projectStatusFilters);
+  const epicFilters = useViewStore((s) => planningEnabled ? (s.epicFilters ?? EMPTY_PLANNING_FILTERS) : EMPTY_PLANNING_FILTERS);
+  const includeNoEpic = useViewStore((s) => planningEnabled && s.includeNoEpic);
+  const sprintFilters = useViewStore((s) => planningEnabled ? (s.sprintFilters ?? EMPTY_PLANNING_FILTERS) : EMPTY_PLANNING_FILTERS);
+  const includeNoSprint = useViewStore((s) => planningEnabled && s.includeNoSprint);
   const labelFilters = useViewStore((s) => s.labelFilters);
   const propertyFilters = useViewStore((s) => s.propertyFilters);
   const cardPropertyIds = useViewStore((s) => s.cardPropertyIds);
@@ -1994,7 +2249,7 @@ export function IssueDisplayControls({
       projectFilters,
       includeNoProject,
       projectStatusFilters,
-      labelFilters,
+      labelFilters, epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
       dateFilter: showDateFilter ? dateFilter : null,
     },
     viewBaseline,
@@ -2487,3 +2742,5 @@ export function IssueDisplayControls({
     </div>
   );
 }
+
+const EMPTY_PLANNING_FILTERS: string[] = [];
