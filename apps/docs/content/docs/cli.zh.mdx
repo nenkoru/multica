@@ -193,6 +193,18 @@ multica chat send <session-id> --body "请评审这次改动。"
 
 命令只发送一次，不等待回复、不自动重试。超时或响应丢失后，先检查目标会话，再决定是否重发：消息可能已经收到。本次不增加会话创建、附件发送或自动回信。
 
+### 以智能体身份发消息
+
+```bash
+multica chat post <session-id> --body "夜间导入完成：1426 个任务，0 个错误。"
+```
+
+`chat post` 让智能体主动给成员发消息。消息显示在会话中智能体一侧，并标明发送的智能体；如果会话已关联 Telegram，消息会同时发到对应的 Telegram 会话。它不会创建运行：只有成员回复后，会话的智能体才会运行，并且能看到之前发出的内容。
+
+只有智能体运行可以使用该命令，且只能发到与本次运行相关的成员的会话。服务端限制同一智能体向单个会话以及总体的发送频率：默认每小时每个会话 6 条、每个智能体 20 条，可通过 `MULTICA_AGENT_CHAT_RATE_PER_SESSION`、`MULTICA_AGENT_CHAT_RATE_PER_AGENT` 和 `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS` 调整。智能体使用 `chat send` 时也计入同一限制。返回 `429` 时会带有 `retry_after_seconds`。
+
+JSON 返回 `message_id` 和 `delivery.status`：`delivered`、`not_bound`（会话未关联渠道）、`unsupported_channel`、`unavailable` 或 `failed`。无论哪种情况，消息都会保留在会话中。命令只发送一次，不自动重试；出现服务端错误、超时或响应丢失后，先检查目标会话，再决定是否重发。
+
 ## ID 和输出格式
 
 任务使用 `MUL-123` 这样的 key 或完整 UUID，不接受 UUID 短前缀。

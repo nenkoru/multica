@@ -208,6 +208,18 @@ multica chat send <session-id> --body "Please review the proposed change."
 
 The command sends once, without waiting for a reply or automatically retrying. After a server error, timeout or lost response, check the destination before sending again: it may already have accepted the message. No chat creation, attachment sending, or automatic reply forwarding is added.
 
+### Posting as the agent
+
+```bash
+multica chat post <session-id> --body "Nightly import finished: 1426 issues, 0 errors."
+```
+
+`chat post` lets an agent write to a person on its own initiative. The message appears on the agent's side of the chat feed, marked with the posting agent as its author, and is delivered to the Telegram chat the session is linked to. It does not enqueue a run: the session's agent runs only when the person replies, and is then shown what was posted.
+
+Only an agent task can post, and only into a session of the person the task is tied to. The server limits how often one agent may write into one session and overall — 6 per session and 20 per agent per hour by default, configurable with `MULTICA_AGENT_CHAT_RATE_PER_SESSION`, `MULTICA_AGENT_CHAT_RATE_PER_AGENT`, and `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS`. The same limit covers an agent's `chat send`. A `429` response carries `retry_after_seconds`.
+
+JSON output includes `message_id` and `delivery.status`: `delivered`, `not_bound` (the session has no linked channel), `unsupported_channel`, `unavailable`, or `failed`. The message stays in the feed in every case. The command posts once and does not retry; after a server error, timeout or lost response, check the conversation before posting again.
+
 ## IDs and output formats
 
 Issues use keys like `MUL-123` or full UUIDs; short UUID prefixes are not accepted.

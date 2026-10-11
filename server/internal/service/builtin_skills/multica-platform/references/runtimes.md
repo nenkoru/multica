@@ -133,6 +133,36 @@ conversation before sending again: the original send may already have committed.
 Do not assume an error means nothing was sent or turn it into an agent-to-agent
 auto-reply loop.
 
+An agent's `chat send` row is recorded with the agent as its author, and counts
+against the same rate limit as `chat post` below.
+
+### Writing to a person on your own initiative
+
+```bash
+multica chat post <session-id> --body "Nightly import finished: 1426 issues, 0 errors."
+```
+
+`chat post` is how an agent tells a person something without being asked. The
+message lands on the agent's side of the chat feed, marked with the posting
+agent as its author, and is delivered to the Telegram chat the session is linked
+to. It enqueues no run and spends no budget of the session's agent: that agent
+runs only when the person replies, and is then shown what was posted. Use
+`chat send` instead only when the session's agent itself should answer.
+
+Only an agent task can post, and only into a session of the person the task is
+tied to — the agent's owner, or whoever the run is for. The server caps how often
+one agent may write into one session and overall (by default 6 per session and
+20 per agent per hour); a `429` carries `retry_after_seconds`. Post once per
+event, say what happened and what, if anything, is needed from the person, and
+do not split one report across several messages.
+
+The response includes `message_id` and `delivery.status`: `delivered`,
+`not_bound` (no linked channel — the message is in the feed only),
+`unsupported_channel`, `unavailable`, or `failed`. The message is stored in every
+case, so never repost it to repair delivery. The command does not retry; after a
+server error, timeout or lost response, check the conversation before posting
+again.
+
 `chat history` and `chat thread` remain scoped to the caller's current
 conversation/channel; neither becomes a cross-session transcript reader.
 
