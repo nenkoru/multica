@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -74,6 +75,9 @@ func runChatPost(cmd *cobra.Command, args []string) error {
 		if !errors.As(err, &httpErr) || httpErr.StatusCode >= http.StatusInternalServerError {
 			return cli.WithUserMessage("The message may have been posted. Check the destination before posting again; this command did not retry.", err)
 		}
+		if message, limited := agentChatRateLimitMessage(httpErr); limited {
+			return cli.WithUserMessage(message, err)
+		}
 		return fmt.Errorf("post chat message: %w", err)
 	}
 	if strVal(result, "message_id") == "" {
@@ -87,4 +91,31 @@ func runChatPost(cmd *cobra.Command, args []string) error {
 		strVal(result, "message_id"), strVal(delivery, "status"), strVal(delivery, "channel_type"), strVal(result, "created_at"),
 	}})
 	return nil
+}
+
+// agentChatRateLimitMessage turns the server's agent chat rate-limit refusal
+// into guidance an agent can act on. The generic 429 text says "wait a moment
+// and try again", which is exactly the loop the limit exists to stop.
+func agentChatRateLimitMessage(httpErr *cli.HTTPError) (string, bool) {
+	if httpErr == nil || httpErr.StatusCode != http.StatusTooManyRequests {
+		return "", false
+	}
+	var body struct {
+		Code              string `json:"code"`
+		Scope             string `json:"scope"`
+		Limit             int    `json:"limit"`
+		WindowSeconds     int64  `json:"window_seconds"`
+		RetryAfterSeconds int64  `json:"retry_after_seconds"`
+	}
+	if err := json.Unmarshal([]byte(httpErr.Body), &body); err != nil || body.Code != "agent_chat_rate_limited" {
+		return "", false
+	}
+	scope := "into this chat session"
+	if body.Scope == "agent" {
+		scope = "across all chat sessions"
+	}
+	return fmt.Sprintf(
+		"Chat rate limit reached: this agent may write %d messages %s per %d minutes. Nothing was sent. Do not retry now; the next slot frees in about %d minutes. Combine what is left into one later message.",
+		body.Limit, scope, (body.WindowSeconds+59)/60, (body.RetryAfterSeconds+59)/60,
+	), true
 }

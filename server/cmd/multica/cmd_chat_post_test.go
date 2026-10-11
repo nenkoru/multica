@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/multica-ai/multica/server/internal/cli"
 )
 
@@ -104,5 +106,34 @@ func TestChatPostCommandRegistration(t *testing.T) {
 	cmd, _, err := chatCmd.Find([]string{"post"})
 	if err != nil || cmd == chatCmd || cmd.Name() != "post" {
 		t.Fatalf("chat post is not registered: %v", err)
+	}
+}
+
+func TestChatRateLimitTellsTheAgentNotToRetry(t *testing.T) {
+	for name, newCmd := range map[string]func() *cobra.Command{"post": newChatPostCmd, "send": newChatSendCmd} {
+		t.Run(name, func(t *testing.T) {
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Retry-After", "1500")
+				w.WriteHeader(http.StatusTooManyRequests)
+				fmt.Fprint(w, `{"error":"agent chat rate limit reached","code":"agent_chat_rate_limited","scope":"session","limit":6,"window_seconds":3600,"retry_after_seconds":1500}`)
+			}))
+			defer srv.Close()
+			chatSessionTestEnv(t, srv.URL)
+			_, err := executeChatSessionTest(t, newCmd(), chatSessionTestID, "--body", "hello")
+			if err == nil || calls.Load() != 1 {
+				t.Fatalf("error=%v calls=%d", err, calls.Load())
+			}
+			message := cli.FormatError(err, false)
+			for _, want := range []string{"6 messages", "into this chat session", "60 minutes", "about 25 minutes", "Do not retry now"} {
+				if !strings.Contains(message, want) {
+					t.Fatalf("rate-limit guidance is missing %q: %q", want, message)
+				}
+			}
+			if strings.Contains(message, "try again") {
+				t.Fatalf("rate-limit guidance invites a retry: %q", message)
+			}
+		})
 	}
 }
