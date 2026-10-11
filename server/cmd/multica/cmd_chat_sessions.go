@@ -128,6 +128,9 @@ func runChatSend(cmd *cobra.Command, args []string) error {
 		if !errors.As(err, &httpErr) || httpErr.StatusCode >= http.StatusInternalServerError {
 			return cli.WithUserMessage("Delivery may have succeeded. Check the destination before sending again; this command did not retry.", err)
 		}
+		if message, limited := agentChatRateLimitMessage(httpErr); limited {
+			return cli.WithUserMessage(message, err)
+		}
 		return fmt.Errorf("send chat message: %w", err)
 	}
 	if strVal(result, "message_id") == "" || strVal(result, "task_id") == "" {
