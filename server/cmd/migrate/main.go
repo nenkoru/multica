@@ -145,6 +145,7 @@ var concurrentIndexCleanups = map[string]string{
 	"552_agent_task_history_page_index":                         "idx_agent_task_queue_history_page",
 	"535_github_pr_address_index":                               "idx_github_pull_request_pr_owner_repo",
 	"539_task_supplement_request_index":                         "task_supplement_task_request_uidx",
+	"580_chat_message_agent_author_index":                       "idx_chat_message_agent_author",
 	"540_task_supplement_capability_index":                      "task_supplement_capability_task_uidx",
 	"541_task_supplement_comment_index":                         "task_supplement_comment_uidx",
 	"546_issue_pr_automation_workspace_index":                   "idx_issue_pr_automation_workspace",

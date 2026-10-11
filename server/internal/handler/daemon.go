@@ -3142,7 +3142,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		if task.ChatInputTaskID.Valid {
 			unanswered, inputLoadErr = h.Queries.ListChatInputMessages(r.Context(), task.ChatInputTaskID)
 		} else if msgs, err := h.Queries.ListChatMessagesForLegacyTask(r.Context(), cs.ID); err == nil {
-			unanswered = trailingUserMessages(msgs)
+			unanswered = trailingUserMessages(withoutAgentPostedMessages(msgs))
 		} else {
 			inputLoadErr = err
 		}
@@ -3301,6 +3301,29 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 
 		if strings.TrimSpace(resp.ThreadName) == "" && resp.ChatMessage != "" {
 			resp.ThreadName = resp.ChatMessage
+		}
+
+		// Hand the turn any proactive agent posts written since this session's
+		// last completed turn. They are in the transcript the member reads but
+		// in no provider session, so without this the agent would answer a reply
+		// to a message it never saw. Applied after the empty-input check and the
+		// thread name, both of which are about the member's own words. A read
+		// failure only costs that context, so it never fails the claim.
+		if resp.ChatMessage != "" {
+			posted, postedErr := h.Queries.ListAgentPostedChatMessagesForTask(r.Context(), db.ListAgentPostedChatMessagesForTaskParams{
+				ChatSessionID:          cs.ID,
+				TaskCreatedAt:          task.CreatedAt,
+				ChannelContextRevision: task.ChannelContextRevision,
+				MaxPosts:               maxAgentPostedContextPosts,
+			})
+			if postedErr != nil {
+				slog.Warn("chat claim: load proactive agent posts failed; continuing without them",
+					"task_id", uuidToString(task.ID),
+					"chat_session_id", uuidToString(cs.ID),
+					"error", postedErr)
+			} else if block := h.agentPostedChatContext(r.Context(), posted); block != "" {
+				resp.ChatMessage = block + "\n\n" + resp.ChatMessage
+			}
 		}
 	}
 
@@ -3982,6 +4005,52 @@ func (h *Handler) ResolveTaskSkillBundles(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"bundles": resolved})
+}
+
+// withoutAgentPostedMessages drops proactive agent posts from a legacy task's
+// history before the trailing-message selector reads it. Such a row is an
+// assistant row no turn produced; left in, it would end the run of unanswered
+// user messages early and the turn would start without its input.
+func withoutAgentPostedMessages(msgs []db.ChatMessage) []db.ChatMessage {
+	kept := make([]db.ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role == "assistant" && !m.TaskID.Valid && m.AuthorType.String == service.ChatAuthorTypeAgent {
+			continue
+		}
+		kept = append(kept, m)
+	}
+	return kept
+}
+
+// agentPostedChatContext renders proactive agent posts as a context block for
+// the session agent's next turn. Returns "" when there is nothing to show.
+func (h *Handler) agentPostedChatContext(ctx context.Context, posted []db.ChatMessage) string {
+	if len(posted) == 0 {
+		return ""
+	}
+	names := make(map[string]string, len(posted))
+	var b strings.Builder
+	b.WriteString("[Context, not a message from the user: since your last turn the following was posted to this chat by an agent on its own initiative, and the user has already seen it.]\n")
+	for _, m := range posted {
+		authorID := uuidToString(m.AuthorID)
+		name, ok := names[authorID]
+		if !ok {
+			name = "agent " + authorID
+			if agent, err := h.Queries.GetAgent(ctx, m.AuthorID); err == nil && agent.Name != "" {
+				name = agent.Name
+			}
+			names[authorID] = name
+		}
+		b.WriteString("\n")
+		b.WriteString(name)
+		b.WriteString(" (")
+		b.WriteString(m.CreatedAt.Time.UTC().Format(time.RFC3339))
+		b.WriteString("):\n")
+		b.WriteString(m.Content)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n[End of context. The user's message follows.]")
+	return b.String()
 }
 
 // trailingUserMessages returns the run of user messages after the last
