@@ -6,6 +6,7 @@ processes and claims queued tasks from the server.
 - [Core model](#core-model)
 - [CLI](#cli)
 - [Task CLI boundary](#task-cli-boundary)
+- [Chat session sends](#chat-session-sends)
 - [Debugging an agent that did not run](#debugging-an-agent-that-did-not-run)
 - [Repos](#repos)
 
@@ -102,6 +103,68 @@ absent, you are not in the normal agent checkout path. When a project
 `github_repo` resource has `resource_ref.ref`, `repo checkout <url>` uses that
 ref by default for the current task; an explicit
 `repo checkout <url> --ref <branch-or-sha>` overrides it.
+
+## Chat session sends
+
+```bash
+multica chat list --title "Review" --output json
+multica chat send <session-id> --body "Please review the proposed change."
+```
+
+`chat list` is read-only. It lists accessible active sessions owned by the
+authenticated user in the current workspace; inside a task, that user is the
+runtime owner bound to the `mat_` token, not necessarily the task initiator.
+`--title` filters by exact title, which need not be unique. Select a real full
+session UUID from the result; table output also preserves full UUIDs.
+
+`chat send` is a real write that enqueues an agent run and consumes budget.
+Use it only when the user requested sending to that destination. It reuses the
+web composer's direct-chat message endpoint and existing membership, creator,
+agent-access and invocation gates. A private session belonging to another
+member is not an allowed destination. A `mat_` credential never falls back to
+a saved member credential. The message is normal chat input, not a structured
+agent-authored card or a new issue.
+
+The response includes `message_id`, `task_id` (run ID), and `queued`. A busy
+session queues the new turn; acknowledgement is not completion. The command
+does not create sessions, send attachments, wait for replies, forward replies,
+or retry. After a server error, timeout or lost response, check the target
+conversation before sending again: the original send may already have committed.
+Do not assume an error means nothing was sent or turn it into an agent-to-agent
+auto-reply loop.
+
+An agent's `chat send` row is recorded with the agent as its author, and counts
+against the same rate limit as `chat post` below.
+
+### Writing to a person on your own initiative
+
+```bash
+multica chat post <session-id> --body "Nightly import finished: 1426 issues, 0 errors."
+```
+
+`chat post` is how an agent tells a person something without being asked. The
+message lands on the agent's side of the chat feed, marked with the posting
+agent as its author, and is delivered to the Telegram chat the session is linked
+to. It enqueues no run and spends no budget of the session's agent: that agent
+runs only when the person replies, and is then shown what was posted. Use
+`chat send` instead only when the session's agent itself should answer.
+
+Only an agent task can post, and only into a session of the person the task is
+tied to — the agent's owner, or whoever the run is for. The server caps how often
+one agent may write into one session and overall (by default 6 per session and
+20 per agent per hour); a `429` carries `retry_after_seconds`. Post once per
+event, say what happened and what, if anything, is needed from the person, and
+do not split one report across several messages.
+
+The response includes `message_id` and `delivery.status`: `delivered`,
+`not_bound` (no linked channel — the message is in the feed only),
+`unsupported_channel`, `unavailable`, or `failed`. The message is stored in every
+case, so never repost it to repair delivery. The command does not retry; after a
+server error, timeout or lost response, check the conversation before posting
+again.
+
+`chat history` and `chat thread` remain scoped to the caller's current
+conversation/channel; neither becomes a cross-session transcript reader.
 
 ## Task CLI boundary
 

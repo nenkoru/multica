@@ -193,7 +193,32 @@ See [Daemon and runtimes](/daemon-runtimes) for how it works and for custom prof
 | `config` | View or edit the current CLI profile's local configuration |
 | `update`, `version` | Update the CLI or print the version |
 
-`multica chat` reads **the external chat session an agent is currently handling**; it is mainly for agents in chat integrations, not a general command for browsing arbitrary workspace conversations.
+`multica chat history` and `multica chat thread` read **the chat conversation an agent is currently handling**. They do not browse other sessions.
+
+### Sending to an existing chat
+
+```bash
+multica chat list --title "Review" --output json
+multica chat send <session-id> --body "Please review the proposed change."
+```
+
+`chat list` lists accessible active sessions owned by the authenticated user in the current workspace. `--title` is an exact filter, not a unique identifier; use the full UUID from the result with `chat send`. Table output also keeps full UUIDs. Inside an agent task, the authenticated user is the runtime owner bound to the task token, which may differ from the task initiator. These commands do not grant access to other members' conversations or bypass agent invocation permissions.
+
+`chat send` submits a normal direct-chat input, not an agent-authored message card. The server persists the message and enqueues a **run**, not an issue. If the session is busy, the turn queues behind its pending work. JSON output includes `message_id`, `task_id` (run ID), and `queued`; acceptance does not mean the agent has finished replying. Replies appear in the destination chat through the normal runtime flow.
+
+The command sends once, without waiting for a reply or automatically retrying. After a server error, timeout or lost response, check the destination before sending again: it may already have accepted the message. No chat creation, attachment sending, or automatic reply forwarding is added.
+
+### Posting as the agent
+
+```bash
+multica chat post <session-id> --body "Nightly import finished: 1426 issues, 0 errors."
+```
+
+`chat post` lets an agent write to a person on its own initiative. The message appears on the agent's side of the chat feed, marked with the posting agent as its author, and is delivered to the Telegram chat the session is linked to. It does not enqueue a run: the session's agent runs only when the person replies, and is then shown what was posted.
+
+Only an agent task can post, and only into a session of the person the task is tied to. The server limits how often one agent may write into one session and overall — 6 per session and 20 per agent per hour by default, configurable with `MULTICA_AGENT_CHAT_RATE_PER_SESSION`, `MULTICA_AGENT_CHAT_RATE_PER_AGENT`, and `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS`. The same limit covers an agent's `chat send`. A `429` response carries `retry_after_seconds`.
+
+JSON output includes `message_id` and `delivery.status`: `delivered`, `not_bound` (the session has no linked channel), `unsupported_channel`, `unavailable`, or `failed`. The message stays in the feed in every case. The command posts once and does not retry; after a server error, timeout or lost response, check the conversation before posting again.
 
 ## IDs and output formats
 
@@ -297,7 +322,9 @@ The tables below cover every current top-level command, grouped the way the CLI 
 | `squad` | `list/get/create/update/delete` | Manage squads (`delete` archives) | |
 | | `member list/add/set-role/remove` | Manage squad members | |
 | | `activity <issue-id> <outcome>` | Record a leader evaluation | |
-| `chat` | `history`, `thread [id]` | Read the external chat session an agent is currently handling | `--limit`, `--before` |
+| `chat` | `history`, `thread [id]` | Read the conversation an agent is currently handling | `--limit`, `--before` |
+| | `list` | List accessible active sessions owned by the authenticated user | `--title` (exact match), `--output` (`json` or `table`) |
+| | `send <session-id>` | Submit a message and enqueue a run in an existing session | `--body` (required), `--output` (`json` or `table`); full UUID required |
 
 ### Runtime
 

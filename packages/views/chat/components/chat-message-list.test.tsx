@@ -3,11 +3,16 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { chatKeys } from "@multica/core/chat/queries";
+import { workspaceKeys } from "@multica/core/workspace/queries";
 import type { Attachment, TaskMessagePayload } from "@multica/core/types";
 import type { ReactElement } from "react";
 import enChat from "../../locales/en/chat.json";
 import zhHansAgents from "../../locales/zh-Hans/agents.json";
 import zhHansChat from "../../locales/zh-Hans/chat.json";
+
+// Only the agent-author label reads the workspace; every other row renders
+// without one, so the suite needs no workspace route around it.
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "workspace-1" }));
 
 // The live timeline is a real list row rather than Virtuoso chrome (MUL-4922),
 // so it shares one identity with the persisted assistant row and keeps its
@@ -951,5 +956,70 @@ describe("ChatMessageList onboarding starter cards", () => {
       await screen.findByRole("button", { name: "Get a board up in minutes" }),
     ).toBeEnabled();
     expect(screen.getByRole("button", { name: "Later chip" })).toBeEnabled();
+  });
+});
+
+describe("ChatMessageList agent-authored rows", () => {
+  function renderAuthored(known: boolean) {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    });
+    qc.setQueryData(
+      workspaceKeys.agents("workspace-1"),
+      known ? [{ id: "agent-dev", name: "Developer" }] : [],
+    );
+    const base = {
+      chat_session_id: "session-1",
+      task_id: null,
+      created_at: "2026-10-11T00:00:00Z",
+    };
+    return render(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <QueryClientProvider client={qc}>
+          <ChatMessageList
+            messages={[
+              { ...base, id: "own", role: "user", content: "My own question" },
+              {
+                ...base,
+                id: "agent-send",
+                role: "user",
+                content: "Queued by an agent",
+                author_type: "agent",
+                author_id: "agent-dev",
+              },
+              { ...base, id: "reply", role: "assistant", content: "Ordinary reply", task_id: null },
+              {
+                ...base,
+                id: "proactive",
+                role: "assistant",
+                content: "Nightly import finished",
+                author_type: "agent",
+                author_id: "agent-dev",
+              },
+            ]}
+            pendingTask={null}
+            availability="online"
+          />
+        </QueryClientProvider>
+      </I18nProvider>,
+    );
+  }
+
+  it("names the agent on rows it wrote and on no others", async () => {
+    renderAuthored(true);
+
+    expect(await screen.findByText("Nightly import finished")).toBeInTheDocument();
+    expect(screen.getByText("Queued by an agent")).toBeInTheDocument();
+    expect(screen.getByText("My own question")).toBeInTheDocument();
+    expect(screen.getByText("Ordinary reply")).toBeInTheDocument();
+    // One label per agent-authored row: the proactive post and the agent's send.
+    expect(screen.getAllByText("Sent by Developer")).toHaveLength(2);
+  });
+
+  it("still marks the row when the agent is no longer listed", async () => {
+    renderAuthored(false);
+
+    expect(await screen.findByText("Nightly import finished")).toBeInTheDocument();
+    expect(screen.getAllByText("Sent by an agent")).toHaveLength(2);
   });
 });

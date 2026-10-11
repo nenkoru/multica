@@ -250,6 +250,12 @@ type ChatMessagePayload struct {
 	Content       string `json:"content"`
 	TaskID        string `json:"task_id,omitempty"`
 	CreatedAt     string `json:"created_at"`
+	// AuthorType / AuthorID name who wrote the row when that is not implied by
+	// Role: set to "agent" + the agent id for a message an agent run wrote
+	// through its task token. Empty for a member's own message and for the
+	// session agent's task-owned reply.
+	AuthorType string `json:"author_type,omitempty"`
+	AuthorID   string `json:"author_id,omitempty"`
 }
 
 // Chat message kinds (chat_message.message_kind). Additive: unknown values

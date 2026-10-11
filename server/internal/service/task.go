@@ -77,6 +77,9 @@ type TaskService struct {
 	// state for a self-hosted deployment with no MULTICA_LLM_* configuration.
 	// Wired in router.go from the same *llm.Client that backs chat auto-titling.
 	QuickActions ChatQuickActionsLLM
+	// AgentChatRate overrides the cap on agent-authored chat messages. The zero
+	// value reads MULTICA_AGENT_CHAT_RATE_* and falls back to the defaults.
+	AgentChatRate AgentChatRateLimit
 	// quickActionsInFlight (chat session id -> struct{}{}) and
 	// quickActionsRunning admit suggestion passes: one per session, and a
 	// process-wide ceiling. Both zero values are usable, so a TaskService built
@@ -2386,6 +2389,17 @@ func (s *TaskService) SendDirectChatMessage(
 		}
 		out.Queued = queued
 
+		// An agent run sending through its task token writes the member-side
+		// row of somebody else's chat and spends a run of the session agent, so
+		// it is capped and the row is stamped with who really wrote it.
+		authorType, authorID := pgtype.Text{}, pgtype.UUID{}
+		if uploaderType == ChatAuthorTypeAgent && uploaderID.Valid {
+			if err := s.enforceAgentChatRate(ctx, qtx, uploaderID, session.ID); err != nil {
+				return err
+			}
+			authorType, authorID = pgtype.Text{String: ChatAuthorTypeAgent, Valid: true}, uploaderID
+		}
+
 		task, err := qtx.CreateChatTask(ctx, db.CreateChatTaskParams{
 			ID:                   dbid.NewV7(),
 			AgentID:              session.AgentID,
@@ -2448,6 +2462,8 @@ func (s *TaskService) SendDirectChatMessage(
 			Content:       content,
 			TaskID:        task.ID,
 			MessageKind:   pgtype.Text{String: protocol.ChatMessageKindMessage, Valid: true},
+			AuthorType:    authorType,
+			AuthorID:      authorID,
 		})
 		if err != nil {
 			return fmt.Errorf("create user chat message: %w", err)
@@ -2501,6 +2517,10 @@ func (s *TaskService) SendDirectChatMessage(
 		}
 		return nil
 	}); err != nil {
+		var limited *AgentChatRateLimitedError
+		if errors.As(err, &limited) {
+			return nil, err
+		}
 		slog.Error("direct chat send failed",
 			"chat_session_id", util.UUIDToString(session.ID),
 			"agent_id", util.UUIDToString(session.AgentID),

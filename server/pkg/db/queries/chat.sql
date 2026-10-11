@@ -485,7 +485,7 @@ WHERE id = $1;
 INSERT INTO chat_message (
     chat_session_id, role, content, task_id, failure_reason, elapsed_ms,
     message_kind, quick_actions, channel_media_pending_until, channel_ingested,
-    channel_context_revision, id
+    channel_context_revision, id, author_type, author_id
 )
 VALUES (
     $1, $2, $3, sqlc.narg(task_id), sqlc.narg(failure_reason), sqlc.narg(elapsed_ms),
@@ -501,9 +501,75 @@ VALUES (
          ELSE now() + make_interval(secs => sqlc.narg(channel_media_pending_secs)::float8) END,
     COALESCE(sqlc.narg(channel_ingested)::boolean, FALSE),
     sqlc.narg(channel_context_revision),
-    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
+    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()),
+    sqlc.narg(author_type),
+    sqlc.narg(author_id)
 )
 RETURNING *;
+
+-- name: LockAgentChatAuthorRate :exec
+-- Serialises the rate-limit read and the insert it guards for one authoring
+-- agent, so two concurrent sends cannot both observe "one slot left".
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg('agent_id')::uuid::text, 1557));
+
+-- name: CountAgentAuthoredChatMessages :one
+-- Rate-limit window read for agent-authored chat messages. session_count is
+-- the agent's rows in one session, agent_count its rows across every session;
+-- the oldest_* timestamps let the caller tell the agent when a slot frees up.
+SELECT
+    count(*) FILTER (WHERE chat_session_id = sqlc.arg('chat_session_id'))::int AS session_count,
+    count(*)::int AS agent_count,
+    min(created_at) FILTER (WHERE chat_session_id = sqlc.arg('chat_session_id'))::timestamptz AS oldest_in_session,
+    min(created_at)::timestamptz AS oldest_for_agent
+FROM chat_message
+WHERE author_type = 'agent'
+  AND author_id = sqlc.arg('agent_id')
+  AND created_at > now() - make_interval(secs => sqlc.arg('window_secs')::float8);
+
+-- name: ListAgentPostedChatMessagesForTask :many
+-- Proactive agent posts the session agent has not been shown yet: rows written
+-- with no owning task since the last turn of this session that completed. They
+-- live in the transcript but in no provider session, so the claim hands them to
+-- the next turn as context. A failed or cancelled turn does not advance the
+-- boundary, so its retry sees them again.
+--
+-- Bounded to the NEWEST rows, returned oldest-first: the member is answering
+-- the latest post, so when more have piled up than fit, the oldest are the
+-- ones to drop.
+SELECT recent.* FROM (
+    SELECT message.* FROM chat_message AS message
+    WHERE message.chat_session_id = sqlc.arg('chat_session_id')
+      AND message.role = 'assistant'
+      AND message.task_id IS NULL
+      AND message.author_type = 'agent'
+      AND message.created_at <= sqlc.arg('task_created_at')::timestamptz
+      AND message.created_at > COALESCE((
+          SELECT max(task.created_at)
+          FROM agent_task_queue AS task
+          WHERE task.chat_session_id = message.chat_session_id
+            AND task.status = 'completed'
+            AND task.regenerate_quick_actions_for IS NULL
+            AND task.created_at < sqlc.arg('task_created_at')::timestamptz
+      ), '-infinity'::timestamptz)
+      AND (
+          sqlc.narg('channel_context_revision')::bigint IS NULL
+          OR message.channel_context_revision = sqlc.narg('channel_context_revision')::bigint
+      )
+    ORDER BY message.created_at DESC, message.id DESC
+    LIMIT sqlc.arg('max_posts')
+) AS recent
+ORDER BY recent.created_at ASC, recent.id ASC;
+
+-- name: SetAgentPostedChatMessageOutbound :exec
+-- Records where a proactive agent post landed on the bound channel, mirroring
+-- what a task-owned reply records, so the platform message ids are known.
+UPDATE chat_message
+SET channel_outbound_type = @channel_type,
+    channel_outbound_installation_id = @installation_id,
+    channel_outbound_chat_id = @channel_chat_id,
+    channel_outbound_message_ids = @message_ids::text[]
+WHERE id = @id
+  AND task_id IS NULL;
 
 -- name: TaskHasChannelIngestedMessages :one
 -- Immutable channel provenance for a task's user-message input batch:
@@ -935,9 +1001,22 @@ WHERE message.chat_session_id = @chat_session_id
       OR
       (
           message.role != 'user'
+          AND message.task_id IS NOT NULL
           AND (
               owner.channel_context_revision = @channel_context_revision
               OR (@channel_context_revision = 1 AND owner.channel_context_revision IS NULL)
+          )
+      )
+      OR
+      -- A task-less assistant row has no owner to inherit a generation from:
+      -- a proactive agent post carries its own, stamped from the binding when
+      -- it was written; the legacy unstamped rows stay in generation 1.
+      (
+          message.role != 'user'
+          AND message.task_id IS NULL
+          AND (
+              message.channel_context_revision = @channel_context_revision
+              OR (@channel_context_revision = 1 AND message.channel_context_revision IS NULL)
           )
       )
   )

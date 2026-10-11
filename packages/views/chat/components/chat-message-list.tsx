@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { isTaskMessageTaskId, taskMessagesOptions } from "@multica/core/chat/queries";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { agentListOptions } from "@multica/core/workspace/queries";
 import { RichContent } from "../../rich-content";
 import { RichContentScrollRootProvider } from "../../rich-content/scroll-root";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -480,9 +482,16 @@ const MessageBubble = memo(function MessageBubble({
 
   const { message } = item;
 
+  // Set only when an agent run wrote the row itself (a proactive post, or a
+  // `multica chat send` turn on the member side), so the feed never passes an
+  // agent's words off as the member's or as the session agent's reply.
+  const agentAuthorId =
+    message.author_type === "agent" && message.author_id ? message.author_id : null;
+
   if (message.role === "user") {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {agentAuthorId && <AgentAuthorLabel agentId={agentAuthorId} />}
         <div className="rounded-2xl bg-muted px-3.5 py-2 text-body max-w-[80%] break-words">
           {/* User messages are authored as markdown in ContentEditor, so they
            * render through the SAME RichContent as assistant replies and as
@@ -505,7 +514,7 @@ const MessageBubble = memo(function MessageBubble({
     );
   }
 
-  return (
+  const assistant = (
     <AssistantMessage
       taskId={message.task_id ?? null}
       message={message}
@@ -519,7 +528,34 @@ const MessageBubble = memo(function MessageBubble({
       showStarterCards={message.id === starterCardsMessageId}
     />
   );
+  // Task-owned replies keep the bare <AssistantMessage> so the live row and
+  // the persisted row still reconcile; an agent-authored row owns no task.
+  if (!agentAuthorId) return assistant;
+  return (
+    <div className="flex flex-col gap-1">
+      <AgentAuthorLabel agentId={agentAuthorId} />
+      {assistant}
+    </div>
+  );
 });
+
+/**
+ * Names the agent that wrote a row on its own initiative. Mounted only for
+ * agent-authored rows, so ordinary messages never subscribe to the agent list.
+ */
+function AgentAuthorLabel({ agentId }: { agentId: string }) {
+  const { t } = useT("chat");
+  const wsId = useWorkspaceId();
+  const { data: agents } = useQuery(agentListOptions(wsId));
+  const agent = agents?.find((a) => a.id === agentId)?.name;
+  return (
+    <div className="text-caption text-muted-foreground">
+      {agent
+        ? t(($) => $.message_list.sent_by_agent, { agent })
+        : t(($) => $.message_list.sent_by_unknown_agent)}
+    </div>
+  );
+}
 
 /**
  * Assistant turn body — renders BOTH the in-flight (live) and the persisted

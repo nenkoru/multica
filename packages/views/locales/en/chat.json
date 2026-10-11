@@ -54,6 +54,8 @@
     "failed_after": "Failed after {{elapsed}}",
     "finished_in": "Finished in {{elapsed}}",
     "no_response": "The agent finished this turn without a text reply.",
+    "sent_by_agent": "Sent by {{agent}}",
+    "sent_by_unknown_agent": "Sent by an agent",
     "failure": {
       "agent_error": "The agent ran into an error and couldn't finish replying. Please try again.",
       "timeout": "The agent took too long and stopped before finishing. Try again, or break your request into smaller steps.",
