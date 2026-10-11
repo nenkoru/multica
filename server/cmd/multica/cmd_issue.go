@@ -506,7 +506,7 @@ var validIssueFields = []string{
 	"id", "workspace_id", "number", "identifier", "title", "description",
 	"status", "status_category", "status_name", "priority", "assignee_type",
 	"assignee_id", "creator_type", "creator_id", "parent_issue_id",
-	"duplicate_of", "project_id", "position", "stage", "start_date", "due_date", "created_at",
+	"duplicate_of", "project_id", "epic_id", "sprint_id", "position", "stage", "start_date", "due_date", "created_at",
 	"updated_at", "revision", "last_activity_at", "metadata", "properties",
 	"labels",
 }
@@ -600,6 +600,8 @@ func init() {
 	issueListCmd.Flags().String("assignee", "", "Filter by assignee name (member, agent, or squad; fuzzy match)")
 	issueListCmd.Flags().String("assignee-id", "", "Filter by assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueListCmd.Flags().String("project", "", "Filter by project ID")
+	issueListCmd.Flags().String("epic", "", "Epic UUID; empty clears the relation on update")
+	issueListCmd.Flags().String("sprint", "", "Sprint UUID; empty clears the relation on update")
 	issueListCmd.Flags().StringSlice("metadata", nil, "Filter by metadata key=value (repeatable; combined with AND). Value is JSON-parsed: 'true'/'false' → bool, numbers → number, otherwise string. Wrap as '\"42\"' to force a string when the value would otherwise sniff as a number.")
 	issueListCmd.Flags().StringArray("property", nil, `Filter by custom property, written as "Name=Value" (repeatable, one value per flag). Name is a property name (case-insensitive) or its UUID. Value depends on the type: an option name or id for select and multi_select, true or false for checkbox, a member name, email, or id for actor types, and the value itself for text, url, number, and date (YYYY-MM-DD). Use __none__ to match issues where the property is unset; it works for every type, so an option or member actually named __none__ has to be given by id, as does a property whose name contains "=" or ends in <, > or ! (the >=, <=, and != spellings are reserved for comparison filters). Repeating a property matches ANY of its values; different properties must ALL match.`)
 	issueListCmd.Flags().Int("limit", 50, fmt.Sprintf("Page size, 1 to %d (the server returns at most %d issues per request; use --offset to page through more)", issueListMaxPageSize, issueListMaxPageSize))
@@ -632,6 +634,8 @@ func init() {
 	issueCreateCmd.Flags().String("parent", "", "Parent issue ID")
 	issueCreateCmd.Flags().Int("stage", 0, "Stage ordinal (>=1) grouping this sub-issue into an ordered barrier group under its parent; omit for unstaged. The parent assignee is woken only when every sub-issue in a stage finishes.")
 	issueCreateCmd.Flags().String("project", "", "Project ID")
+	issueCreateCmd.Flags().String("epic", "", "Epic UUID; empty clears the relation on update")
+	issueCreateCmd.Flags().String("sprint", "", "Sprint UUID; empty clears the relation on update")
 	issueCreateCmd.Flags().String("start-date", "", "Start date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().String("due-date", "", "Due date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().Bool("allow-duplicate", false, "Allow creating an issue even when an active duplicate exists")
@@ -652,6 +656,8 @@ func init() {
 	issueUpdateCmd.Flags().String("assignee", "", "New assignee name (member, agent, or squad; fuzzy match)")
 	issueUpdateCmd.Flags().String("assignee-id", "", "New assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueUpdateCmd.Flags().String("project", "", "Project ID")
+	issueUpdateCmd.Flags().String("epic", "", "Epic UUID; empty clears the relation on update")
+	issueUpdateCmd.Flags().String("sprint", "", "Sprint UUID; empty clears the relation on update")
 	issueUpdateCmd.Flags().String("start-date", "", "New start date (calendar day, YYYY-MM-DD; pass empty string to clear)")
 	issueUpdateCmd.Flags().String("due-date", "", "New due date (calendar day, YYYY-MM-DD)")
 	issueUpdateCmd.Flags().String("parent", "", "Parent issue ID (use --parent \"\" to clear)")
@@ -752,6 +758,41 @@ func init() {
 // Issue commands
 // ---------------------------------------------------------------------------
 
+// Validate UUID flags before upload/write and fail closed on older servers
+// that would otherwise silently ignore unknown issue fields or filters.
+func requirePlanningIssueFlags(ctx context.Context, client *cli.APIClient, cmd *cobra.Command) error {
+	touched, attaching := false, false
+	for _, noun := range []string{"epic", "sprint"} {
+		if !cmd.Flags().Changed(noun) {
+			continue
+		}
+		touched = true
+		value, _ := cmd.Flags().GetString(noun)
+		if value != "" {
+			if _, err := util.ParseUUID(value); err != nil {
+				return fmt.Errorf("--%s must be a UUID", noun)
+			}
+			attaching = true
+		}
+	}
+	if !touched {
+		return nil
+	}
+	var capabilities struct {
+		PlanningEnabled *bool `json:"planning_enabled"`
+	}
+	if err := client.GetJSON(ctx, "/api/config", &capabilities); err != nil {
+		return fmt.Errorf("check planning support: %w", err)
+	}
+	if capabilities.PlanningEnabled == nil {
+		return errors.New("this server does not support epic/sprint issue relations; use the custom planning server")
+	}
+	if attaching && !*capabilities.PlanningEnabled {
+		return errors.New("planning is disabled on this server")
+	}
+	return nil
+}
+
 func runIssueList(cmd *cobra.Command, _ []string) error {
 	client, err := newAPIClient(cmd)
 	if err != nil {
@@ -760,6 +801,9 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
+	if err := requirePlanningIssueFlags(ctx, client, cmd); err != nil {
+		return err
+	}
 
 	if client.WorkspaceID == "" {
 		if _, err := requireWorkspaceID(cmd); err != nil {
@@ -798,6 +842,11 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 	}
 	if hasAssignee {
 		params.Set("assignee_id", aID)
+	}
+	for _, noun := range []string{"epic", "sprint"} {
+		if v, _ := cmd.Flags().GetString(noun); v != "" {
+			params.Set(noun+"_id", v)
+		}
 	}
 	if v, _ := cmd.Flags().GetString("project"); v != "" {
 		project, err := resolveProjectID(ctx, client, v)
@@ -1453,10 +1502,23 @@ func runIssueCreate(cmd *cobra.Command, _ []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	if err := requirePlanningIssueFlags(ctx, client, cmd); err != nil {
+		return err
+	}
 
 	body := map[string]any{"title": title}
 	propertyFlags, _ := cmd.Flags().GetStringArray("property")
 	var createProperties map[string]json.RawMessage
+	for _, noun := range []string{"epic", "sprint"} {
+		if cmd.Flags().Changed(noun) {
+			v, _ := cmd.Flags().GetString(noun)
+			if v == "" {
+				body[noun+"_id"] = nil
+			} else {
+				body[noun+"_id"] = v
+			}
+		}
+	}
 	if len(propertyFlags) > 0 {
 		var config struct {
 			IssueCreatePropertiesSupported bool `json:"issue_create_properties_supported"`
@@ -1693,6 +1755,9 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	if err := requirePlanningIssueFlags(ctx, client, cmd); err != nil {
+		return err
+	}
 
 	issueRef, err := resolveIssueRef(ctx, client, args[0])
 	if err != nil {
@@ -1700,6 +1765,16 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	body := map[string]any{}
+	for _, noun := range []string{"epic", "sprint"} {
+		if cmd.Flags().Changed(noun) {
+			v, _ := cmd.Flags().GetString(noun)
+			if v == "" {
+				body[noun+"_id"] = nil
+			} else {
+				body[noun+"_id"] = v
+			}
+		}
+	}
 	if cmd.Flags().Changed("title") {
 		v, _ := cmd.Flags().GetString("title")
 		body["title"] = v
