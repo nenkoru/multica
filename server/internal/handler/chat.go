@@ -944,7 +944,10 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	// resolved above for the invoke gate.
 	sent, err := h.TaskService.SendDirectChatMessage(r.Context(), session, agent, parseUUID(userID), req.Content, attachmentIDs, actorType, parseUUID(actorID))
 	if err != nil {
+		var limited *service.AgentChatRateLimitedError
 		switch {
+		case errors.As(err, &limited):
+			writeAgentChatRateLimited(w, limited)
 		case errors.Is(err, service.ErrChatSessionArchived):
 			writeError(w, http.StatusConflict, "chat session is archived")
 		case errors.Is(err, service.ErrChatTaskAgentArchived):
@@ -996,6 +999,8 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		Content:       req.Content,
 		TaskID:        uuidToString(task.ID),
 		CreatedAt:     timestampToString(msg.CreatedAt),
+		AuthorType:    msg.AuthorType.String,
+		AuthorID:      uuidToString(msg.AuthorID),
 	})
 
 	// First user message → kick off best-effort LLM auto-titling (MUL-4295).
@@ -2021,6 +2026,12 @@ type ChatMessageResponse struct {
 	// agent can `multica attachment download <id>` rather than guessing
 	// from a markdown URL that may expire.
 	Attachments []AttachmentResponse `json:"attachments,omitempty"`
+	// AuthorType / AuthorID are set only when an agent run wrote the row through
+	// its task token: a proactive assistant-side post, or a `multica chat send`
+	// turn on the member side. Null for ordinary rows, whose author is implied
+	// by role.
+	AuthorType *string `json:"author_type"`
+	AuthorID   *string `json:"author_id"`
 }
 
 func chatSessionToResponse(s db.ChatSession) ChatSessionResponse {
@@ -2051,6 +2062,8 @@ func chatMessageToResponse(m db.ChatMessage, attachments []AttachmentResponse) C
 		MessageKind:   normalizeMessageKind(m.MessageKind),
 		QuickActions:  decodeChatQuickActions(m.QuickActions),
 		Attachments:   attachments,
+		AuthorType:    textToPtr(m.AuthorType),
+		AuthorID:      uuidToPtr(m.AuthorID),
 	}
 }
 
