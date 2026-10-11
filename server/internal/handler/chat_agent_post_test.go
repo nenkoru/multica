@@ -545,7 +545,21 @@ func reownAgentRunForTest(t *testing.T, agentID, taskID, email string) {
 	if err := testPool.QueryRow(ctx, `INSERT INTO "user" (name, email) VALUES ('Agent Run Other Member', $1) RETURNING id`, email).Scan(&otherUserID); err != nil {
 		t.Fatalf("create other user: %v", err)
 	}
-	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM "user" WHERE id = $1`, otherUserID) })
+	// agent.owner_id references "user" with no ON DELETE action, so the rows
+	// pointing at this member must go first or the delete fails and the fixed
+	// email collides on the next run against the same database.
+	t.Cleanup(func() {
+		cleanup := context.Background()
+		for _, stmt := range []string{
+			`DELETE FROM agent_task_queue WHERE originator_user_id = $1 OR accountable_user_id = $1`,
+			`DELETE FROM agent WHERE owner_id = $1`,
+			`DELETE FROM "user" WHERE id = $1`,
+		} {
+			if _, err := testPool.Exec(cleanup, stmt, otherUserID); err != nil {
+				t.Errorf("clean up other member (%s): %v", stmt, err)
+			}
+		}
+	})
 	if _, err := testPool.Exec(ctx, `UPDATE agent SET owner_id = $2 WHERE id = $1`, agentID, otherUserID); err != nil {
 		t.Fatalf("reown agent: %v", err)
 	}
