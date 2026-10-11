@@ -191,6 +191,8 @@ services:
       # the managed cloud leaves it unset (off). It still needs a valid
       # MULTICA_VCS_SECRET_KEY below to actually work.
       MULTICA_VCS_INTEGRATION_ENABLED: ${MULTICA_VCS_INTEGRATION_ENABLED:-true}
+      # Epics and sprints. Off unless explicitly set to true.
+      MULTICA_PLANNING_ENABLED: ${MULTICA_PLANNING_ENABLED:-}
       # VCS integration at-rest encryption key for token-based providers
       MULTICA_VCS_SECRET_KEY: ${MULTICA_VCS_SECRET_KEY:-}
       # WeCom smart-bot integration. MULTICA_WECOM_SECRET_KEY is the

@@ -249,6 +249,8 @@ CLI 설정 파일에는 사용자를 대신해 Multica에 접근할 수 있는 t
 | `project` | `list/get/create/update/delete` | 프로젝트 관리 | |
 | | `status <id> <status>` | 프로젝트 상태 변경 | |
 | | `resource list/add/update/remove` | 프로젝트 추가 리소스 관리 | `--type`, `--url`, `--local-path`, `--daemon-id`, `--execution-mode`(로컬 디렉터리의 `in_place` / `worktree`) |
+| `epic` | `list/get/create/update/delete` | Epic 관리(서버에 `MULTICA_PLANNING_ENABLED=true` 필요) | `--title`, `--description`, `--color`, `--status`(`open` / `closed`); `issue create/update --epic <id>`로 연결, `issue list --epic <id>`로 필터; `issue update --epic ''`는 연결 해제 |
+| `sprint` | `list/get/create/update/delete` | Sprint 관리(같은 서버 스위치) | `--name`, `--goal`, `--start-date`, `--end-date`(`YYYY-MM-DD`), `--status`(`planned` / `active` / `completed` / `cancelled`); `issue create/update/list`의 `--sprint`로 연결 및 필터 |
 | `label` | `list/get/create/update/delete` | 워크스페이스 라벨 관리 | `list`: `--resource-type`(`issue` 또는 `skill`), `--full-id`; `create`: `--name`, `--color`, `--resource-type`(`issue` 또는 `skill`), `--description` |
 | `property` | `list/get/create/update/archive/unarchive` | 워크스페이스 사용자 지정 속성 관리 | `create`: `--name`, `--type`(`text`, `number`, `select`, `multi_select`, `date`, `checkbox`, `url`, `actor`, `multi_actor`, `multi_text`, `multi_url`), `--option`(반복 가능, select 유형만). `list`: `--include-archived`. 유형은 생성 후 변경 불가 |
 | `agent` | `list/get/create/update/archive/restore` | 에이전트 관리 | `--name`, `--runtime-id`(`create`에서 필수), `--instructions`, `--conversation-starters`, `--model`, `--thinking-level`, `--mcp-config`, `--permission-mode`, `--max-concurrent-tasks` |
