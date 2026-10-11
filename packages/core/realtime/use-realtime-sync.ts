@@ -823,6 +823,14 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) });
       },
+      epic: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) { qc.invalidateQueries({ queryKey: ["epics", wsId] }); qc.invalidateQueries({ queryKey: issueKeys.all(wsId) }); }
+      },
+      sprint: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) { qc.invalidateQueries({ queryKey: ["sprints", wsId] }); qc.invalidateQueries({ queryKey: issueKeys.all(wsId) }); }
+      },
       project: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
@@ -1058,6 +1066,10 @@ export function useRealtimeSync(
     ]);
 
     const unsubAny = ws.onAny((msg) => {
+      if (msg.type === "issue:created" || msg.type === "issue:updated" || msg.type === "issue:deleted") {
+        const wsId = getCurrentWsId();
+        if (wsId) { qc.invalidateQueries({ queryKey: ["epics", wsId] }); qc.invalidateQueries({ queryKey: ["sprints", wsId] }); }
+      }
       if (specificEvents.has(msg.type)) return;
       const prefix = msg.type.split(":")[0] ?? "";
       if (prefix === "agent" || (prefix === "task" && msg.type !== "task:progress")) {

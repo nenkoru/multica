@@ -194,7 +194,13 @@
     "active_count_other": "필터 {{count}}개",
     "in_view": "이미 이 뷰에 포함되어 있습니다",
     "chip_edit": "편집",
-    "chip_save_as": "다른 이름으로 저장"
+    "chip_save_as": "다른 이름으로 저장",
+    "section_epic": "에픽",
+    "section_sprint": "스프린트",
+    "epic": "에픽",
+    "no_epic": "에픽 없음",
+    "sprint": "스프린트",
+    "no_sprint": "스프린트 없음"
   },
   "display": {
     "tooltip": "보기 설정",
@@ -234,7 +240,8 @@
     "card_project": "프로젝트",
     "card_labels": "라벨",
     "card_child_progress": "하위 태스크 진행률",
-    "show_sub_issues": "하위 태스크 표시"
+    "show_sub_issues": "하위 태스크 표시",
+    "group_epic": "에픽"
   },
   "view": {
     "tooltip_board": "보드 보기",
@@ -479,7 +486,10 @@
     "project_directory_path_copied_with_branch": "프로젝트 디렉터리 경로를 복사했습니다 — 작업은 {{branch}} 브랜치에 있습니다",
     "workdir_path_copy_failed": "작업 디렉터리 경로를 복사하지 못했습니다",
     "workdir_path_unavailable": "아직 로컬 작업 디렉터리가 없습니다. 로컬 에이전트가 이 태스크를 실행하지 않았습니다",
-    "pull_requests_empty_title": "연결된 PR이 없습니다."
+    "pull_requests_empty_title": "연결된 PR이 없습니다.",
+    "planning": "계획",
+    "prop_epic": "에픽",
+    "prop_sprint": "스프린트"
   },
   "timeline": {
     "loading": "불러오는 중..."
@@ -1394,5 +1404,20 @@
     "overview_close": "닫기",
     "overview_empty": "이 유형의 산출물이 없습니다.",
     "group_comment_by": "{{name}}의 댓글"
+  },
+  "epic_picker": {
+    "none": "에픽 없음",
+    "remove": "에픽 제거",
+    "empty": "이 워크스페이스에 에픽이 없습니다"
+  },
+  "sprint_picker": {
+    "none": "스프린트 없음",
+    "remove": "스프린트 제거",
+    "empty": "이 워크스페이스에 스프린트가 없습니다"
+  },
+  "sections": {
+    "properties": "속성",
+    "planning": "계획",
+    "dates": "날짜"
   }
 }

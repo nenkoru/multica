@@ -591,6 +591,8 @@ export function SaveViewDialog({
         assigneeFilters: state.assigneeFilters,
         includeNoAssignee: state.includeNoAssignee,
         creatorFilters: state.creatorFilters,
+        epicFilters: state.epicFilters, includeNoEpic: state.includeNoEpic,
+        sprintFilters: state.sprintFilters, includeNoSprint: state.includeNoSprint,
         projectFilters: state.projectFilters,
         includeNoProject: state.includeNoProject,
         projectStatusFilters: state.projectStatusFilters,

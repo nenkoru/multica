@@ -198,7 +198,13 @@
     "active_count_other": "{{count}} filtres",
     "in_view": "Déjà dans cette vue",
     "chip_edit": "Modifier",
-    "chip_save_as": "Enregistrer sous"
+    "chip_save_as": "Enregistrer sous",
+    "epic": "Épopée",
+    "sprint": "Sprint",
+    "no_epic": "Sans épopée",
+    "no_sprint": "Sans sprint",
+    "section_epic": "Épopée",
+    "section_sprint": "Sprint"
   },
   "display": {
     "tooltip": "Paramètres d'affichage",
@@ -238,7 +244,8 @@
     "card_project": "Projet",
     "card_labels": "Étiquettes",
     "card_child_progress": "Avancement des sous-tâches",
-    "show_sub_issues": "Afficher les sous-tâches"
+    "show_sub_issues": "Afficher les sous-tâches",
+    "group_epic": "Épopée"
   },
   "view": {
     "tooltip_board": "Vue tableau",
@@ -484,7 +491,10 @@
     "project_directory_path_copied_with_branch": "Chemin du répertoire du projet copié — le travail se trouve sur {{branch}}",
     "workdir_path_copy_failed": "Échec de la copie du chemin du répertoire de travail",
     "workdir_path_unavailable": "Aucun répertoire de travail local — cette tâche n'a pas encore été traitée par un agent local",
-    "pull_requests_empty_title": "Aucune pull request associée."
+    "pull_requests_empty_title": "Aucune pull request associée.",
+    "prop_epic": "Épopée",
+    "prop_sprint": "Sprint",
+    "planning": "Planification"
   },
   "timeline": {
     "loading": "Chargement..."
@@ -1441,5 +1451,20 @@
     "overview_close": "Fermer",
     "overview_empty": "Aucun livrable de ce type.",
     "group_comment_by": "Commentaire de {{name}}"
+  },
+  "epic_picker": {
+    "none": "Aucune épopée",
+    "remove": "Retirer l’épopée",
+    "empty": "Aucune épopée dans cet espace de travail"
+  },
+  "sprint_picker": {
+    "none": "Aucun sprint",
+    "remove": "Retirer le sprint",
+    "empty": "Aucun sprint dans cet espace de travail"
+  },
+  "sections": {
+    "properties": "Propriétés",
+    "planning": "Planification",
+    "dates": "Dates"
   }
 }

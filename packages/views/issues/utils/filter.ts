@@ -26,6 +26,10 @@ export interface IssueFilters {
   /** Custom-property filters: definition id → selected values (OR within
    *  a definition, AND across definitions; checkbox uses "true"/"false"). */
   propertyFilters?: Record<string, PropertyFilterValue[]>;
+  epicFilters?: string[];
+  includeNoEpic?: boolean;
+  sprintFilters?: string[];
+  includeNoSprint?: boolean;
   // When `agentRunningFilter` is true, only keep issues whose id is in
   // `runningIssueIds`. The surface derives this set from the independent
   // `/api/working-agents` projection so filter.ts stays free of fetching.
@@ -39,6 +43,10 @@ export interface IssueFilters {
 }
 
 export interface IssueFilterState {
+  epicFilters?: string[];
+  includeNoEpic?: boolean;
+  sprintFilters?: string[];
+  includeNoSprint?: boolean;
   statusFilters: IssueStatus[];
   priorityFilters: IssuePriority[];
   assigneeFilters: ActorFilterValue[];
@@ -199,6 +207,7 @@ export function applyIssueFilters(
   filters: IssueFilterState,
   context: IssueFilterContext = {},
 ): Issue[] {
+  const { epicFilters = [], includeNoEpic = false, sprintFilters = [], includeNoSprint = false } = filters;
   const { statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters, projectFilters, includeNoProject, labelFilters, workingOnly } = filters;
   const hasAssigneeFilter =
     filters.assigneeFilterActive === true ||
@@ -265,6 +274,8 @@ export function applyIssueFilters(
       }
     }
 
+    if ((epicFilters.length || includeNoEpic) && (issue.epic_id ? !epicFilters.includes(issue.epic_id) : !includeNoEpic)) return false;
+    if ((sprintFilters.length || includeNoSprint) && (issue.sprint_id ? !sprintFilters.includes(issue.sprint_id) : !includeNoSprint)) return false;
     if (hasProjectStatusFilter) {
       // An issue with no project has no status to match, so it never
       // survives — same as the server's EXISTS predicate. `includeNoProject`
@@ -294,6 +305,8 @@ export function filterIssues(issues: Issue[], filters: IssueFilters): Issue[] {
   return applyIssueFilters(
     issues,
     {
+      epicFilters: filters.epicFilters, includeNoEpic: filters.includeNoEpic,
+      sprintFilters: filters.sprintFilters, includeNoSprint: filters.includeNoSprint,
       statusFilters: filters.statusFilters,
       priorityFilters: filters.priorityFilters,
       assigneeFilters: filters.assigneeFilters,

@@ -3141,3 +3141,27 @@ describe("ApiClient shared credential across windows", () => {
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("ApiClient planning boundaries", () => {
+  it("binds reads and writes to their query workspace despite later navigation", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+    await client.listEpics(undefined, "workspace-a");
+    await client.listSprints(undefined, "workspace-a");
+    await client.updateEpic("epic", { title: "Title" }, "workspace-a");
+    await client.deleteSprint("sprint", "workspace-a");
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.headers).toMatchObject({ "X-Workspace-ID": "workspace-a", "X-Workspace-Slug": "" });
+    }
+  });
+  it("falls back safely on malformed lists and preserves server errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"epics":"bad"}', { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+    expect(await client.listEpics()).toEqual({ epics: [], total: 0 });
+    fetchMock.mockResolvedValue(new Response('{"error":"forbidden"}', { status: 403, headers: { "Content-Type": "application/json" } }));
+    await expect(client.deleteEpic("foreign")).rejects.toThrow();
+  });
+});

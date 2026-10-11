@@ -739,6 +739,7 @@ export const EMPTY_ISSUE_PROPERTIES_RESPONSE: IssuePropertiesResponse = {
 };
 
 export interface AppConfigResponse {
+  planning_enabled?: boolean;
   cdn_domain: string;
   // True when the CDN domain serves private content via time-bounded signed
   // URLs (CloudFront signing) — raw storage URLs on that domain are NOT
@@ -1021,6 +1022,7 @@ export const EMPTY_REFRESH_SESSION_RESPONSE: RefreshSessionResponse = {
 };
 
 export const AppConfigSchema = z.object({
+ planning_enabled: z.boolean().catch(false).default(false),
   cdn_domain: z.string().default(""),
   cdn_signed: BooleanWithDefaultSchema(false),
   allow_signup: BooleanWithDefaultSchema(true),
@@ -1329,6 +1331,8 @@ export const IssueSchema = z.object({
     .optional()
     .catch(undefined),
   project_id: z.string().nullable(),
+  epic_id: z.string().nullable().default(null),
+  sprint_id: z.string().nullable().default(null),
   position: z.number(),
   // Older backends predate `stage`; default to null so a missing field parses
   // cleanly into the non-optional Issue.stage (number | null).

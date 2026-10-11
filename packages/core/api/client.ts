@@ -1,3 +1,4 @@
+import { EpicSchema, SprintSchema, EpicListSchema, SprintListSchema, EMPTY_EPIC, EMPTY_SPRINT } from "./planning-schemas";
 import type { ZodType } from "zod";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
@@ -231,6 +232,8 @@ import type {
   CreateCommentSubIssueManualRequest,
   CreateCommentSubIssueAgentRequest,
   CreateCommentSubIssueRequest,
+  Epic,
+  Sprint,
 } from "../types";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type {
@@ -713,6 +716,10 @@ function subscriberTarget(
  * explicitly, or a concurrent writer of that singleton silently redirects the
  * write to the wrong workspace.
  */
+function planningHeaders(workspaceID?: string): Record<string, string> | undefined {
+  return workspaceID ? { "X-Workspace-ID": workspaceID, "X-Workspace-Slug": "" } : undefined;
+}
+
 function workspaceHeader(
   slug?: string,
 ): Record<string, string> | undefined {
@@ -1106,6 +1113,8 @@ export class ApiClient {
     // `ids=` — the server treats a PRESENT-but-empty list as an empty window
     // (nothing running), while an absent param means no restriction.
     if (params?.ids) search.set("ids", params.ids.join(","));
+    if (params?.epic_id) search.set("epic_id", params.epic_id);
+    if (params?.sprint_id) search.set("sprint_id", params.sprint_id);
     if (params?.involves_user_id) search.set("involves_user_id", params.involves_user_id);
     if (params?.metadata && Object.keys(params.metadata).length > 0) {
       search.set("metadata", JSON.stringify(params.metadata));
@@ -4365,6 +4374,68 @@ export class ApiClient {
     return parseWithFallback(raw, ResourceLabelsResponseSchema, EMPTY_RESOURCE_LABELS_RESPONSE, {
       endpoint: `POST /api/${resourceType === "agent" ? "agents" : "skills"}/{id}/labels`,
     });
+  }
+
+  // Epics
+  async listEpics(params?: { status?: string }, workspaceID?: string): Promise<{ epics: Epic[]; total: number }> {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics?${search}`, { headers: planningHeaders(workspaceID) }), EpicListSchema, { epics: [] as Epic[], total: 0 }, { endpoint: "GET /api/epics" });
+  }
+
+  async getEpic(id: string, workspaceID?: string): Promise<Epic> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}`, { headers: planningHeaders(workspaceID) }), EpicSchema, EMPTY_EPIC, { endpoint: "GET /api/epics/{id}" });
+  }
+
+  async createEpic(data: { title: string; description?: string; color?: string }, workspaceID?: string): Promise<Epic> {
+    return parseWithFallback(await this.fetch<unknown>("/api/epics", {
+      headers: planningHeaders(workspaceID),
+      method: "POST",
+      body: JSON.stringify(data),
+    }), EpicSchema, EMPTY_EPIC, { endpoint: "CREATE /api/epics" });
+  }
+
+  async updateEpic(id: string, data: Record<string, unknown>, workspaceID?: string): Promise<Epic> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}`, {
+      headers: planningHeaders(workspaceID),
+      method: "PUT",
+      body: JSON.stringify(data),
+    }), EpicSchema, EMPTY_EPIC, { endpoint: "UPDATE /api/epics" });
+  }
+
+  async deleteEpic(id: string, workspaceID?: string): Promise<void> {
+    await this.fetch(`/api/epics/${id}`, { method: "DELETE", headers: planningHeaders(workspaceID) });
+  }
+
+  // Sprints
+  async listSprints(params?: { status?: string }, workspaceID?: string): Promise<{ sprints: Sprint[]; total: number }> {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints?${search}`, { headers: planningHeaders(workspaceID) }), SprintListSchema, { sprints: [] as Sprint[], total: 0 }, { endpoint: "GET /api/sprints" });
+  }
+
+  async getSprint(id: string, workspaceID?: string): Promise<Sprint> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}`, { headers: planningHeaders(workspaceID) }), SprintSchema, EMPTY_SPRINT, { endpoint: "GET /api/sprints/{id}" });
+  }
+
+  async createSprint(data: { name: string; goal?: string; start_date: string; end_date: string }, workspaceID?: string): Promise<Sprint> {
+    return parseWithFallback(await this.fetch<unknown>("/api/sprints", {
+      headers: planningHeaders(workspaceID),
+      method: "POST",
+      body: JSON.stringify(data),
+    }), SprintSchema, EMPTY_SPRINT, { endpoint: "CREATE /api/sprints" });
+  }
+
+  async updateSprint(id: string, data: Record<string, unknown>, workspaceID?: string): Promise<Sprint> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}`, {
+      headers: planningHeaders(workspaceID),
+      method: "PUT",
+      body: JSON.stringify(data),
+    }), SprintSchema, EMPTY_SPRINT, { endpoint: "UPDATE /api/sprints" });
+  }
+
+  async deleteSprint(id: string, workspaceID?: string): Promise<void> {
+    await this.fetch(`/api/sprints/${id}`, { method: "DELETE", headers: planningHeaders(workspaceID) });
   }
 
   async detachLabelFromResource(
