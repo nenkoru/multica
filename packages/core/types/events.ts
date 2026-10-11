@@ -420,6 +420,9 @@ export interface ChatMessageEventPayload {
   content: string;
   task_id?: string;
   created_at: string;
+  /** Set when an agent run wrote the row itself; see ChatMessage.author_type. */
+  author_type?: string;
+  author_id?: string;
 }
 
 export interface ChatDonePayload {
