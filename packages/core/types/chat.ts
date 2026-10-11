@@ -172,6 +172,14 @@ export interface ChatMessage {
   message_kind?: ChatMessageKind;
   /** Up to three server-validated follow-ups generated with this reply. */
   quick_actions?: ChatQuickAction[];
+  /**
+   * Set only when an agent run wrote the row through its task token: a
+   * proactive post on the assistant side, or a `multica chat send` turn on the
+   * member side. `author_type` is then "agent" and `author_id` the agent's id.
+   * Absent/null on ordinary rows, whose author is implied by `role`.
+   */
+  author_type?: string | null;
+  author_id?: string | null;
 }
 
 export interface ChatMessagesCursor {

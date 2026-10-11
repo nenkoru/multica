@@ -846,6 +846,10 @@ export const ChatMessageSchema = z.object({
   // Optional additive data degrades independently: a malformed suggestion
   // must not hide the assistant reply that contains it.
   quick_actions: z.array(ChatQuickActionSchema).catch([]).optional().default([]),
+  // Additive attribution: absent on older servers, and a malformed value must
+  // cost only the label, never the message.
+  author_type: z.string().nullable().catch(null).optional(),
+  author_id: z.string().nullable().catch(null).optional(),
 }).loose();
 
 export const ChatMessageListSchema = z.array(ChatMessageSchema).default([]);

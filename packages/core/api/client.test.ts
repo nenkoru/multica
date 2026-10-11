@@ -1765,6 +1765,30 @@ describe("ApiClient", () => {
       ]);
     });
 
+    it("keeps agent attribution and drops only a malformed one", async () => {
+      const row = {
+        chat_session_id: "session-1",
+        role: "assistant",
+        content: "import finished",
+        task_id: null,
+        created_at: "2026-10-11T00:00:00Z",
+      };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([
+        { ...row, id: "posted", author_type: "agent", author_id: "agent-1" },
+        { ...row, id: "malformed", author_type: 7, author_id: { id: "agent-1" } },
+        { ...row, id: "legacy" },
+      ], 200)));
+
+      const client = new ApiClient("https://api.example.test");
+      const messages = await client.listChatMessages("session-1");
+      expect(messages).toEqual([
+        expect.objectContaining({ id: "posted", author_type: "agent", author_id: "agent-1" }),
+        expect.objectContaining({ id: "malformed", content: "import finished", author_type: null, author_id: null }),
+        expect.objectContaining({ id: "legacy", content: "import finished" }),
+      ]);
+      expect(messages[2]?.author_type).toBeUndefined();
+    });
+
     it("falls back to an empty page for a malformed paged response", async () => {
       vi.stubGlobal(
         "fetch",
