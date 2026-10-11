@@ -3310,6 +3310,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				ChatSessionID:          cs.ID,
 				TaskCreatedAt:          task.CreatedAt,
 				ChannelContextRevision: task.ChannelContextRevision,
+				MaxPosts:               maxAgentPostedContextPosts,
 			})
 			if postedErr != nil {
 				slog.Warn("chat claim: load proactive agent posts failed; continuing without them",

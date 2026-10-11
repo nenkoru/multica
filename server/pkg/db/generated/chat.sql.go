@@ -1750,32 +1750,36 @@ func (q *Queries) ListAgentBuilderSessionsByCreator(ctx context.Context, arg Lis
 }
 
 const listAgentPostedChatMessagesForTask = `-- name: ListAgentPostedChatMessagesForTask :many
-SELECT message.id, message.chat_session_id, message.role, message.content, message.task_id, message.created_at, message.failure_reason, message.elapsed_ms, message.message_kind, message.channel_media_pending_until, message.channel_ingested, message.quick_actions, message.channel_context_revision, message.channel_outbound_type, message.channel_outbound_installation_id, message.channel_outbound_chat_id, message.channel_outbound_message_ids, message.author_type, message.author_id FROM chat_message AS message
-WHERE message.chat_session_id = $1
-  AND message.role = 'assistant'
-  AND message.task_id IS NULL
-  AND message.author_type = 'agent'
-  AND message.created_at <= $2::timestamptz
-  AND message.created_at > COALESCE((
-      SELECT max(task.created_at)
-      FROM agent_task_queue AS task
-      WHERE task.chat_session_id = message.chat_session_id
-        AND task.status = 'completed'
-        AND task.regenerate_quick_actions_for IS NULL
-        AND task.created_at < $2::timestamptz
-  ), '-infinity'::timestamptz)
-  AND (
-      $3::bigint IS NULL
-      OR message.channel_context_revision = $3::bigint
-  )
-ORDER BY message.created_at ASC, message.id ASC
-LIMIT 20
+SELECT recent.id, recent.chat_session_id, recent.role, recent.content, recent.task_id, recent.created_at, recent.failure_reason, recent.elapsed_ms, recent.message_kind, recent.channel_media_pending_until, recent.channel_ingested, recent.quick_actions, recent.channel_context_revision, recent.channel_outbound_type, recent.channel_outbound_installation_id, recent.channel_outbound_chat_id, recent.channel_outbound_message_ids, recent.author_type, recent.author_id FROM (
+    SELECT message.id, message.chat_session_id, message.role, message.content, message.task_id, message.created_at, message.failure_reason, message.elapsed_ms, message.message_kind, message.channel_media_pending_until, message.channel_ingested, message.quick_actions, message.channel_context_revision, message.channel_outbound_type, message.channel_outbound_installation_id, message.channel_outbound_chat_id, message.channel_outbound_message_ids, message.author_type, message.author_id FROM chat_message AS message
+    WHERE message.chat_session_id = $1
+      AND message.role = 'assistant'
+      AND message.task_id IS NULL
+      AND message.author_type = 'agent'
+      AND message.created_at <= $2::timestamptz
+      AND message.created_at > COALESCE((
+          SELECT max(task.created_at)
+          FROM agent_task_queue AS task
+          WHERE task.chat_session_id = message.chat_session_id
+            AND task.status = 'completed'
+            AND task.regenerate_quick_actions_for IS NULL
+            AND task.created_at < $2::timestamptz
+      ), '-infinity'::timestamptz)
+      AND (
+          $3::bigint IS NULL
+          OR message.channel_context_revision = $3::bigint
+      )
+    ORDER BY message.created_at DESC, message.id DESC
+    LIMIT $4
+) AS recent
+ORDER BY recent.created_at ASC, recent.id ASC
 `
 
 type ListAgentPostedChatMessagesForTaskParams struct {
 	ChatSessionID          pgtype.UUID        `json:"chat_session_id"`
 	TaskCreatedAt          pgtype.Timestamptz `json:"task_created_at"`
 	ChannelContextRevision pgtype.Int8        `json:"channel_context_revision"`
+	MaxPosts               int32              `json:"max_posts"`
 }
 
 // Proactive agent posts the session agent has not been shown yet: rows written
@@ -1783,8 +1787,17 @@ type ListAgentPostedChatMessagesForTaskParams struct {
 // live in the transcript but in no provider session, so the claim hands them to
 // the next turn as context. A failed or cancelled turn does not advance the
 // boundary, so its retry sees them again.
+//
+// Bounded to the NEWEST rows, returned oldest-first: the member is answering
+// the latest post, so when more have piled up than fit, the oldest are the
+// ones to drop.
 func (q *Queries) ListAgentPostedChatMessagesForTask(ctx context.Context, arg ListAgentPostedChatMessagesForTaskParams) ([]ChatMessage, error) {
-	rows, err := q.db.Query(ctx, listAgentPostedChatMessagesForTask, arg.ChatSessionID, arg.TaskCreatedAt, arg.ChannelContextRevision)
+	rows, err := q.db.Query(ctx, listAgentPostedChatMessagesForTask,
+		arg.ChatSessionID,
+		arg.TaskCreatedAt,
+		arg.ChannelContextRevision,
+		arg.MaxPosts,
+	)
 	if err != nil {
 		return nil, err
 	}

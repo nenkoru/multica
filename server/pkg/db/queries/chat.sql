@@ -532,26 +532,33 @@ WHERE author_type = 'agent'
 -- live in the transcript but in no provider session, so the claim hands them to
 -- the next turn as context. A failed or cancelled turn does not advance the
 -- boundary, so its retry sees them again.
-SELECT message.* FROM chat_message AS message
-WHERE message.chat_session_id = sqlc.arg('chat_session_id')
-  AND message.role = 'assistant'
-  AND message.task_id IS NULL
-  AND message.author_type = 'agent'
-  AND message.created_at <= sqlc.arg('task_created_at')::timestamptz
-  AND message.created_at > COALESCE((
-      SELECT max(task.created_at)
-      FROM agent_task_queue AS task
-      WHERE task.chat_session_id = message.chat_session_id
-        AND task.status = 'completed'
-        AND task.regenerate_quick_actions_for IS NULL
-        AND task.created_at < sqlc.arg('task_created_at')::timestamptz
-  ), '-infinity'::timestamptz)
-  AND (
-      sqlc.narg('channel_context_revision')::bigint IS NULL
-      OR message.channel_context_revision = sqlc.narg('channel_context_revision')::bigint
-  )
-ORDER BY message.created_at ASC, message.id ASC
-LIMIT 20;
+--
+-- Bounded to the NEWEST rows, returned oldest-first: the member is answering
+-- the latest post, so when more have piled up than fit, the oldest are the
+-- ones to drop.
+SELECT recent.* FROM (
+    SELECT message.* FROM chat_message AS message
+    WHERE message.chat_session_id = sqlc.arg('chat_session_id')
+      AND message.role = 'assistant'
+      AND message.task_id IS NULL
+      AND message.author_type = 'agent'
+      AND message.created_at <= sqlc.arg('task_created_at')::timestamptz
+      AND message.created_at > COALESCE((
+          SELECT max(task.created_at)
+          FROM agent_task_queue AS task
+          WHERE task.chat_session_id = message.chat_session_id
+            AND task.status = 'completed'
+            AND task.regenerate_quick_actions_for IS NULL
+            AND task.created_at < sqlc.arg('task_created_at')::timestamptz
+      ), '-infinity'::timestamptz)
+      AND (
+          sqlc.narg('channel_context_revision')::bigint IS NULL
+          OR message.channel_context_revision = sqlc.narg('channel_context_revision')::bigint
+      )
+    ORDER BY message.created_at DESC, message.id DESC
+    LIMIT sqlc.arg('max_posts')
+) AS recent
+ORDER BY recent.created_at ASC, recent.id ASC;
 
 -- name: SetAgentPostedChatMessageOutbound :exec
 -- Records where a proactive agent post landed on the bound channel, mirroring

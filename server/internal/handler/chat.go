@@ -906,6 +906,14 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	// message / attachments / task. Blocked returns a structured, enumeration-safe
 	// reason so the composer can explain it without leaking private-agent details.
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
+	// A task token acts as the runtime's owner, so the creator-only session gate
+	// above admits any run on that runtime. An agent run may only queue a turn in
+	// a chat of the member it is tied to — the same rule PostAgentChatMessage
+	// applies — and it must fail before anything is persisted.
+	if actorType == "agent" && !h.agentRunTiedToSession(r, actorID, session) {
+		writeError(w, http.StatusForbidden, errAgentRunForeignSession)
+		return
+	}
 	if !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
 		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
 		return

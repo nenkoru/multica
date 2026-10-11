@@ -175,17 +175,20 @@ func (s *TaskService) PostAgentChatMessage(ctx context.Context, session db.ChatS
 		// A channel-backed session scopes what its agent may read by context
 		// generation. A task-owned reply inherits that from its task; this row
 		// has none, so it carries the generation current when it was written.
+		//
+		// Taken with the same row lock the channel's own appends and /new take
+		// (after chat_session, the order they use), so a concurrent route switch
+		// cannot retire the generation between this read and the insert. No row
+		// means no live route: a web-only chat, or one whose route was retired.
 		contextRevision := pgtype.Int8{}
-		binding, err := qtx.GetChannelChatSessionBindingBySessionAny(ctx, session.ID)
+		binding, err := qtx.LockCurrentChannelChatSessionBindingBySession(ctx, session.ID)
 		switch {
 		case err == nil:
-			if !binding.RetiredAt.Valid {
-				out.Binding = &binding
-				contextRevision = pgtype.Int8{Int64: binding.ContextRevision, Valid: true}
-			}
+			out.Binding = &binding
+			contextRevision = pgtype.Int8{Int64: binding.ContextRevision, Valid: true}
 		case errors.Is(err, pgx.ErrNoRows):
 		default:
-			return fmt.Errorf("load chat channel binding: %w", err)
+			return fmt.Errorf("lock chat channel binding: %w", err)
 		}
 
 		msg, err := qtx.CreateChatMessage(ctx, db.CreateChatMessageParams{

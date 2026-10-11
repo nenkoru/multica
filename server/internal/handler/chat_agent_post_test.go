@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -531,5 +532,123 @@ func TestWithoutAgentPostedMessages_KeepsLegacyTrailingInputIntact(t *testing.T)
 	trailing := trailingUserMessages(withoutAgentPostedMessages(history))
 	if len(trailing) != 1 || trailing[0].Content != "new question" {
 		t.Fatalf("trailing input = %+v, want only the unanswered user message", trailing)
+	}
+}
+
+// reownAgentRunForTest makes an agent run belong to another member entirely:
+// they own the agent and the run is attributed to them. Its task token still
+// acts as the runtime's owner, which is what the session gates must not trust.
+func reownAgentRunForTest(t *testing.T, agentID, taskID, email string) {
+	t.Helper()
+	ctx := context.Background()
+	var otherUserID string
+	if err := testPool.QueryRow(ctx, `INSERT INTO "user" (name, email) VALUES ('Agent Run Other Member', $1) RETURNING id`, email).Scan(&otherUserID); err != nil {
+		t.Fatalf("create other user: %v", err)
+	}
+	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM "user" WHERE id = $1`, otherUserID) })
+	if _, err := testPool.Exec(ctx, `UPDATE agent SET owner_id = $2 WHERE id = $1`, agentID, otherUserID); err != nil {
+		t.Fatalf("reown agent: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE agent_task_queue SET originator_user_id = $2, accountable_user_id = $2 WHERE id = $1`, taskID, otherUserID); err != nil {
+		t.Fatalf("reattribute task: %v", err)
+	}
+}
+
+func agentSendReq(t *testing.T, sessionID, agentID, taskID, content string) *http.Request {
+	t.Helper()
+	req := newRequest("POST", "/api/chat/sessions/"+sessionID+"/messages", map[string]any{"content": content})
+	req.Header.Set("X-Agent-ID", agentID)
+	req.Header.Set("X-Task-ID", taskID)
+	return withChatTestWorkspaceCtx(t, withURLParam(req, "sessionId", sessionID))
+}
+
+// The foreign-session rule must hold on both write paths. A run another member
+// queued for their own agent executes on this member's runtime, so its token
+// passes the creator-only gate; `chat send` used to let it write the member's
+// row and start the session agent (RUSL-1562, finding 1).
+func TestAgentRunFromAnotherMemberCannotWriteThroughEitherPath(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("requires test database")
+	}
+	ctx := context.Background()
+	sessionAgentID := createHandlerTestAgent(t, "ForeignRunSessionAgent", []byte("[]"))
+	sessionID := createHandlerTestChatSession(t, sessionAgentID)
+	authorID := createHandlerTestAgent(t, "ForeignRunAuthor", []byte("[]"))
+	taskID := createHandlerTestTaskForAgent(t, authorID)
+	reownAgentRunForTest(t, authorID, taskID, "foreign-run-other@multica.test")
+
+	testutil.Call(t, testHandler.PostAgentChatMessage, agentPostReq(t, sessionID, authorID, taskID, "foreign post")).Want(http.StatusForbidden)
+	testutil.Call(t, testHandler.SendChatMessage, agentSendReq(t, sessionID, authorID, taskID, "foreign send")).Want(http.StatusForbidden)
+
+	var rows, tasks int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM chat_message WHERE chat_session_id = $1`, sessionID).Scan(&rows); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM agent_task_queue WHERE chat_session_id = $1`, sessionID).Scan(&tasks); err != nil {
+		t.Fatalf("count tasks: %v", err)
+	}
+	if rows != 0 || tasks != 0 {
+		t.Fatalf("a foreign run left %d row(s) and %d queued turn(s) in the session, want none", rows, tasks)
+	}
+}
+
+// The rule must not cost the supported case: a run tied to the session's member
+// still queues a turn through `chat send`.
+func TestAgentRunOfTheSessionMemberCanStillSend(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("requires test database")
+	}
+	sessionAgentID := createHandlerTestAgent(t, "OwnRunSendSessionAgent", []byte("[]"))
+	sessionID := createHandlerTestChatSession(t, sessionAgentID)
+	authorID := createHandlerTestAgent(t, "OwnRunSendAuthor", []byte("[]"))
+	taskID := createHandlerTestTaskForAgent(t, authorID)
+
+	var resp SendChatMessageResponse
+	testutil.Call(t, testHandler.SendChatMessage, agentSendReq(t, sessionID, authorID, taskID, "status?")).
+		Want(http.StatusCreated).JSON(&resp)
+	msg := loadChatMessageForTest(t, resp.MessageID)
+	if msg.Role != "user" || uuidToString(msg.AuthorID) != authorID || resp.TaskID == "" {
+		t.Fatalf("own run send = role %q author %s task %q, want a queued user turn stamped with the agent", msg.Role, uuidToString(msg.AuthorID), resp.TaskID)
+	}
+}
+
+// When more posts piled up than a turn is handed, the member is answering the
+// newest one — so the newest must be kept, in order (RUSL-1562, finding 2).
+func TestClaim_KeepsTheNewestProactivePostsWhenMoreThanFit(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("requires test database")
+	}
+	ctx := context.Background()
+	sessionAgentID, sessionID, runtimeID, daemonID := setupDirectChatSession(t, ctx, "many proactive posts chat")
+	authorID := createHandlerTestAgent(t, "ManyPostsAuthor", []byte("[]"))
+	const total = maxAgentPostedContextPosts + 5
+	marker := func(i int) string { return fmt.Sprintf("backlog-post-%02d-end", i) }
+	for i := 1; i <= total; i++ {
+		if _, err := testPool.Exec(ctx, `
+			INSERT INTO chat_message (chat_session_id, role, content, author_type, author_id, created_at)
+			VALUES ($1, 'assistant', $2, 'agent', $3, now() - make_interval(secs => $4::float8))
+		`, sessionID, marker(i), authorID, float64(100-i)); err != nil {
+			t.Fatalf("seed post %d: %v", i, err)
+		}
+	}
+
+	sendDirectChat(t, ctx, sessionAgentID, sessionID, "what about the last one?")
+	prompt := claimTaskForRuntimeGuard(t, runtimeID, daemonID).ChatMessage
+
+	last := -1
+	for i := 1; i <= total; i++ {
+		at := strings.Index(prompt, marker(i))
+		if wantPresent := i > total-maxAgentPostedContextPosts; (at >= 0) != wantPresent {
+			t.Fatalf("post %02d of %d present = %v, want %v (the newest %d are kept)", i, total, at >= 0, wantPresent, maxAgentPostedContextPosts)
+		}
+		if at >= 0 {
+			if at < last {
+				t.Fatalf("post %02d appears before an older one; context must read oldest-first", i)
+			}
+			last = at
+		}
+	}
+	if !strings.HasSuffix(prompt, "what about the last one?") {
+		t.Fatalf("the member's message must stay last in the prompt, got %q", prompt)
 	}
 }

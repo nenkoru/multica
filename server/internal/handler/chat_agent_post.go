@@ -155,7 +155,7 @@ func (h *Handler) PostAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !agentRunMayWriteToSession(session, author, task) {
-		writeError(w, http.StatusForbidden, "not your chat session")
+		writeError(w, http.StatusForbidden, errAgentRunForeignSession)
 		return
 	}
 
@@ -195,6 +195,32 @@ func (h *Handler) PostAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:     timestampToString(msg.CreatedAt),
 		Delivery:      delivery,
 	})
+}
+
+const errAgentRunForeignSession = "not your chat session"
+
+// maxAgentPostedContextPosts bounds how many unseen proactive posts the next
+// turn of a session agent is handed. The newest ones win.
+const maxAgentPostedContextPosts = 20
+
+// agentRunTiedToSession applies agentRunMayWriteToSession to the agent run
+// behind a request. Both ways an agent run writes into a chat go through it —
+// a proactive post and a `multica chat send` turn — so neither is a way around
+// the other. Fails closed when the run cannot be identified.
+func (h *Handler) agentRunTiedToSession(r *http.Request, agentID string, session db.ChatSession) bool {
+	taskUUID, err := util.ParseUUID(r.Header.Get("X-Task-ID"))
+	if err != nil {
+		return false
+	}
+	task, err := h.Queries.GetAgentTask(r.Context(), taskUUID)
+	if err != nil || uuidToString(task.AgentID) != agentID {
+		return false
+	}
+	author, err := h.Queries.GetAgent(r.Context(), task.AgentID)
+	if err != nil {
+		return false
+	}
+	return agentRunMayWriteToSession(session, author, task)
 }
 
 // agentRunMayWriteToSession is the "no foreign sessions" rule. A task token acts
