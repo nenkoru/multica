@@ -166,6 +166,9 @@ Utilisez `ATTACHMENT_DOWNLOAD_MODE=proxy` lorsque le point de terminaison — un
 | `RATE_LIMIT_INVITATION_RECIPIENT_24H` | `6` | Invitations qu'une même adresse e-mail destinataire normalisée peut recevoir, tous espaces de travail confondus, par fenêtre glissante de 24 heures ; `0` désactive cette limite |
 | `RATE_LIMIT_TRUSTED_PROXIES` | vide | CIDR des proxys autorisés à fournir `X-Forwarded-For`, séparés par des virgules |
 | `MULTICA_TRUSTED_PROXIES` | vide | CIDR des proxys de confiance pour les webhooks d'automatisation et les connexions en temps réel |
+| `MULTICA_AGENT_CHAT_RATE_PER_SESSION` | `6` | Nombre de messages qu'un agent peut écrire dans une même session de chat par fenêtre (`chat post` et `chat send` lancé par un agent) |
+| `MULTICA_AGENT_CHAT_RATE_PER_AGENT` | `20` | Nombre de messages qu'un agent peut écrire dans l'ensemble des sessions de chat par fenêtre |
+| `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS` | `3600` | Durée de la fenêtre glissante des deux limites de chat des agents |
 
 Les déploiements situés derrière un proxy inverse doivent lister les plages d'adresses réelles de leurs proxys. Ne faites pas confiance à toutes les sources sans distinction, sinon les clients peuvent falsifier les IP transmises.
 

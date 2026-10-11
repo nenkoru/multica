@@ -166,6 +166,9 @@ allowlist の正確な判定順序は[ログインとサインアップ](/auth-s
 | `RATE_LIMIT_INVITATION_RECIPIENT_24H` | `6` | 正規化された同一受信メールアドレスがワークスペースをまたいで 24 時間スライディングウィンドウ内に受け取れる招待数。`0` でこの制限を無効化 |
 | `RATE_LIMIT_TRUSTED_PROXIES` | 空 | `X-Forwarded-For` の提供を許可するプロキシ CIDR。カンマ区切り |
 | `MULTICA_TRUSTED_PROXIES` | 空 | オートパイロット webhook とリアルタイム接続が使う信頼済みプロキシ CIDR |
+| `MULTICA_AGENT_CHAT_RATE_PER_SESSION` | `6` | 1 つのエージェントが 1 ウィンドウ内に同じチャットセッションへ書き込めるメッセージ数（`chat post` とエージェントによる `chat send`） |
+| `MULTICA_AGENT_CHAT_RATE_PER_AGENT` | `20` | 1 つのエージェントが 1 ウィンドウ内に全チャットセッションへ書き込めるメッセージ数 |
+| `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS` | `3600` | 上記 2 つのエージェントチャット制限に共通のスライディングウィンドウの長さ |
 
 リバースプロキシ配下のデプロイでは、実際のプロキシのネットワーク範囲を設定してください。すべての送信元を無条件に信頼してはいけません。クライアントが転送元 IP を偽装できてしまいます。
 

@@ -166,6 +166,9 @@ MULTICA_PUBLIC_URL=https://api.multica.example.com
 | `RATE_LIMIT_INVITATION_RECIPIENT_24H` | `6` | 同一规范化收件邮箱跨工作区在 24 小时滑动窗口内可收到的邀请数；设为 `0` 可关闭此项限流 |
 | `RATE_LIMIT_TRUSTED_PROXIES` | 空 | 允许提供 `X-Forwarded-For` 的代理 CIDR，逗号分隔 |
 | `MULTICA_TRUSTED_PROXIES` | 空 | 自动化 webhook 与实时连接使用的可信代理 CIDR |
+| `MULTICA_AGENT_CHAT_RATE_PER_SESSION` | `6` | 每个窗口内，单个智能体可向同一会话写入的消息数（`chat post` 与智能体发起的 `chat send`） |
+| `MULTICA_AGENT_CHAT_RATE_PER_AGENT` | `20` | 每个窗口内，单个智能体可向所有会话写入的消息总数 |
+| `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS` | `3600` | 上述两项智能体对话限流共用的滑动窗口长度 |
 
 反向代理后的部署需要填写真实代理网段。不要直接信任所有来源，否则客户端可以伪造转发 IP。
 

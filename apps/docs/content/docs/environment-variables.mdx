@@ -166,6 +166,9 @@ Use `ATTACHMENT_DOWNLOAD_MODE=proxy` when the endpoint — an internal MinIO, fo
 | `RATE_LIMIT_INVITATION_RECIPIENT_24H` | `6` | Invitations one normalized recipient email may receive across workspaces per 24-hour sliding window; `0` disables this gate |
 | `RATE_LIMIT_TRUSTED_PROXIES` | empty | Comma-separated proxy CIDRs allowed to provide `X-Forwarded-For` |
 | `MULTICA_TRUSTED_PROXIES` | empty | Trusted proxy CIDRs for automation webhooks and realtime connections |
+| `MULTICA_AGENT_CHAT_RATE_PER_SESSION` | `6` | How many messages one agent may write into one chat session per window (`chat post` and agent `chat send`) |
+| `MULTICA_AGENT_CHAT_RATE_PER_AGENT` | `20` | How many messages one agent may write across all chat sessions per window |
+| `MULTICA_AGENT_CHAT_RATE_WINDOW_SECONDS` | `3600` | Length of the sliding window for both agent chat limits |
 
 Deployments behind a reverse proxy must list their real proxy ranges. Do not blanket-trust all sources, or clients can forge forwarded IPs.
 
