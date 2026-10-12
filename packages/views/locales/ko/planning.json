@@ -1,0 +1,118 @@
+{
+  "progress": {
+    "title": "진행 상황",
+    "percent_done": "{{percent}}% 완료",
+    "done_of_total": "{{done}} / {{total}}",
+    "bar_label": "상태별 이슈 진행 상황",
+    "bucket": {
+      "done": "완료",
+      "in_review": "리뷰 중",
+      "in_progress": "진행 중",
+      "blocked": "차단됨",
+      "not_started": "시작 전",
+      "cancelled": "취소됨"
+    }
+  },
+  "attention": {
+    "title": "확인 필요",
+    "more": "외 {{count}}개"
+  },
+  "issues": {
+    "title": "이슈",
+    "group_by": "그룹화",
+    "grouping": {
+      "status": "상태",
+      "sprint": "스프린트",
+      "epic": "에픽",
+      "assignee": "담당자"
+    },
+    "view_label": "보기",
+    "view": {
+      "list": "목록",
+      "board": "보드"
+    },
+    "no_sprint": "스프린트 없음",
+    "no_epic": "에픽 없음",
+    "unassigned": "미배정",
+    "unknown_sprint": "삭제된 스프린트",
+    "unknown_epic": "삭제된 에픽",
+    "create": "새 이슈",
+    "link": "기존 이슈 연결",
+    "truncated": "전체 {{total}}개 중 처음 {{shown}}개를 표시합니다. 나머지는 보드에서 확인하세요.",
+    "load_failed": "이슈를 불러오지 못했습니다",
+    "retry": "다시 시도"
+  },
+  "link": {
+    "epic_title": "이 에픽에 이슈 연결",
+    "epic_description": "에픽에 추가할 기존 이슈를 검색하세요.",
+    "sprint_title": "이 스프린트에 이슈 추가",
+    "sprint_description": "기존 이슈를 검색하세요. 다른 스프린트의 이슈는 이 스프린트로 이동합니다.",
+    "linked": "{{identifier}} 연결됨",
+    "failed": "이슈를 연결하지 못했습니다"
+  },
+  "empty": {
+    "epic_title": "이 에픽에는 아직 이슈가 없습니다",
+    "sprint_title": "이 스프린트에는 아직 이슈가 없습니다",
+    "hint": "여기에서 이슈를 만들거나 기존 이슈를 연결하세요."
+  },
+  "sidebar": {
+    "assignees": "담당자",
+    "workload": "업무량",
+    "sprints": "스프린트",
+    "epics": "에픽",
+    "activity": "최근 활동",
+    "no_activity": "아직 활동이 없습니다",
+    "details": "세부 정보",
+    "created": "생성일",
+    "last_activity": "마지막 활동",
+    "never": "없음",
+    "open_count": "미완료: {{count}}"
+  },
+  "activity": {
+    "created": "님이 이슈를 생성",
+    "status_changed": "님이 {{to}}(으)로 이동",
+    "assignee_changed": "님이 담당자를 변경",
+    "priority_changed": "님이 우선순위를 {{to}}(으)로 설정",
+    "title_changed": "님이 이슈 이름을 변경",
+    "system": "시스템"
+  },
+  "sprint": {
+    "goal": "목표",
+    "start": "스프린트 시작",
+    "complete": "스프린트 완료",
+    "day_of": "{{total}}일 중 {{day}}일째",
+    "days_left": "남은 일수: {{count}}",
+    "last_day": "마지막 날",
+    "starts_in": "{{count}}일 후 시작",
+    "ended_ago": "{{count}}일 전 종료",
+    "length": "{{count}}일간",
+    "burndown": "번다운",
+    "burndown_remaining": "남은 이슈",
+    "burndown_ideal": "이상선",
+    "burndown_label": "일별 남은 이슈: {{date}} 기준 {{total}}개 중 {{remaining}}개"
+  },
+  "complete": {
+    "title": "스프린트 완료",
+    "summary_open": "{{total}}개 중 {{open}}개가 완료되지 않았습니다. 완료된 이슈는 이 스프린트에 남습니다.",
+    "summary_none": "이 스프린트의 모든 이슈가 완료되었습니다.",
+    "choice_label": "미완료 이슈",
+    "move": "다른 스프린트로 이동",
+    "move_unavailable": "이동할 계획됨 또는 진행 중 스프린트가 없습니다.",
+    "keep": "이 스프린트에 남기기",
+    "unlink": "스프린트에서 제외",
+    "unlink_hint": "이슈는 스프린트 없이 워크스페이스에 남습니다.",
+    "target": "대상 스프린트",
+    "confirm": "스프린트 완료",
+    "cancel": "취소",
+    "done_moved": "스프린트를 완료했습니다. {{count}}개를 {{sprint}}(으)로 이동했습니다.",
+    "done_unlinked": "스프린트를 완료했습니다. {{count}}개를 스프린트에서 제외했습니다.",
+    "done_kept": "스프린트를 완료했습니다. 남겨 둔 미완료 이슈: {{count}}개.",
+    "failed": "스프린트를 완료하지 못했습니다"
+  },
+  "list": {
+    "open": "미완료: {{count}}",
+    "blocked": "차단됨: {{count}}",
+    "created": "생성: {{date}}",
+    "no_issues": "이슈 없음"
+  }
+}

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { sprintKeys } from "./queries";
 import { useWorkspaceId } from "../hooks";
-import type { Sprint } from "../types";
+import type { CompleteSprintRequest, Sprint } from "../types";
 
 export function useCreateSprint() {
   const qc = useQueryClient();
@@ -62,6 +62,24 @@ export function useDeleteSprint() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["issues", wsId] });
       qc.invalidateQueries({ queryKey: sprintKeys.list(wsId) });
+    },
+  });
+}
+
+/**
+ * Completes a sprint through the explicit endpoint. Not optimistic: the
+ * outcome (which sprint received the issues, how many) is the server's.
+ */
+export function useCompleteSprint() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & CompleteSprintRequest) =>
+      api.completeSprint(id, data, wsId),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["issues", wsId] });
+      qc.invalidateQueries({ queryKey: sprintKeys.all(wsId) });
+      qc.invalidateQueries({ queryKey: ["epics", wsId] });
     },
   });
 }

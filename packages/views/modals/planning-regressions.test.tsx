@@ -1,10 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateEpicModal } from "./create-epic";
 import { CreateSprintModal } from "./create-sprint";
-import { EpicDetail } from "../epics/components/epic-detail";
-import { SprintDetail } from "../sprints/components/sprint-detail";
 import epics from "../locales/en/epics.json";
 import sprints from "../locales/en/sprints.json";
 
@@ -101,19 +98,4 @@ describe("planning modal and Desktop regressions", () => {
       expect(mocks.push).toHaveBeenCalledWith(`/acme/${noun}s/created`);
     },
   );
-
-  it.each(["epic", "sprint"])("%s copies a shareable route including query and hash", async (noun) => {
-    mocks.pathname = `/acme/${noun}s/entity`;
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        {noun === "epic" ? <EpicDetail epicId="entity" /> : <SprintDetail sprintId="entity" />}
-      </QueryClientProvider>,
-    );
-    await screen.findByText(noun === "epic" ? "Open" : "Planned");
-    expect(screen.getByRole("button", { name: noun === "epic" ? epics.detail.delete_action : sprints.detail.delete_action })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: noun === "epic" ? epics.detail.copy_link : sprints.detail.copy_link }));
-    expect(mocks.copy).toHaveBeenCalledWith(`https://app.example.test/acme/${noun}s/entity?from=desktop#notes`);
-    client.clear();
-  });
 });

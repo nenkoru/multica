@@ -1,0 +1,118 @@
+{
+  "progress": {
+    "title": "進捗",
+    "percent_done": "{{percent}}% 完了",
+    "done_of_total": "{{done}} / {{total}}",
+    "bar_label": "ステータス別のイシュー進捗",
+    "bucket": {
+      "done": "完了",
+      "in_review": "レビュー中",
+      "in_progress": "進行中",
+      "blocked": "ブロック中",
+      "not_started": "未着手",
+      "cancelled": "キャンセル"
+    }
+  },
+  "attention": {
+    "title": "要対応",
+    "more": "ほか {{count}} 件"
+  },
+  "issues": {
+    "title": "イシュー",
+    "group_by": "グループ化",
+    "grouping": {
+      "status": "ステータス",
+      "sprint": "スプリント",
+      "epic": "エピック",
+      "assignee": "担当者"
+    },
+    "view_label": "表示",
+    "view": {
+      "list": "リスト",
+      "board": "ボード"
+    },
+    "no_sprint": "スプリントなし",
+    "no_epic": "エピックなし",
+    "unassigned": "未割り当て",
+    "unknown_sprint": "削除済みのスプリント",
+    "unknown_epic": "削除済みのエピック",
+    "create": "新規イシュー",
+    "link": "既存のイシューをリンク",
+    "truncated": "{{total}} 件中、最初の {{shown}} 件を表示しています。残りはボードで確認できます。",
+    "load_failed": "イシューを読み込めませんでした",
+    "retry": "再試行"
+  },
+  "link": {
+    "epic_title": "このエピックにイシューをリンク",
+    "epic_description": "エピックに追加する既存のイシューを検索します。",
+    "sprint_title": "このスプリントにイシューを追加",
+    "sprint_description": "既存のイシューを検索します。別のスプリントのイシューはこのスプリントに移動します。",
+    "linked": "{{identifier}} をリンクしました",
+    "failed": "イシューをリンクできませんでした"
+  },
+  "empty": {
+    "epic_title": "このエピックにはまだイシューがありません",
+    "sprint_title": "このスプリントにはまだイシューがありません",
+    "hint": "ここでイシューを作成するか、既存のイシューをリンクしてください。"
+  },
+  "sidebar": {
+    "assignees": "担当者",
+    "workload": "負荷",
+    "sprints": "スプリント",
+    "epics": "エピック",
+    "activity": "最近のアクティビティ",
+    "no_activity": "アクティビティはまだありません",
+    "details": "詳細",
+    "created": "作成日",
+    "last_activity": "最終アクティビティ",
+    "never": "なし",
+    "open_count": "未完了: {{count}}"
+  },
+  "activity": {
+    "created": "がイシューを作成",
+    "status_changed": "が {{to}} に移動",
+    "assignee_changed": "が担当者を変更",
+    "priority_changed": "が優先度を {{to}} に設定",
+    "title_changed": "がイシュー名を変更",
+    "system": "システム"
+  },
+  "sprint": {
+    "goal": "ゴール",
+    "start": "スプリントを開始",
+    "complete": "スプリントを完了",
+    "day_of": "{{total}} 日中 {{day}} 日目",
+    "days_left": "残り日数: {{count}}",
+    "last_day": "最終日",
+    "starts_in": "{{count}} 日後に開始",
+    "ended_ago": "{{count}} 日前に終了",
+    "length": "{{count}} 日間",
+    "burndown": "バーンダウン",
+    "burndown_remaining": "残り",
+    "burndown_ideal": "理想線",
+    "burndown_label": "日ごとの残りイシュー: {{date}} 時点で {{total}} 件中 {{remaining}} 件"
+  },
+  "complete": {
+    "title": "スプリントを完了",
+    "summary_open": "{{total}} 件中 {{open}} 件が未完了です。完了済みのイシューはこのスプリントに残ります。",
+    "summary_none": "このスプリントのイシューはすべて完了しています。",
+    "choice_label": "未完了のイシュー",
+    "move": "別のスプリントに移動",
+    "move_unavailable": "移動先となる計画中または進行中のスプリントがありません。",
+    "keep": "このスプリントに残す",
+    "unlink": "スプリントから外す",
+    "unlink_hint": "イシューはスプリントなしでワークスペースに残ります。",
+    "target": "移動先スプリント",
+    "confirm": "スプリントを完了",
+    "cancel": "キャンセル",
+    "done_moved": "スプリントを完了しました。{{count}} 件を {{sprint}} に移動しました。",
+    "done_unlinked": "スプリントを完了しました。{{count}} 件をスプリントから外しました。",
+    "done_kept": "スプリントを完了しました。未完了のまま残したイシュー: {{count}} 件。",
+    "failed": "スプリントを完了できませんでした"
+  },
+  "list": {
+    "open": "未完了: {{count}}",
+    "blocked": "ブロック中: {{count}}",
+    "created": "作成: {{date}}",
+    "no_issues": "イシューなし"
+  }
+}

@@ -476,6 +476,12 @@ export function useIssueSurfaceController({
           actor: { type: scope.actorType, id: scope.actorId },
         };
         break;
+      case "epic":
+      case "sprint":
+        // A planning page is the workspace narrowed by one fixed planning
+        // filter, applied below in place of the user's own epic/sprint filter.
+        queryScope = { kind: "workspace" };
+        break;
       case "team":
         throw new Error("Team issue scope is not supported by the Table query");
     }
@@ -491,7 +497,12 @@ export function useIssueSurfaceController({
     return {
       scope: queryScope,
       filters: {
-        epic_ids: epicFilters, include_no_epic: includeNoEpic, sprint_ids: sprintFilters, include_no_sprint: includeNoSprint,
+        ...(scope.type === "epic"
+          ? { epic_ids: [scope.epicId], include_no_epic: false }
+          : { epic_ids: epicFilters, include_no_epic: includeNoEpic }),
+        ...(scope.type === "sprint"
+          ? { sprint_ids: [scope.sprintId], include_no_sprint: false }
+          : { sprint_ids: sprintFilters, include_no_sprint: includeNoSprint }),
         ...(statusFilters.length > 0 ? { statuses: statusFilters } : {}),
         ...(priorityFilters.length > 0 ? { priorities: priorityFilters } : {}),
         ...(assigneeFilters.length > 0 ? { assignees: assigneeFilters } : {}),

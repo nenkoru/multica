@@ -287,6 +287,10 @@ export function ManualCreatePanel({
   const [parentIssueId, setParentIssueId] = useState<string | undefined>(
     (data?.parent_issue_id as string) || undefined,
   );
+  // An epic or sprint page opens this dialog with its own id; the new issue is
+  // created inside it. There is no picker here, so the value never changes.
+  const planningEpicId = typeof data?.epic_id === "string" && data.epic_id ? data.epic_id : undefined;
+  const planningSprintId = typeof data?.sprint_id === "string" && data.sprint_id ? data.sprint_id : undefined;
   const parentIssueLocked = anchorCommentId !== null
     && typeof data?.parent_issue_id === "string"
     && data.parent_issue_id.length > 0;
@@ -535,6 +539,8 @@ export function ManualCreatePanel({
           // Stage is only meaningful for a sub-issue (relative to its siblings).
           stage: parentIssueId && stage != null ? stage : undefined,
           project_id: projectId,
+          ...(planningEpicId ? { epic_id: planningEpicId } : {}),
+          ...(planningSprintId ? { sprint_id: planningSprintId } : {}),
         });
       }
 

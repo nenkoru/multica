@@ -1,2 +1,2 @@
-export { sprintKeys, sprintListOptions, sprintDetailOptions } from "./queries";
-export { useCreateSprint, useUpdateSprint, useDeleteSprint } from "./mutations";
+export { sprintKeys, sprintListOptions, sprintDetailOptions, sprintOverviewOptions, sprintIssuesOptions } from "./queries";
+export { useCreateSprint, useUpdateSprint, useDeleteSprint, useCompleteSprint } from "./mutations";

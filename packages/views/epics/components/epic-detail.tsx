@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Diamond, Link2, Trash2 } from "lucide-react";
-import { epicDetailOptions, useUpdateEpic, useDeleteEpic } from "@multica/core/epics";
+import { Link2, Trash2 } from "lucide-react";
+import { epicDetailOptions, epicOverviewOptions, useUpdateEpic, useDeleteEpic } from "@multica/core/epics";
 import { EPIC_STATUS_CONFIG, DEFAULT_EPIC_COLORS } from "@multica/core/epics/config";
+import { resolvePlanningProgress } from "@multica/core/planning";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
 import type { EpicStatus } from "@multica/core/types";
@@ -21,15 +22,29 @@ import {
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { TitleEditor, ContentEditor, type ContentEditorRef } from "../../editor";
+import { BreadcrumbHeader } from "../../layout/breadcrumb-header";
 import { currentPath, useNavigation } from "../../navigation";
-import { useT } from "../../i18n";
+import { useLocale, useT, useTimeAgo } from "../../i18n";
+import {
+  AssigneeBreakdown,
+  PlanningActivity,
+  PlanningAttention,
+  PlanningLayout,
+  PlanningProgressSummary,
+  PlanningWorkArea,
+  SprintBreakdown,
+} from "../../planning";
 
 export function EpicDetail({ epicId }: { epicId: string }) {
   const { t } = useT("epics");
+  const { t: tPlanning } = useT("planning");
+  const locale = useLocale();
+  const timeAgo = useTimeAgo();
   const router = useNavigation();
   const wsPaths = useWorkspacePaths();
   const wsId = useWorkspaceId();
   const { data: epic, isLoading } = useQuery(epicDetailOptions(wsId, epicId));
+  const { data: overview } = useQuery(epicOverviewOptions(wsId, epicId));
   const updateEpic = useUpdateEpic();
   const deleteEpic = useDeleteEpic();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -55,7 +70,6 @@ export function EpicDetail({ epicId }: { epicId: string }) {
     );
   }
 
-
   const handleDelete = () => {
     deleteEpic.mutate(epic.id, {
       onError: (err) => toast.error(err.message),
@@ -65,6 +79,11 @@ export function EpicDetail({ epicId }: { epicId: string }) {
       },
     });
   };
+
+  // The overview is the exact, current breakdown; until it arrives the bar is
+  // drawn from what the epic itself already carries.
+  const progress = overview?.progress ?? resolvePlanningProgress(epic);
+  const lastActivityAt = overview?.last_activity_at ?? null;
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -80,158 +99,162 @@ export function EpicDetail({ epicId }: { epicId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-5 py-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Diamond className="h-3.5 w-3.5" />
-          <span>{t(($) => $.detail.breadcrumb_fallback)}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t(($) => $.detail.copy_link)}
-            onClick={() =>
-              copyText(router.getShareableUrl(currentPath(router))).then((ok) => {
-                if (ok) toast.success(t(($) => $.detail.copy_link));
-              })
-            }
-          >
-            <Link2 className="h-3.5 w-3.5" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="sm" aria-label={t(($) => $.detail.delete_action)}><Trash2 className="h-3.5 w-3.5" /></Button>}
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                {t(($) => $.detail.delete_action)}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex flex-1 min-h-0 overflow-y-auto">
-        <div className="flex-1 max-w-3xl mx-auto px-6 py-6 space-y-6">
-          {/* Color + Title */}
-          <div className="flex items-start gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    className="mt-1 size-6 rounded-sm shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: epic.color }}
-                  />
-                }
-              />
-              <DropdownMenuContent align="start">
-                <div className="flex items-center gap-2 p-2">
-                  {DEFAULT_EPIC_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() =>
-                        handleUpdate({ id: epic.id, color: c })
-                      }
-                      className={cn(
-                        "size-5 rounded-full transition-all",
-                        epic.color === c
-                          ? "ring-2 ring-offset-1 ring-foreground"
-                          : "hover:scale-110",
-                      )}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <TitleEditor
-              defaultValue={epic.title}
-              placeholder={t(($) => $.detail.title_placeholder)}
-              onChange={(title) =>
-                handleUpdate({ id: epic.id, title })
-              }
-              className="text-xl font-semibold"
-            />
-          </div>
-
-          {/* Status */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-16">{t(($) => $.table.status)}</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    className={cn(
-                      "text-xs px-2 py-0.5 rounded-full cursor-pointer",
-                      epic.status === "open"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {t(($) => $.status[epic.status])}
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="start">
-                {(
-                  Object.entries(EPIC_STATUS_CONFIG) as [
-                    EpicStatus,
-                    (typeof EPIC_STATUS_CONFIG)[EpicStatus],
-                  ][]
-                ).map(([key]) => (
-                  <DropdownMenuItem
-                    key={key}
-                    onClick={() =>
-                      handleUpdate({ id: epic.id, status: key })
-                    }
-                  >
-                    {t(($) => $.status[key])}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Progress */}
-          {epic.issue_count > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-16">
-                {t(($) => $.table.progress)}
-              </span>
-              <span className="text-xs tabular-nums">
-                {epic.done_count}/{epic.issue_count} {t(($) => $.table.issues)}
-              </span>
-            </div>
-          )}
-
-          {/* Description */}
-          <div>
-            <div className="text-xs font-medium text-muted-foreground mb-2">
-              {t(($) => $.detail.section_description)}
-            </div>
-            <ContentEditor
-              ref={descRef}
-              defaultValue={epic.description ?? ""}
-              placeholder={t(($) => $.detail.description_placeholder)}
-              onBlur={() => {
-                const md = descRef.current?.getMarkdown() ?? "";
-                handleUpdate({
-                  id: epic.id,
-                  description: md || null,
+      <BreadcrumbHeader
+        segments={[{ href: wsPaths.epics(), label: t(($) => $.detail.breadcrumb_fallback) }]}
+        leaf={<span className="truncate font-medium text-foreground">{epic.title}</span>}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground"
+              aria-label={t(($) => $.detail.copy_link)}
+              onClick={() => {
+                void copyText(router.getShareableUrl(currentPath(router))).then((ok) => {
+                  if (ok) toast.success(t(($) => $.detail.copy_link));
                 });
               }}
+            >
+              <Link2 />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t(($) => $.detail.delete_action)}>
+                    <Trash2 />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-auto">
+                <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                  {t(($) => $.detail.delete_action)}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
+
+      <PlanningLayout
+        summaryLabel={tPlanning(($) => $.sidebar.details)}
+        main={
+          <>
+            <header className="space-y-3">
+              <div className="flex items-start gap-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={t(($) => $.create.color)}
+                        className="mt-1 size-6 rounded-sm shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                        style={{ backgroundColor: epic.color }}
+                      />
+                    }
+                  />
+                  <DropdownMenuContent align="start">
+                    <div className="flex items-center gap-2 p-2">
+                      {DEFAULT_EPIC_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-label={c}
+                          onClick={() => handleUpdate({ id: epic.id, color: c })}
+                          className={cn(
+                            "size-5 rounded-full transition-all",
+                            epic.color === c
+                              ? "ring-2 ring-offset-1 ring-foreground"
+                              : "hover:scale-110",
+                          )}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <TitleEditor
+                  key={`title-${epic.id}`}
+                  defaultValue={epic.title}
+                  placeholder={t(($) => $.detail.title_placeholder)}
+                  onBlur={(value) => {
+                    const title = value.trim();
+                    if (title && title !== epic.title) handleUpdate({ id: epic.id, title });
+                  }}
+                  className="min-w-0 flex-1 text-title-lg font-semibold"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <button
+                        type="button"
+                        className={cn(
+                          "text-caption px-2 py-0.5 rounded-full cursor-pointer",
+                          epic.status === "open"
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {t(($) => $.status[epic.status])}
+                      </button>
+                    }
+                  />
+                  <DropdownMenuContent align="start">
+                    {(Object.keys(EPIC_STATUS_CONFIG) as EpicStatus[]).map((key) => (
+                      <DropdownMenuItem key={key} onClick={() => handleUpdate({ id: epic.id, status: key })}>
+                        {t(($) => $.status[key])}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <span>
+                  {tPlanning(($) => $.sidebar.created)}{" "}
+                  {new Date(epic.created_at).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}
+                </span>
+                <span>
+                  {tPlanning(($) => $.sidebar.last_activity)}{" "}
+                  {lastActivityAt ? timeAgo(lastActivityAt) : tPlanning(($) => $.sidebar.never)}
+                </span>
+              </div>
+
+              <ContentEditor
+                key={`description-${epic.id}`}
+                ref={descRef}
+                defaultValue={epic.description ?? ""}
+                placeholder={t(($) => $.detail.description_placeholder)}
+                onBlur={() => {
+                  const md = descRef.current?.getMarkdown() ?? "";
+                  if ((md || null) !== (epic.description ?? null)) {
+                    handleUpdate({ id: epic.id, description: md || null });
+                  }
+                }}
+              />
+            </header>
+
+            {progress.total > 0 ? <PlanningProgressSummary progress={progress} /> : null}
+            {overview ? (
+              <PlanningAttention
+                issues={overview.attention}
+                total={overview.progress.blocked + overview.progress.in_review}
+              />
+            ) : null}
+            <PlanningWorkArea kind="epic" id={epic.id} />
+          </>
+        }
+        summary={
+          <>
+            <AssigneeBreakdown
+              title={tPlanning(($) => $.sidebar.assignees)}
+              assignees={overview?.assignees ?? []}
             />
-          </div>
-        </div>
-      </div>
+            <SprintBreakdown sprints={overview?.sprints ?? []} />
+            <PlanningActivity activity={overview?.activity ?? []} />
+          </>
+        }
+      />
     </div>
   );
 }

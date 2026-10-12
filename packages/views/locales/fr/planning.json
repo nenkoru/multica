@@ -1,0 +1,118 @@
+{
+  "progress": {
+    "title": "Progression",
+    "percent_done": "{{percent}} % terminé",
+    "done_of_total": "{{done}} sur {{total}}",
+    "bar_label": "Progression des tickets par statut",
+    "bucket": {
+      "done": "Terminé",
+      "in_review": "En revue",
+      "in_progress": "En cours",
+      "blocked": "Bloqué",
+      "not_started": "Non commencé",
+      "cancelled": "Annulé"
+    }
+  },
+  "attention": {
+    "title": "À traiter",
+    "more": "{{count}} autres non affichés"
+  },
+  "issues": {
+    "title": "Tickets",
+    "group_by": "Grouper par",
+    "grouping": {
+      "status": "Statut",
+      "sprint": "Sprint",
+      "epic": "Epic",
+      "assignee": "Responsable"
+    },
+    "view_label": "Vue",
+    "view": {
+      "list": "Liste",
+      "board": "Tableau"
+    },
+    "no_sprint": "Sans sprint",
+    "no_epic": "Sans epic",
+    "unassigned": "Non assigné",
+    "unknown_sprint": "Sprint supprimé",
+    "unknown_epic": "Epic supprimé",
+    "create": "Nouveau ticket",
+    "link": "Lier un ticket existant",
+    "truncated": "Affichage des {{shown}} premiers tickets sur {{total}}. Ouvrez le tableau pour voir le reste.",
+    "load_failed": "Impossible de charger les tickets",
+    "retry": "Réessayer"
+  },
+  "link": {
+    "epic_title": "Lier un ticket à cet epic",
+    "epic_description": "Recherchez un ticket existant à ajouter à l'epic.",
+    "sprint_title": "Ajouter un ticket à ce sprint",
+    "sprint_description": "Recherchez un ticket existant. Un ticket d'un autre sprint est déplacé dans celui-ci.",
+    "linked": "{{identifier}} lié",
+    "failed": "Impossible de lier le ticket"
+  },
+  "empty": {
+    "epic_title": "Aucun ticket dans cet epic",
+    "sprint_title": "Aucun ticket dans ce sprint",
+    "hint": "Créez un ticket ici ou liez-en un existant."
+  },
+  "sidebar": {
+    "assignees": "Responsables",
+    "workload": "Charge",
+    "sprints": "Sprints",
+    "epics": "Epics",
+    "activity": "Activité récente",
+    "no_activity": "Aucune activité",
+    "details": "Détails",
+    "created": "Créé",
+    "last_activity": "Dernière activité",
+    "never": "Aucune",
+    "open_count": "Ouverts : {{count}}"
+  },
+  "activity": {
+    "created": "a créé le ticket",
+    "status_changed": "a déplacé vers {{to}}",
+    "assignee_changed": "a changé le responsable",
+    "priority_changed": "a défini la priorité sur {{to}}",
+    "title_changed": "a renommé le ticket",
+    "system": "Système"
+  },
+  "sprint": {
+    "goal": "Objectif",
+    "start": "Démarrer le sprint",
+    "complete": "Terminer le sprint",
+    "day_of": "Jour {{day}} sur {{total}}",
+    "days_left": "Jours restants : {{count}}",
+    "last_day": "Dernier jour",
+    "starts_in": "Commence dans {{count}} j",
+    "ended_ago": "Terminé depuis {{count}} j",
+    "length": "Durée : {{count}} j",
+    "burndown": "Burndown",
+    "burndown_remaining": "Restant",
+    "burndown_ideal": "Idéal",
+    "burndown_label": "Tickets restants par jour : {{remaining}} sur {{total}} le {{date}}"
+  },
+  "complete": {
+    "title": "Terminer le sprint",
+    "summary_open": "{{open}} tickets sur {{total}} ne sont pas terminés. Les tickets terminés restent dans ce sprint.",
+    "summary_none": "Tous les tickets de ce sprint sont terminés.",
+    "choice_label": "Tickets non terminés",
+    "move": "Déplacer vers un autre sprint",
+    "move_unavailable": "Aucun sprint planifié ou actif vers lequel les déplacer.",
+    "keep": "Laisser dans ce sprint",
+    "unlink": "Retirer du sprint",
+    "unlink_hint": "Les tickets restent dans l'espace de travail, sans sprint.",
+    "target": "Sprint cible",
+    "confirm": "Terminer le sprint",
+    "cancel": "Annuler",
+    "done_moved": "Sprint terminé. {{count}} déplacés vers {{sprint}}.",
+    "done_unlinked": "Sprint terminé. {{count}} retirés du sprint.",
+    "done_kept": "Sprint terminé. Tickets non terminés laissés dedans : {{count}}.",
+    "failed": "Impossible de terminer le sprint"
+  },
+  "list": {
+    "open": "Ouverts : {{count}}",
+    "blocked": "Bloqués : {{count}}",
+    "created": "Créé {{date}}",
+    "no_issues": "Aucun ticket"
+  }
+}

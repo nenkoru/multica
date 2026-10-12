@@ -3188,4 +3188,68 @@ describe("ApiClient planning boundaries", () => {
     fetchMock.mockResolvedValue(new Response('{"error":"forbidden"}', { status: 403, headers: { "Content-Type": "application/json" } }));
     await expect(client.deleteEpic("foreign")).rejects.toThrow();
   });
+
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+
+  it("reads overviews bound to their workspace and tolerates partial payloads", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      json(
+        url.includes("/api/epics/")
+          ? { epic_id: "e1", progress: { total: 3, done: 1, blocked: "many" }, attention: [{ id: "i1", bucket: "new-bucket" }] }
+          : { sprint_id: "s1", burndown: { total: 2 } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    const epic = await client.getEpicOverview("e1", "workspace-a");
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://api.example.test/api/epics/e1/overview");
+    expect(fetchMock.mock.calls[0]![1].headers).toMatchObject({ "X-Workspace-ID": "workspace-a" });
+    // A count that is not a number degrades to zero instead of failing the page.
+    expect(epic.progress).toEqual({ total: 3, done: 1, in_progress: 0, in_review: 0, blocked: 0, not_started: 0, cancelled: 0 });
+    expect(epic.attention).toEqual([
+      { id: "i1", identifier: "", title: "", status: "", bucket: "blocked", assignee_type: null, assignee_id: null, updated_at: "" },
+    ]);
+    expect(epic.assignees).toEqual([]);
+    expect(epic.sprints).toEqual([]);
+    expect(epic.activity).toEqual([]);
+
+    // A burndown the client cannot draw is treated as no burndown.
+    const sprint = await client.getSprintOverview("s1", "workspace-a");
+    expect(sprint.burndown).toBeNull();
+    expect(sprint.progress.total).toBe(0);
+    expect(sprint.epics).toEqual([]);
+  });
+
+  it("keeps list rows usable when a server predates the progress breakdown", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({
+      epics: [{ id: "e1", workspace_id: "w", title: "Epic", issue_count: 4, done_count: 1, created_at: "", updated_at: "" }],
+      total: 1,
+    })));
+    const client = new ApiClient("https://api.example.test");
+    const { epics } = await client.listEpics();
+    expect(epics[0]).toMatchObject({ issue_count: 4, done_count: 1 });
+    expect(epics[0]!.progress?.total).toBe(0);
+  });
+
+  it("sends sprint completion as an explicit choice", async () => {
+    const sprint = { id: "s1", workspace_id: "w", name: "Sprint", start_date: "2026-10-09", end_date: "2026-10-16", status: "completed", created_at: "", updated_at: "" };
+    const fetchMock = vi.fn().mockImplementation(async () => json({ sprint, open_issues: "move", target_sprint: { ...sprint, id: "s2", status: "planned" }, moved_count: 3 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    const result = await client.completeSprint("s1", { open_issues: "move", target_sprint_id: "s2" }, "workspace-a");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://api.example.test/api/sprints/s1/complete");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ open_issues: "move", target_sprint_id: "s2" });
+    expect(init.headers).toMatchObject({ "X-Workspace-ID": "workspace-a" });
+    expect(result).toMatchObject({ open_issues: "move", moved_count: 3, unlinked_count: 0, kept_count: 0 });
+    expect(result.target_sprint?.id).toBe("s2");
+    expect(result.sprint.status).toBe("completed");
+
+    await client.completeSprint("s1", { open_issues: "keep" });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ open_issues: "keep" });
+  });
 });

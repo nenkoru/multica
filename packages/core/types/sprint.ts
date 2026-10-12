@@ -1,3 +1,5 @@
+import type { PlanningProgress } from "./planning";
+
 export type SprintStatus = "planned" | "active" | "completed" | "cancelled";
 
 export interface Sprint {
@@ -10,6 +12,8 @@ export interface Sprint {
   status: SprintStatus;
   issue_count: number;
   done_count: number;
+  /** Per-status breakdown; absent from servers that predate it. */
+  progress?: PlanningProgress;
   created_at: string;
   updated_at: string;
 }

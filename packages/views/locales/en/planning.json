@@ -1,0 +1,118 @@
+{
+  "progress": {
+    "title": "Progress",
+    "percent_done": "{{percent}}% done",
+    "done_of_total": "{{done}} of {{total}}",
+    "bar_label": "Issue progress by status",
+    "bucket": {
+      "done": "Done",
+      "in_review": "In review",
+      "in_progress": "In progress",
+      "blocked": "Blocked",
+      "not_started": "Not started",
+      "cancelled": "Cancelled"
+    }
+  },
+  "attention": {
+    "title": "Needs attention",
+    "more": "{{count}} more not shown"
+  },
+  "issues": {
+    "title": "Issues",
+    "group_by": "Group by",
+    "grouping": {
+      "status": "Status",
+      "sprint": "Sprint",
+      "epic": "Epic",
+      "assignee": "Assignee"
+    },
+    "view_label": "View",
+    "view": {
+      "list": "List",
+      "board": "Board"
+    },
+    "no_sprint": "No sprint",
+    "no_epic": "No epic",
+    "unassigned": "Unassigned",
+    "unknown_sprint": "Deleted sprint",
+    "unknown_epic": "Deleted epic",
+    "create": "New issue",
+    "link": "Link existing",
+    "truncated": "Showing the first {{shown}} of {{total}} issues. Open the board for the rest.",
+    "load_failed": "Could not load issues",
+    "retry": "Retry"
+  },
+  "link": {
+    "epic_title": "Link an issue to this epic",
+    "epic_description": "Search for an existing issue to add to the epic.",
+    "sprint_title": "Add an issue to this sprint",
+    "sprint_description": "Search for an existing issue. An issue in another sprint moves to this one.",
+    "linked": "Linked {{identifier}}",
+    "failed": "Could not link the issue"
+  },
+  "empty": {
+    "epic_title": "No issues in this epic yet",
+    "sprint_title": "No issues in this sprint yet",
+    "hint": "Create an issue here or link one that already exists."
+  },
+  "sidebar": {
+    "assignees": "Assignees",
+    "workload": "Workload",
+    "sprints": "Sprints",
+    "epics": "Epics",
+    "activity": "Recent activity",
+    "no_activity": "No activity yet",
+    "details": "Details",
+    "created": "Created",
+    "last_activity": "Last activity",
+    "never": "None yet",
+    "open_count": "Open: {{count}}"
+  },
+  "activity": {
+    "created": "created the issue",
+    "status_changed": "moved to {{to}}",
+    "assignee_changed": "changed the assignee",
+    "priority_changed": "set priority to {{to}}",
+    "title_changed": "renamed the issue",
+    "system": "System"
+  },
+  "sprint": {
+    "goal": "Goal",
+    "start": "Start sprint",
+    "complete": "Complete sprint",
+    "day_of": "Day {{day}} of {{total}}",
+    "days_left": "Days left: {{count}}",
+    "last_day": "Last day",
+    "starts_in": "Starts in {{count}} d",
+    "ended_ago": "Ended {{count}} d ago",
+    "length": "{{count}} d long",
+    "burndown": "Burndown",
+    "burndown_remaining": "Remaining",
+    "burndown_ideal": "Ideal",
+    "burndown_label": "Remaining issues per day: {{remaining}} of {{total}} left on {{date}}"
+  },
+  "complete": {
+    "title": "Complete sprint",
+    "summary_open": "{{open}} of {{total}} issues are not finished. Finished issues stay in this sprint.",
+    "summary_none": "Every issue in this sprint is finished.",
+    "choice_label": "Unfinished issues",
+    "move": "Move to another sprint",
+    "move_unavailable": "There is no planned or active sprint to move them to.",
+    "keep": "Leave in this sprint",
+    "unlink": "Remove from the sprint",
+    "unlink_hint": "The issues stay in the workspace with no sprint.",
+    "target": "Target sprint",
+    "confirm": "Complete sprint",
+    "cancel": "Cancel",
+    "done_moved": "Sprint completed. Moved {{count}} to {{sprint}}.",
+    "done_unlinked": "Sprint completed. Removed {{count}} from the sprint.",
+    "done_kept": "Sprint completed. Unfinished issues left in it: {{count}}.",
+    "failed": "Could not complete the sprint"
+  },
+  "list": {
+    "open": "Open: {{count}}",
+    "blocked": "Blocked: {{count}}",
+    "created": "Created {{date}}",
+    "no_issues": "No issues"
+  }
+}

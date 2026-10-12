@@ -1,4 +1,8 @@
-import { EpicSchema, SprintSchema, EpicListSchema, SprintListSchema, EMPTY_EPIC, EMPTY_SPRINT } from "./planning-schemas";
+import {
+  EpicSchema, SprintSchema, EpicListSchema, SprintListSchema, EMPTY_EPIC, EMPTY_SPRINT,
+  EpicOverviewSchema, SprintOverviewSchema, EMPTY_EPIC_OVERVIEW, EMPTY_SPRINT_OVERVIEW,
+  CompleteSprintResultSchema, EMPTY_COMPLETE_SPRINT_RESULT,
+} from "./planning-schemas";
 import type { ZodType } from "zod";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
@@ -234,6 +238,10 @@ import type {
   CreateCommentSubIssueRequest,
   Epic,
   Sprint,
+  EpicOverview,
+  SprintOverview,
+  CompleteSprintRequest,
+  CompleteSprintResult,
 } from "../types";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type {
@@ -4387,6 +4395,10 @@ export class ApiClient {
     return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}`, { headers: planningHeaders(workspaceID) }), EpicSchema, EMPTY_EPIC, { endpoint: "GET /api/epics/{id}" });
   }
 
+  async getEpicOverview(id: string, workspaceID?: string): Promise<EpicOverview> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}/overview`, { headers: planningHeaders(workspaceID) }), EpicOverviewSchema, EMPTY_EPIC_OVERVIEW, { endpoint: "GET /api/epics/{id}/overview" });
+  }
+
   async createEpic(data: { title: string; description?: string; color?: string }, workspaceID?: string): Promise<Epic> {
     return parseWithFallback(await this.fetch<unknown>("/api/epics", {
       headers: planningHeaders(workspaceID),
@@ -4416,6 +4428,22 @@ export class ApiClient {
 
   async getSprint(id: string, workspaceID?: string): Promise<Sprint> {
     return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}`, { headers: planningHeaders(workspaceID) }), SprintSchema, EMPTY_SPRINT, { endpoint: "GET /api/sprints/{id}" });
+  }
+
+  async getSprintOverview(id: string, workspaceID?: string): Promise<SprintOverview> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}/overview`, { headers: planningHeaders(workspaceID) }), SprintOverviewSchema, EMPTY_SPRINT_OVERVIEW, { endpoint: "GET /api/sprints/{id}/overview" });
+  }
+
+  /**
+   * Closes a sprint with an explicit choice for its unfinished issues. A plain
+   * status update never moves issues; this is the only call that does.
+   */
+  async completeSprint(id: string, data: CompleteSprintRequest, workspaceID?: string): Promise<CompleteSprintResult> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}/complete`, {
+      headers: planningHeaders(workspaceID),
+      method: "POST",
+      body: JSON.stringify(data),
+    }), CompleteSprintResultSchema, EMPTY_COMPLETE_SPRINT_RESULT, { endpoint: "POST /api/sprints/{id}/complete" });
   }
 
   async createSprint(data: { name: string; goal?: string; start_date: string; end_date: string }, workspaceID?: string): Promise<Sprint> {

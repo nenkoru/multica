@@ -7,91 +7,59 @@ import { epicListOptions } from "@multica/core/epics";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useModalStore } from "@multica/core/modals";
+import { resolvePlanningProgress } from "@multica/core/planning";
 import type { Epic } from "@multica/core/types";
 import { AppLink } from "../../navigation";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { PageHeader } from "../../layout/page-header";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
+import { PlanningListProgress } from "../../planning";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 
-function EpicCard({ epic }: { epic: Epic }) {
+function EpicRow({ epic }: { epic: Epic }) {
   const { t } = useT("epics");
+  const { t: tPlanning } = useT("planning");
+  const locale = useLocale();
   const wsPaths = useWorkspacePaths();
-  const progressPercent =
-    epic.issue_count > 0
-      ? Math.round((epic.done_count / epic.issue_count) * 100)
-      : 0;
+  const progress = resolvePlanningProgress(epic);
+  const open = progress.total - progress.done - progress.cancelled;
 
   return (
-    <div className="group/card flex flex-col rounded-md border bg-card hover:border-primary/50 transition-colors">
-      <div className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <AppLink
-            href={wsPaths.epicDetail(epic.id)}
-            className="flex items-center gap-2 min-w-0 flex-1"
-          >
-            <span
-              className="inline-block size-4 shrink-0 rounded-sm"
-              style={{ backgroundColor: epic.color }}
-            />
-            <h3 className="font-medium text-sm truncate">{epic.title}</h3>
-          </AppLink>
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-              epic.status === "open"
-                ? "bg-primary/10 text-primary"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {t(($) => $.status[epic.status])}
-          </span>
+    <li>
+      <AppLink
+        href={wsPaths.epicDetail(epic.id)}
+        className="flex min-h-12 items-center gap-3 px-5 py-2 text-body hover:bg-surface-hover transition-colors"
+      >
+        <span className="size-3.5 shrink-0 rounded-sm" style={{ backgroundColor: epic.color }} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{epic.title}</div>
+          {epic.description ? (
+            <div className="truncate text-caption text-muted-foreground">{epic.description}</div>
+          ) : null}
         </div>
-
-        {epic.description && (
-          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
-            {epic.description}
-          </p>
-        )}
-
-        {epic.issue_count > 0 ? (
-          <div className="flex justify-end items-center gap-1.5 pt-2">
-            <div className="relative h-4 w-4">
-              <svg className="h-4 w-4 -rotate-90" viewBox="0 0 16 16">
-                <circle
-                  className="text-muted"
-                  strokeWidth="2"
-                  stroke="currentColor"
-                  fill="none"
-                  r="6"
-                  cx="8"
-                  cy="8"
-                />
-                <circle
-                  className="text-emerald-500"
-                  strokeWidth="2"
-                  stroke="currentColor"
-                  fill="none"
-                  r="6"
-                  cx="8"
-                  cy="8"
-                  strokeDasharray={`${progressPercent * 0.377} 37.7`}
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <span className="text-[10px] text-muted-foreground tabular-nums">
-              {epic.done_count}/{epic.issue_count}
-            </span>
-          </div>
-        ) : (
-          <span className="text-[10px] text-muted-foreground pt-2 flex justify-end">
-            {t(($) => $.detail.no_issues_yet)}
-          </span>
-        )}
-      </div>
-    </div>
+        <span
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-micro ${
+            epic.status === "open" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {t(($) => $.status[epic.status])}
+        </span>
+        <PlanningListProgress progress={progress} />
+        <span className="hidden w-28 shrink-0 text-caption text-muted-foreground tabular-nums lg:block">
+          {progress.total > 0 ? tPlanning(($) => $.list.open, { count: open }) : null}
+          {progress.blocked > 0 ? (
+            <span className="block text-destructive">{tPlanning(($) => $.list.blocked, { count: progress.blocked })}</span>
+          ) : null}
+        </span>
+        <span className="hidden w-36 shrink-0 text-right text-caption text-muted-foreground md:block">
+          {tPlanning(($) => $.list.created, {
+            date: new Date(epic.created_at).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" }),
+          })}
+        </span>
+      </AppLink>
+    </li>
   );
 }
 
@@ -181,11 +149,11 @@ export function EpicsPage() {
               <p className="text-sm">{t(($) => $.page.no_search_results)}</p>
             </div>
           ) : (
-            <div className="pt-4 pb-5 px-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <ul className="divide-y border-b">
               {filteredEpics.map((epic) => (
-                <EpicCard key={epic.id} epic={epic} />
+                <EpicRow key={epic.id} epic={epic} />
               ))}
-            </div>
+            </ul>
           )}
         </div>
       </div>
