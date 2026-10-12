@@ -42,7 +42,86 @@ func newPlanningCommand(noun string) *cobra.Command {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error { return runPlanning(cmd, args, noun, action) }
 		parent.AddCommand(cmd)
 	}
+	if noun == "sprint" {
+		parent.AddCommand(newSprintCompleteCommand())
+	}
 	return parent
+}
+
+// newSprintCompleteCommand closes a sprint through the explicit completion
+// endpoint. `sprint update --status completed` only flips the status; this is
+// the one command that may move or unlink the sprint's unfinished issues, and
+// only in the way --open-issues names.
+func newSprintCompleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "complete <uuid>",
+		Short: "complete sprint and decide what happens to its unfinished issues",
+		Args:  exactArgs(1),
+		RunE:  runSprintComplete,
+	}
+	cmd.Flags().String("output", "json", "Output format: table or json")
+	cmd.Flags().String("open-issues", "", "Unfinished issues: keep (stay on this sprint), move (to --to, or the next planned sprint) or unlink")
+	cmd.Flags().String("to", "", "Target sprint UUID for --open-issues move")
+	return cmd
+}
+
+func sprintCompleteBody(cmd *cobra.Command) (map[string]any, error) {
+	mode, _ := cmd.Flags().GetString("open-issues")
+	if mode == "" {
+		return nil, fmt.Errorf("--open-issues is required: keep, move or unlink")
+	}
+	if err := validateIssueEnum("open-issues", mode, []string{"keep", "move", "unlink"}); err != nil {
+		return nil, err
+	}
+	body := map[string]any{"open_issues": mode}
+	if cmd.Flags().Changed("to") {
+		to, _ := cmd.Flags().GetString("to")
+		if mode != "move" {
+			return nil, fmt.Errorf("--to is only valid with --open-issues move")
+		}
+		if _, err := util.ParseUUID(to); err != nil {
+			return nil, fmt.Errorf("--to must be a sprint UUID")
+		}
+		body["target_sprint_id"] = to
+	}
+	return body, nil
+}
+
+func runSprintComplete(cmd *cobra.Command, args []string) error {
+	format, _ := cmd.Flags().GetString("output")
+	if format != "json" && format != "table" {
+		return fmt.Errorf("--output must be table or json")
+	}
+	if _, err := util.ParseUUID(args[0]); err != nil {
+		return fmt.Errorf("sprint id must be a UUID")
+	}
+	body, err := sprintCompleteBody(cmd)
+	if err != nil {
+		return err
+	}
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+	var result map[string]any
+	if err := client.PostJSON(ctx, "/api/sprints/"+url.PathEscape(args[0])+"/complete", body, &result); err != nil {
+		return fmt.Errorf("complete sprint: %w", err)
+	}
+	if format == "json" {
+		return cli.PrintJSON(os.Stdout, result)
+	}
+	sprint, _ := result["sprint"].(map[string]any)
+	target := ""
+	if t, ok := result["target_sprint"].(map[string]any); ok {
+		target = strVal(t, "name")
+	}
+	cli.PrintTable(os.Stdout, []string{"ID", "NAME", "STATUS", "OPEN ISSUES", "MOVED", "UNLINKED", "KEPT", "TARGET"}, [][]string{{
+		strVal(sprint, "id"), strVal(sprint, "name"), strVal(sprint, "status"), strVal(result, "open_issues"),
+		fmt.Sprint(result["moved_count"]), fmt.Sprint(result["unlinked_count"]), fmt.Sprint(result["kept_count"]), target,
+	}})
+	return nil
 }
 
 func planningBody(cmd *cobra.Command, noun, action string) (map[string]any, error) {

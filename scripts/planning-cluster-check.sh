@@ -15,12 +15,12 @@ export DATABASE_URL='postgres://postgres@127.0.0.1:5432/multica_planning?sslmode
 export GOMAXPROCS=2
 export GOCACHE=/work/planning-go-cache
 cd server
-gofmt -w internal/handler/workspace.go internal/handler/workspace_test.go internal/handler/workspace_delete_manifest_test.go internal/handler/search_candidate_parity_test.go cmd/multica/cmd_planning*.go cmd/multica/cmd_issue.go cmd/multica/main.go cmd/migrate/migrate_planning_test.go cmd/migrate/main.go internal/handler/{epic,sprint,planning_test,issue,issue_table_query,issue_table_rows,handler,config,handler_test}.go internal/service/{planning,issue,task}.go
+gofmt -w internal/handler/workspace.go internal/handler/workspace_test.go internal/handler/workspace_delete_manifest_test.go internal/handler/search_candidate_parity_test.go cmd/multica/cmd_planning*.go cmd/multica/cmd_issue.go cmd/multica/main.go cmd/migrate/migrate_planning_test.go cmd/migrate/main.go internal/handler/{epic,sprint,planning_test,planning_overview,planning_overview_test,issue,issue_table_query,issue_table_rows,handler,config,handler_test}.go internal/service/{planning,issue,task}.go
 go build -o bin/multica ./cmd/multica
 go build -o bin/server ./cmd/server
 go build -o bin/migrate ./cmd/migrate
 ./bin/migrate up > /work/planning-migrations.log
-go test -p 2 ./internal/handler ./cmd/multica ./cmd/migrate -run 'Test(Epic|Sprint|CreateEpic|UpdateEpic|GetEpic|ListEpics|CreateSprint|UpdateSprint|GetSprint|ListSprints|Planning|IssueToMap)' -count=1 -v > /work/planning-tests.log
+go test -p 2 ./internal/handler ./cmd/multica ./cmd/migrate -run 'Test(Epic|Sprint|CreateEpic|UpdateEpic|GetEpic|ListEpics|CreateSprint|UpdateSprint|GetSprint|ListSprints|Planning|SprintComplete|IssueToMap)' -count=1 -v > /work/planning-tests.log
 cat /work/planning-tests.log
 
 cd ..

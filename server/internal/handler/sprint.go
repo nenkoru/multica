@@ -25,8 +25,11 @@ type SprintResponse struct {
 	Status      string  `json:"status"`
 	IssueCount  int64   `json:"issue_count"`
 	DoneCount   int64   `json:"done_count"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	// Progress is the per-status breakdown behind the list and detail bars.
+	// IssueCount/DoneCount keep their original meaning for installed clients.
+	Progress  PlanningProgress `json:"progress"`
+	CreatedAt string           `json:"created_at"`
+	UpdatedAt string           `json:"updated_at"`
 }
 
 func sprintToResponse(s db.Sprint) SprintResponse {
@@ -116,9 +119,18 @@ func (h *Handler) ListSprints(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	progress, err := h.loadPlanningProgressByIDs(r.Context(), planningSprintRelation, wsUUID, sprintIDsOf(sprints))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to count planning issues")
+		return
+	}
+
 	resp := make([]SprintResponse, len(sprints))
 	for i, s := range sprints {
 		resp[i] = sprintToResponse(s)
+		if p, ok := progress[resp[i].ID]; ok {
+			resp[i].Progress = *p
+		}
 		if st, ok := statsMap[resp[i].ID]; ok {
 			resp[i].IssueCount = st.TotalCount
 			resp[i].DoneCount = st.DoneCount
@@ -154,6 +166,14 @@ func (h *Handler) GetSprint(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to count planning issues")
 		return
+	}
+	progress, err := h.loadPlanningProgressByIDs(r.Context(), planningSprintRelation, sprint.WorkspaceID, []pgtype.UUID{sprint.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to count planning issues")
+		return
+	}
+	if p, ok := progress[resp.ID]; ok {
+		resp.Progress = *p
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -407,4 +427,12 @@ func (h *Handler) DeleteSprint(w http.ResponseWriter, r *http.Request) {
 
 	h.publish("sprint:deleted", workspaceID, "member", userID, map[string]any{"sprint_id": uuidToString(sprint.ID)})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func sprintIDsOf(sprints []db.Sprint) []pgtype.UUID {
+	ids := make([]pgtype.UUID, len(sprints))
+	for i, s := range sprints {
+		ids[i] = s.ID
+	}
+	return ids
 }

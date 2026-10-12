@@ -22,7 +22,7 @@ Epics have title, optional description, color, and `open`/`closed` status.
 Sprints have name, optional goal, required `YYYY-MM-DD` dates and explicit
 `planned`/`active`/`completed`/`cancelled` status. End must be strictly after start.
 Multiple active or overlapping sprints are allowed. There is no lifecycle
-scheduler or automatic movement of unfinished issues. Counts include linked
+scheduler or automatic movement of unfinished issues: see Completing a sprint. Counts include linked
 issues; done counts include built-in terminal states and custom done/closed
 categories, scoped to the entity's workspace.
 
@@ -45,6 +45,60 @@ and explicit clearing still work. Older clients ignore added nullable response
 fields. The custom CLI checks the capability before sending planning issue
 flags, so an older server cannot silently drop them.
 
+## Detail pages and aggregates
+
+The epic and sprint pages show a status progress bar, the issues that need
+attention, a grouped issue list with sub-issues nested under their parent, and
+a board. Lists of epics and sprints show the same bar per row.
+
+`GET /api/epics/{id}/overview` and `GET /api/sprints/{id}/overview` return the
+aggregates behind those pages, scoped to the entity's workspace: `progress`
+(issue counts per bucket), per-assignee counts, the breakdown over the other
+planning relation, up to 20 blocked or in-review issues, and for an epic the 10
+newest issue events. Each aggregate is one grouped query; none of them loads
+issues row by row. Epic and sprint list and detail responses carry the same
+`progress` object, computed for the whole list in one query. `issue_count` and
+`done_count` keep their meaning, where done also counts cancelled issues.
+
+Buckets are `done`, `in_review`, `in_progress`, `blocked`, `not_started` and
+`cancelled`. A built-in status maps to its own bucket (`todo` and `backlog` are
+not started). A custom status follows its category: started is in progress,
+done is done, closed is cancelled, anything else is not started. The percent
+done leaves cancelled issues out of its base.
+
+A sprint overview also carries `burndown`: remaining issues per UTC day from
+the sprint start to today or the sprint end, whichever is earlier. An issue
+closes on its newest recorded change into its current finished status; an issue
+without such a record, such as an imported one, uses its last update time. The
+scope is the sprint's current issue set, so issues added or removed mid-sprint
+shift the whole line rather than appearing as a step. `burndown` is null for a
+sprint with no issues or one that has not started.
+
+The page's issue list reads `GET /api/issues?epic_id=` or `?sprint_id=` in
+pages of 100 up to 1000 issues and says so when it stops early; the board has
+no such cap.
+
+## Completing a sprint
+
+`PUT /api/sprints/{id}` with `status: completed` changes the status and nothing
+else. Moving or unlinking unfinished issues is a separate, explicit call:
+
+```
+POST /api/sprints/{id}/complete
+{"open_issues": "keep" | "move" | "unlink", "target_sprint_id": "SPRINT_UUID"}
+```
+
+`open_issues` is required. `keep` leaves every issue on the sprint. `unlink`
+clears the sprint of unfinished issues. `move` sends them to
+`target_sprint_id`, which must be a planned or active sprint of the same
+workspace; without it the target is the planned sprint that starts soonest on
+or after this sprint's start, then the earliest other planned sprint, and the
+call fails with 409 and changes nothing when there is none. Finished and
+cancelled issues always stay. Issues are never deleted. The sprint must be
+planned or active. Status, issue moves and revision bumps commit in one
+transaction; the response reports `moved_count`, `unlinked_count`,
+`kept_count` and the target sprint.
+
 ## CLI
 
 ```bash
@@ -58,6 +112,8 @@ multica sprint list --status active --output json
 multica sprint get SPRINT_UUID
 multica sprint update SPRINT_UUID --status active
 multica sprint update SPRINT_UUID --start-date 2026-10-10 --end-date 2026-10-17 --goal ''
+multica sprint complete SPRINT_UUID --open-issues move --to NEXT_SPRINT_UUID
+multica sprint complete SPRINT_UUID --open-issues keep
 multica sprint delete SPRINT_UUID
 multica issue create --title 'Deliver planning' --epic EPIC_UUID --sprint SPRINT_UUID
 multica issue update ISSUE_UUID --epic '' --sprint ''

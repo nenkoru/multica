@@ -23,8 +23,11 @@ type EpicResponse struct {
 	Status      string  `json:"status"`
 	IssueCount  int64   `json:"issue_count"`
 	DoneCount   int64   `json:"done_count"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	// Progress is the per-status breakdown behind the list and detail bars.
+	// IssueCount/DoneCount keep their original meaning for installed clients.
+	Progress  PlanningProgress `json:"progress"`
+	CreatedAt string           `json:"created_at"`
+	UpdatedAt string           `json:"updated_at"`
 }
 
 func epicToResponse(e db.Epic) EpicResponse {
@@ -111,9 +114,18 @@ func (h *Handler) ListEpics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	progress, err := h.loadPlanningProgressByIDs(r.Context(), planningEpicRelation, wsUUID, epicIDsOf(epics))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to count planning issues")
+		return
+	}
+
 	resp := make([]EpicResponse, len(epics))
 	for i, e := range epics {
 		resp[i] = epicToResponse(e)
+		if p, ok := progress[resp[i].ID]; ok {
+			resp[i].Progress = *p
+		}
 		if s, ok := statsMap[resp[i].ID]; ok {
 			resp[i].IssueCount = s.TotalCount
 			resp[i].DoneCount = s.DoneCount
@@ -149,6 +161,14 @@ func (h *Handler) GetEpic(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to count planning issues")
 		return
+	}
+	progress, err := h.loadPlanningProgressByIDs(r.Context(), planningEpicRelation, epic.WorkspaceID, []pgtype.UUID{epic.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to count planning issues")
+		return
+	}
+	if p, ok := progress[resp.ID]; ok {
+		resp.Progress = *p
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -359,4 +379,12 @@ func (h *Handler) DeleteEpic(w http.ResponseWriter, r *http.Request) {
 
 	h.publish("epic:deleted", workspaceID, "member", userID, map[string]any{"epic_id": uuidToString(epic.ID)})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func epicIDsOf(epics []db.Epic) []pgtype.UUID {
+	ids := make([]pgtype.UUID, len(epics))
+	for i, e := range epics {
+		ids[i] = e.ID
+	}
+	return ids
 }

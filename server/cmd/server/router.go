@@ -2144,6 +2144,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/", h.CreateEpic)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetEpic)
+					r.Get("/overview", h.GetEpicOverview)
 					r.Put("/", h.UpdateEpic)
 					r.Delete("/", h.DeleteEpic)
 				})
@@ -2155,6 +2156,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/", h.CreateSprint)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetSprint)
+					r.Get("/overview", h.GetSprintOverview)
+					r.Post("/complete", h.CompleteSprint)
 					r.Put("/", h.UpdateSprint)
 					r.Delete("/", h.DeleteSprint)
 				})

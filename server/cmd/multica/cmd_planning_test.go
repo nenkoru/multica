@@ -211,3 +211,85 @@ func TestPlanningCLIFailsClosedOnOldServer(t *testing.T) {
 		t.Fatal("invalid UUID accepted")
 	}
 }
+
+func TestSprintCompleteCLISendsExplicitChoice(t *testing.T) {
+	const id = "00000000-0000-0000-0000-000000000001"
+	const target = "00000000-0000-0000-0000-000000000002"
+	for _, tc := range []struct {
+		name  string
+		flags map[string]string
+		want  map[string]any
+	}{
+		{"keep", map[string]string{"open-issues": "keep"}, map[string]any{"open_issues": "keep"}},
+		{"unlink", map[string]string{"open-issues": "unlink"}, map[string]any{"open_issues": "unlink"}},
+		{"move to next planned", map[string]string{"open-issues": "move"}, map[string]any{"open_issues": "move"}},
+		{"move to named", map[string]string{"open-issues": "move", "to": target}, map[string]any{"open_issues": "move", "target_sprint_id": target}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var method, path string
+			var body map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				method, path = r.Method, r.URL.Path
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				json.NewEncoder(w).Encode(map[string]any{"sprint": map[string]any{"id": id, "name": "Sprint", "status": "completed"}, "open_issues": tc.want["open_issues"]})
+			}))
+			defer srv.Close()
+			t.Setenv("MULTICA_SERVER_URL", srv.URL)
+			t.Setenv("MULTICA_WORKSPACE_ID", id)
+			t.Setenv("MULTICA_TOKEN", "mat_planning-test")
+			cmd, _, err := newPlanningCommand("sprint").Find([]string{"complete"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for flag, value := range tc.flags {
+				cmd.Flags().Set(flag, value)
+			}
+			if err := runSprintComplete(cmd, []string{id}); err != nil {
+				t.Fatal(err)
+			}
+			if method != "POST" || path != "/api/sprints/"+id+"/complete" {
+				t.Fatalf("request %s %s", method, path)
+			}
+			if len(body) != len(tc.want) {
+				t.Fatalf("body = %#v, want %#v", body, tc.want)
+			}
+			for key, value := range tc.want {
+				if body[key] != value {
+					t.Fatalf("body = %#v, want %#v", body, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestSprintCompleteCLIRejectsBeforeRequest(t *testing.T) {
+	const id = "00000000-0000-0000-0000-000000000001"
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++ }))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+	t.Setenv("MULTICA_WORKSPACE_ID", id)
+	t.Setenv("MULTICA_TOKEN", "mat_planning-test")
+	for name, flags := range map[string]map[string]string{
+		"no choice":            {},
+		"unknown choice":       {"open-issues": "delete"},
+		"target without move":  {"open-issues": "unlink", "to": id},
+		"target is not a uuid": {"open-issues": "move", "to": "next"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd, _, _ := newPlanningCommand("sprint").Find([]string{"complete"})
+			for flag, value := range flags {
+				cmd.Flags().Set(flag, value)
+			}
+			if err := runSprintComplete(cmd, []string{id}); err == nil {
+				t.Fatal("invalid completion accepted")
+			}
+		})
+	}
+	if requests != 0 {
+		t.Fatalf("%d requests sent for invalid input", requests)
+	}
+	if _, _, err := newPlanningCommand("epic").Find([]string{"complete"}); err == nil {
+		t.Fatal("epic must not gain a complete command")
+	}
+}
