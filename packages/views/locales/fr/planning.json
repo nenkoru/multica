@@ -3,22 +3,22 @@
     "title": "Progression",
     "percent_done": "{{percent}} % terminé",
     "done_of_total": "{{done}} sur {{total}}",
-    "bar_label": "Progression des tickets par statut",
+    "bar_label": "Progression des tâches par statut",
     "bucket": {
-      "done": "Terminé",
+      "done": "Terminée",
       "in_review": "En revue",
       "in_progress": "En cours",
-      "blocked": "Bloqué",
-      "not_started": "Non commencé",
-      "cancelled": "Annulé"
+      "blocked": "Bloquée",
+      "not_started": "Non commencée",
+      "cancelled": "Annulée"
     }
   },
   "attention": {
     "title": "À traiter",
-    "more": "{{count}} autres non affichés"
+    "more": "{{count}} autres non affichées"
   },
   "issues": {
-    "title": "Tickets",
+    "title": "Tâches",
     "group_by": "Grouper par",
     "grouping": {
       "status": "Statut",
@@ -33,27 +33,27 @@
     },
     "no_sprint": "Sans sprint",
     "no_epic": "Sans epic",
-    "unassigned": "Non assigné",
+    "unassigned": "Non assignée",
     "unknown_sprint": "Sprint supprimé",
     "unknown_epic": "Epic supprimé",
-    "create": "Nouveau ticket",
-    "link": "Lier un ticket existant",
-    "truncated": "Affichage des {{shown}} premiers tickets sur {{total}}. Ouvrez le tableau pour voir le reste.",
-    "load_failed": "Impossible de charger les tickets",
+    "create": "Nouvelle tâche",
+    "link": "Lier une tâche existante",
+    "truncated": "Affichage des {{shown}} premières tâches sur {{total}}. Ouvrez le tableau pour voir le reste.",
+    "load_failed": "Impossible de charger les tâches",
     "retry": "Réessayer"
   },
   "link": {
-    "epic_title": "Lier un ticket à cet epic",
-    "epic_description": "Recherchez un ticket existant à ajouter à l'epic.",
-    "sprint_title": "Ajouter un ticket à ce sprint",
-    "sprint_description": "Recherchez un ticket existant. Un ticket d'un autre sprint est déplacé dans celui-ci.",
-    "linked": "{{identifier}} lié",
-    "failed": "Impossible de lier le ticket"
+    "epic_title": "Lier une tâche à cet epic",
+    "epic_description": "Recherchez une tâche existante à ajouter à l'epic.",
+    "sprint_title": "Ajouter une tâche à ce sprint",
+    "sprint_description": "Recherchez une tâche existante. Une tâche d'un autre sprint est déplacée dans celui-ci.",
+    "linked": "{{identifier}} liée",
+    "failed": "Impossible de lier la tâche"
   },
   "empty": {
-    "epic_title": "Aucun ticket dans cet epic",
-    "sprint_title": "Aucun ticket dans ce sprint",
-    "hint": "Créez un ticket ici ou liez-en un existant."
+    "epic_title": "Aucune tâche dans cet epic",
+    "sprint_title": "Aucune tâche dans ce sprint",
+    "hint": "Créez une tâche ici ou liez-en une existante."
   },
   "sidebar": {
     "assignees": "Responsables",
@@ -66,14 +66,14 @@
     "created": "Créé",
     "last_activity": "Dernière activité",
     "never": "Aucune",
-    "open_count": "Ouverts : {{count}}"
+    "open_count": "Ouvertes : {{count}}"
   },
   "activity": {
-    "created": "a créé le ticket",
+    "created": "a créé la tâche",
     "status_changed": "a déplacé vers {{to}}",
     "assignee_changed": "a changé le responsable",
     "priority_changed": "a défini la priorité sur {{to}}",
-    "title_changed": "a renommé le ticket",
+    "title_changed": "a renommé la tâche",
     "system": "Système"
   },
   "sprint": {
@@ -89,30 +89,30 @@
     "burndown": "Burndown",
     "burndown_remaining": "Restant",
     "burndown_ideal": "Idéal",
-    "burndown_label": "Tickets restants par jour : {{remaining}} sur {{total}} le {{date}}"
+    "burndown_label": "Tâches restantes par jour : {{remaining}} sur {{total}} le {{date}}"
   },
   "complete": {
     "title": "Terminer le sprint",
-    "summary_open": "{{open}} tickets sur {{total}} ne sont pas terminés. Les tickets terminés restent dans ce sprint.",
-    "summary_none": "Tous les tickets de ce sprint sont terminés.",
-    "choice_label": "Tickets non terminés",
+    "summary_open": "{{open}} tâches sur {{total}} ne sont pas terminées. Les tâches terminées restent dans ce sprint.",
+    "summary_none": "Toutes les tâches de ce sprint sont terminées.",
+    "choice_label": "Tâches non terminées",
     "move": "Déplacer vers un autre sprint",
     "move_unavailable": "Aucun sprint planifié ou actif vers lequel les déplacer.",
     "keep": "Laisser dans ce sprint",
     "unlink": "Retirer du sprint",
-    "unlink_hint": "Les tickets restent dans l'espace de travail, sans sprint.",
+    "unlink_hint": "Les tâches restent dans l'espace de travail, sans sprint.",
     "target": "Sprint cible",
     "confirm": "Terminer le sprint",
     "cancel": "Annuler",
-    "done_moved": "Sprint terminé. {{count}} déplacés vers {{sprint}}.",
-    "done_unlinked": "Sprint terminé. {{count}} retirés du sprint.",
-    "done_kept": "Sprint terminé. Tickets non terminés laissés dedans : {{count}}.",
+    "done_moved": "Sprint terminé. {{count}} déplacées vers {{sprint}}.",
+    "done_unlinked": "Sprint terminé. {{count}} retirées du sprint.",
+    "done_kept": "Sprint terminé. Tâches non terminées laissées dedans : {{count}}.",
     "failed": "Impossible de terminer le sprint"
   },
   "list": {
-    "open": "Ouverts : {{count}}",
-    "blocked": "Bloqués : {{count}}",
+    "open": "Ouvertes : {{count}}",
+    "blocked": "Bloquées : {{count}}",
     "created": "Créé {{date}}",
-    "no_issues": "Aucun ticket"
+    "no_issues": "Aucune tâche"
   }
 }

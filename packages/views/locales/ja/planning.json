@@ -3,7 +3,7 @@
     "title": "進捗",
     "percent_done": "{{percent}}% 完了",
     "done_of_total": "{{done}} / {{total}}",
-    "bar_label": "ステータス別のイシュー進捗",
+    "bar_label": "ステータス別のタスク進捗",
     "bucket": {
       "done": "完了",
       "in_review": "レビュー中",
@@ -18,12 +18,12 @@
     "more": "ほか {{count}} 件"
   },
   "issues": {
-    "title": "イシュー",
+    "title": "タスク",
     "group_by": "グループ化",
     "grouping": {
       "status": "ステータス",
-      "sprint": "スプリント",
-      "epic": "エピック",
+      "sprint": "Sprint",
+      "epic": "Epic",
       "assignee": "担当者"
     },
     "view_label": "表示",
@@ -31,35 +31,35 @@
       "list": "リスト",
       "board": "ボード"
     },
-    "no_sprint": "スプリントなし",
-    "no_epic": "エピックなし",
+    "no_sprint": "Sprintなし",
+    "no_epic": "Epicなし",
     "unassigned": "未割り当て",
-    "unknown_sprint": "削除済みのスプリント",
-    "unknown_epic": "削除済みのエピック",
-    "create": "新規イシュー",
-    "link": "既存のイシューをリンク",
+    "unknown_sprint": "削除済みのSprint",
+    "unknown_epic": "削除済みのEpic",
+    "create": "新規タスク",
+    "link": "既存のタスクをリンク",
     "truncated": "{{total}} 件中、最初の {{shown}} 件を表示しています。残りはボードで確認できます。",
-    "load_failed": "イシューを読み込めませんでした",
+    "load_failed": "タスクを読み込めませんでした",
     "retry": "再試行"
   },
   "link": {
-    "epic_title": "このエピックにイシューをリンク",
-    "epic_description": "エピックに追加する既存のイシューを検索します。",
-    "sprint_title": "このスプリントにイシューを追加",
-    "sprint_description": "既存のイシューを検索します。別のスプリントのイシューはこのスプリントに移動します。",
+    "epic_title": "このEpicにタスクをリンク",
+    "epic_description": "Epicに追加する既存のタスクを検索します。",
+    "sprint_title": "このSprintにタスクを追加",
+    "sprint_description": "既存のタスクを検索します。別のSprintのタスクはこのSprintに移動します。",
     "linked": "{{identifier}} をリンクしました",
-    "failed": "イシューをリンクできませんでした"
+    "failed": "タスクをリンクできませんでした"
   },
   "empty": {
-    "epic_title": "このエピックにはまだイシューがありません",
-    "sprint_title": "このスプリントにはまだイシューがありません",
-    "hint": "ここでイシューを作成するか、既存のイシューをリンクしてください。"
+    "epic_title": "このEpicにはまだタスクがありません",
+    "sprint_title": "このSprintにはまだタスクがありません",
+    "hint": "ここでタスクを作成するか、既存のタスクをリンクしてください。"
   },
   "sidebar": {
     "assignees": "担当者",
     "workload": "負荷",
-    "sprints": "スプリント",
-    "epics": "エピック",
+    "sprints": "Sprint",
+    "epics": "Epic",
     "activity": "最近のアクティビティ",
     "no_activity": "アクティビティはまだありません",
     "details": "詳細",
@@ -69,17 +69,17 @@
     "open_count": "未完了: {{count}}"
   },
   "activity": {
-    "created": "がイシューを作成",
+    "created": "がタスクを作成",
     "status_changed": "が {{to}} に移動",
     "assignee_changed": "が担当者を変更",
     "priority_changed": "が優先度を {{to}} に設定",
-    "title_changed": "がイシュー名を変更",
+    "title_changed": "がタスク名を変更",
     "system": "システム"
   },
   "sprint": {
     "goal": "ゴール",
-    "start": "スプリントを開始",
-    "complete": "スプリントを完了",
+    "start": "Sprintを開始",
+    "complete": "Sprintを完了",
     "day_of": "{{total}} 日中 {{day}} 日目",
     "days_left": "残り日数: {{count}}",
     "last_day": "最終日",
@@ -89,30 +89,30 @@
     "burndown": "バーンダウン",
     "burndown_remaining": "残り",
     "burndown_ideal": "理想線",
-    "burndown_label": "日ごとの残りイシュー: {{date}} 時点で {{total}} 件中 {{remaining}} 件"
+    "burndown_label": "日ごとの残りタスク: {{date}} 時点で {{total}} 件中 {{remaining}} 件"
   },
   "complete": {
-    "title": "スプリントを完了",
-    "summary_open": "{{total}} 件中 {{open}} 件が未完了です。完了済みのイシューはこのスプリントに残ります。",
-    "summary_none": "このスプリントのイシューはすべて完了しています。",
-    "choice_label": "未完了のイシュー",
-    "move": "別のスプリントに移動",
-    "move_unavailable": "移動先となる計画中または進行中のスプリントがありません。",
-    "keep": "このスプリントに残す",
-    "unlink": "スプリントから外す",
-    "unlink_hint": "イシューはスプリントなしでワークスペースに残ります。",
-    "target": "移動先スプリント",
-    "confirm": "スプリントを完了",
+    "title": "Sprintを完了",
+    "summary_open": "{{total}} 件中 {{open}} 件が未完了です。完了済みのタスクはこのSprintに残ります。",
+    "summary_none": "このSprintのタスクはすべて完了しています。",
+    "choice_label": "未完了のタスク",
+    "move": "別のSprintに移動",
+    "move_unavailable": "移動先となる計画中または進行中のSprintがありません。",
+    "keep": "このSprintに残す",
+    "unlink": "Sprintから外す",
+    "unlink_hint": "タスクはSprintなしでワークスペースに残ります。",
+    "target": "移動先Sprint",
+    "confirm": "Sprintを完了",
     "cancel": "キャンセル",
-    "done_moved": "スプリントを完了しました。{{count}} 件を {{sprint}} に移動しました。",
-    "done_unlinked": "スプリントを完了しました。{{count}} 件をスプリントから外しました。",
-    "done_kept": "スプリントを完了しました。未完了のまま残したイシュー: {{count}} 件。",
-    "failed": "スプリントを完了できませんでした"
+    "done_moved": "Sprintを完了しました。{{count}} 件を {{sprint}} に移動しました。",
+    "done_unlinked": "Sprintを完了しました。{{count}} 件をSprintから外しました。",
+    "done_kept": "Sprintを完了しました。未完了のまま残したタスク: {{count}} 件。",
+    "failed": "Sprintを完了できませんでした"
   },
   "list": {
     "open": "未完了: {{count}}",
     "blocked": "ブロック中: {{count}}",
     "created": "作成: {{date}}",
-    "no_issues": "イシューなし"
+    "no_issues": "タスクなし"
   }
 }
