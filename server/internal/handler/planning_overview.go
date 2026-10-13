@@ -549,7 +549,7 @@ func (h *Handler) GetEpicOverview(w http.ResponseWriter, r *http.Request) {
 		rows, err := h.DB.Query(ctx, `
 SELECT id, name, status, start_date, end_date FROM sprint
 WHERE workspace_id = $1 AND id = ANY($2::uuid[])
-ORDER BY start_date DESC, id`, epic.WorkspaceID, ids)
+ORDER BY start_date, id`, epic.WorkspaceID, ids)
 		if err != nil {
 			writePlanningOverviewFailure(w, r, err)
 			return

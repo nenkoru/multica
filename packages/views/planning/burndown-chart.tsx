@@ -4,9 +4,11 @@ import type { PlanningBurndown } from "@multica/core/types";
 import { formatDateOnly } from "@multica/core/issues/date";
 import { useLocale, useT } from "../i18n";
 
-const WIDTH = 320;
-const HEIGHT = 120;
-const PAD = { top: 8, right: 8, bottom: 18, left: 26 };
+// Drawn at about its natural size (the caller caps the width), so the axis
+// labels stay the size of the surrounding caption text.
+const WIDTH = 560;
+const HEIGHT = 160;
+const PAD = { top: 10, right: 12, bottom: 22, left: 30 };
 
 const DAY_MS = 86_400_000;
 
@@ -84,16 +86,16 @@ export function BurndownChart({ burndown }: { burndown: PlanningBurndown }) {
           />
         ) : null}
         <circle cx={lastPoint.x} cy={lastPoint.y} r="3" fill="currentColor" />
-        <text x={PAD.left - 4} y={y(burndown.total) + 3} textAnchor="end" className="fill-muted-foreground text-[9px] tabular-nums">
+        <text x={PAD.left - 6} y={y(burndown.total) + 4} textAnchor="end" className="fill-muted-foreground text-[11px] tabular-nums">
           {burndown.total}
         </text>
-        <text x={PAD.left - 4} y={y(0) + 3} textAnchor="end" className="fill-muted-foreground text-[9px] tabular-nums">
+        <text x={PAD.left - 6} y={y(0) + 4} textAnchor="end" className="fill-muted-foreground text-[11px] tabular-nums">
           0
         </text>
-        <text x={PAD.left} y={HEIGHT - 4} textAnchor="start" className="fill-muted-foreground text-[9px]">
+        <text x={PAD.left} y={HEIGHT - 6} textAnchor="start" className="fill-muted-foreground text-[11px]">
           {format(burndown.start_date)}
         </text>
-        <text x={WIDTH - PAD.right} y={HEIGHT - 4} textAnchor="end" className="fill-muted-foreground text-[9px]">
+        <text x={WIDTH - PAD.right} y={HEIGHT - 6} textAnchor="end" className="fill-muted-foreground text-[11px]">
           {format(burndown.end_date)}
         </text>
       </svg>

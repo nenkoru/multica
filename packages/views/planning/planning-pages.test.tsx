@@ -305,6 +305,17 @@ describe("sprint page", () => {
     expect(screen.queryByText(planning.sprint.burndown)).not.toBeInTheDocument();
   });
 
+  it("keeps an empty sprint to its header and the two ways to add an issue", async () => {
+    mocks.sprintOverview = { sprint_id: "entity", progress: ZERO, last_activity_at: null, assignees: [], epics: [], attention: [], burndown: null };
+    mocks.issues = [];
+    renderWithQuery(<SprintDetail sprintId="entity" />);
+    expect(await screen.findByText(planning.empty.sprint_title)).toBeInTheDocument();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: planning.progress.title })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: planning.issues.create }));
+    expect(mocks.openModal).toHaveBeenCalledWith("create-issue", { sprint_id: "entity" });
+  });
+
   it("opens the board on the sprint's own issues", async () => {
     renderWithQuery(<SprintDetail sprintId="entity" />);
     await screen.findByText("Issue t");

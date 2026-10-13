@@ -297,20 +297,20 @@ export function SprintDetail({ sprintId }: { sprintId: string }) {
           </>
         }
         summary={
-          <>
-            {overview ? (
+          overview && overview.progress.total > 0 ? (
+            <>
               <PlanningAttention
                 issues={overview.attention}
                 total={overview.progress.blocked + overview.progress.in_review}
               />
-            ) : null}
-            <AssigneeBreakdown
-              title={tPlanning(($) => $.sidebar.workload)}
-              assignees={overview?.assignees ?? []}
-              showOpen
-            />
-            <EpicBreakdown epics={overview?.epics ?? []} />
-          </>
+              <AssigneeBreakdown
+                title={tPlanning(($) => $.sidebar.workload)}
+                assignees={overview.assignees}
+                showOpen
+              />
+              <EpicBreakdown epics={overview.epics} />
+            </>
+          ) : null
         }
       />
     </div>

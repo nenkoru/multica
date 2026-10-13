@@ -220,19 +220,24 @@ function IssueRow({
         className="size-3.5 shrink-0"
       />
       <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-      <span className="hidden shrink-0 text-caption text-muted-foreground md:inline">{labelOf(issue.status)}</span>
-      {sprint ? (
-        <span className="hidden max-w-36 shrink-0 items-center gap-1 truncate rounded-full border px-2 py-0.5 text-caption text-muted-foreground sm:inline-flex">
-          <Timer className="size-3 shrink-0" />
-          <span className="truncate">{sprint.name}</span>
-        </span>
-      ) : null}
-      {epic ? (
-        <span className="hidden max-w-36 shrink-0 items-center gap-1 truncate rounded-full border px-2 py-0.5 text-caption text-muted-foreground sm:inline-flex">
-          <span className="size-2 shrink-0 rounded-sm" style={{ backgroundColor: epic.color }} />
-          <span className="truncate">{epic.title}</span>
-        </span>
-      ) : null}
+      <span className="hidden w-24 shrink-0 truncate text-right text-caption text-muted-foreground md:inline">
+        {labelOf(issue.status)}
+      </span>
+      {/* Fixed-width column so the chips and avatars line up down the list. */}
+      <span className="hidden w-36 shrink-0 sm:flex">
+        {sprint ? (
+          <span className="inline-flex min-w-0 items-center gap-1 rounded-full border px-2 py-0.5 text-caption text-muted-foreground">
+            <Timer className="size-3 shrink-0" />
+            <span className="truncate">{sprint.name}</span>
+          </span>
+        ) : null}
+        {epic ? (
+          <span className="inline-flex min-w-0 items-center gap-1 rounded-full border px-2 py-0.5 text-caption text-muted-foreground">
+            <span className="size-2 shrink-0 rounded-sm" style={{ backgroundColor: epic.color }} />
+            <span className="truncate">{epic.title}</span>
+          </span>
+        ) : null}
+      </span>
       <span className="flex w-5 shrink-0 justify-end">
         {issue.assignee_type && issue.assignee_id ? (
           <ActorAvatar actorType={issue.assignee_type} actorId={issue.assignee_id} size="sm" />

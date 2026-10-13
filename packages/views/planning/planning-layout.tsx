@@ -11,6 +11,7 @@ export function PlanningLayout({
   summaryLabel,
 }: {
   main: React.ReactNode;
+  /** Omit when there is nothing to summarize; the column is then not drawn. */
   summary: React.ReactNode;
   summaryLabel: string;
 }) {
@@ -19,12 +20,14 @@ export function PlanningLayout({
       <div className="min-w-0 flex-1 lg:overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-6">{main}</div>
       </div>
-      <aside
-        aria-label={summaryLabel}
-        className="shrink-0 space-y-6 border-t px-6 py-6 lg:w-80 lg:overflow-y-auto lg:border-t-0 lg:border-l lg:px-5"
-      >
-        {summary}
-      </aside>
+      {summary ? (
+        <aside
+          aria-label={summaryLabel}
+          className="shrink-0 space-y-6 border-t px-6 py-6 lg:w-80 lg:overflow-y-auto lg:border-t-0 lg:border-l lg:px-5"
+        >
+          {summary}
+        </aside>
+      ) : null}
     </div>
   );
 }
