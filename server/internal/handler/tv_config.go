@@ -19,6 +19,9 @@ type TVConfig struct {
 	// This many failed runs inside FailedBurstWindow raise failed_burst.
 	FailedBurst       int
 	FailedBurstWindow time.Duration
+	// Two active runs on one issue are a duplicate only once they have run
+	// together this long; a hand-off between agents overlaps for seconds.
+	DuplicateRunAfter time.Duration
 	// OOM-killed runs inside this window keep the oom signal raised.
 	OOMWindow time.Duration
 	// Failed autopilot runs inside this window raise autopilot.
@@ -51,6 +54,7 @@ func DefaultTVConfig() TVConfig {
 		StallAfter:        10 * time.Minute,
 		FailedBurst:       5,
 		FailedBurstWindow: 10 * time.Minute,
+		DuplicateRunAfter: 2 * time.Minute,
 		OOMWindow:         15 * time.Minute,
 		AutopilotWindow:   30 * time.Minute,
 		MinimumsHours:     24,
@@ -64,6 +68,7 @@ type tvConfigJSON struct {
 	StallMinutes             *int                         `json:"stall_minutes"`
 	FailedBurst              *int                         `json:"failed_burst"`
 	FailedBurstWindowMinutes *int                         `json:"failed_burst_window_minutes"`
+	DuplicateRunMinutes      *int                         `json:"duplicate_run_minutes"`
 	OOMWindowMinutes         *int                         `json:"oom_window_minutes"`
 	AutopilotWindowMinutes   *int                         `json:"autopilot_window_minutes"`
 	MinimumsHours            *int                         `json:"minimums_hours"`
@@ -108,6 +113,7 @@ func ParseTVConfig(raw string, getenv func(string) string) (TVConfig, error) {
 		positive("stall_minutes", in.StallMinutes, minutes(&cfg.StallAfter)),
 		positive("failed_burst", in.FailedBurst, func(v int) { cfg.FailedBurst = v }),
 		positive("failed_burst_window_minutes", in.FailedBurstWindowMinutes, minutes(&cfg.FailedBurstWindow)),
+		positive("duplicate_run_minutes", in.DuplicateRunMinutes, minutes(&cfg.DuplicateRunAfter)),
 		positive("oom_window_minutes", in.OOMWindowMinutes, minutes(&cfg.OOMWindow)),
 		positive("autopilot_window_minutes", in.AutopilotWindowMinutes, minutes(&cfg.AutopilotWindow)),
 		positive("minimums_hours", in.MinimumsHours, func(v int) { cfg.MinimumsHours = v }),

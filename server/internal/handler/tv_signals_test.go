@@ -18,19 +18,19 @@ func TestParseTVConfig(t *testing.T) {
 	getenv := func(k string) string { return env[k] }
 
 	cfg, err := ParseTVConfig("", getenv)
-	if err != nil || cfg.HostCeiling != 12 || cfg.StallAfter != 10*time.Minute || cfg.FailedBurst != 5 || cfg.MinimumsPercent != 70 {
+	if err != nil || cfg.HostCeiling != 12 || cfg.StallAfter != 10*time.Minute || cfg.FailedBurst != 5 || cfg.DuplicateRunAfter != 2*time.Minute || cfg.MinimumsPercent != 70 {
 		t.Fatalf("defaults: %+v %v", cfg, err)
 	}
 
 	cfg, err = ParseTVConfig(`{
-		"host_ceiling": 8, "stall_minutes": 15, "failed_burst": 3, "minimums_percent": 60,
+		"host_ceiling": 8, "stall_minutes": 15, "failed_burst": 3, "duplicate_run_minutes": 5, "minimums_percent": 60,
 		"watched_daemons": [" srv-a ", "", "srv-b"],
 		"probes": {"llm": {"url": " http://llm.test/health ", "bearer_env": "TV_LLM_TOKEN"}, "site": {"url": ""}}
 	}`, getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.HostCeiling != 8 || cfg.StallAfter != 15*time.Minute || cfg.FailedBurst != 3 || cfg.MinimumsPercent != 60 || cfg.OOMWindow != 15*time.Minute {
+	if cfg.HostCeiling != 8 || cfg.StallAfter != 15*time.Minute || cfg.FailedBurst != 3 || cfg.MinimumsPercent != 60 || cfg.DuplicateRunAfter != 5*time.Minute || cfg.OOMWindow != 15*time.Minute {
 		t.Fatalf("overrides: %+v", cfg)
 	}
 	if strings.Join(cfg.WatchedDaemons, ",") != "srv-a,srv-b" {
@@ -104,7 +104,7 @@ func TestTvWorkAndAutopilotSignals(t *testing.T) {
 	// A run on the issue and one on its sub-issue (work and its review) are
 	// normal; a second run on the same issue is a duplicate.
 	child := dbfx.Issue(t, "tv signals child", testutil.Cols{"parent_issue_id": issue})
-	dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
+	dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now().Add(-10 * time.Minute)})
 	dbfx.Task(t, agent, testutil.Cols{"issue_id": child, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
 	signals, err = testHandler.tvWorkSignals(ctx, ws, time.Now(), cfg)
 	if err != nil {
@@ -126,12 +126,22 @@ func TestTvWorkAndAutopilotSignals(t *testing.T) {
 	if signals[2].Status != tvHealthOK {
 		t.Fatalf("chat runs are not a duplicate: %+v", signals[2])
 	}
+	// A second agent picks the same issue up while the first run is still
+	// finishing. Overlapping for 30 s is a hand-off, not a duplicate.
 	other := dbfx.Agent(t, "tv signals second agent", runtime)
-	dbfx.Task(t, other, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
+	dbfx.Task(t, other, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now().Add(-30 * time.Second)})
+	signals, err = testHandler.tvWorkSignals(ctx, ws, time.Now(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals[2].Status != tvHealthOK {
+		t.Fatalf("a 30 s hand-off is not a duplicate: %+v", signals[2])
+	}
 	for _, n := range []int{1, 2} {
 		dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "status": "failed", "error": "boom " + strings.Repeat("x", n), "completed_at": time.Now().Add(-time.Minute)})
 	}
-	signals, err = testHandler.tvWorkSignals(ctx, ws, time.Now(), cfg)
+	// Both runs are still going 2.5 min later: 3 min together is a duplicate.
+	signals, err = testHandler.tvWorkSignals(ctx, ws, time.Now().Add(150*time.Second), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
