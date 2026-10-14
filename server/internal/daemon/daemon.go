@@ -2108,6 +2108,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 		// without it an operator cannot read the tool budget actually in effect.
 		"tool_watchdog", d.cfg.AgentToolWatchdog,
 		"opencode_idle_watchdog", d.cfg.OpenCodeIdleWatchdog,
+		"claude_resume_max_idle", d.cfg.ClaudeResumeMaxIdle,
+		"claude_resume_max_idle_chat", d.cfg.ClaudeResumeMaxIdleChat,
 		// Derived from the watchdog budget too (Codex's own timer is not
 		// tool-aware), so it needs the same treatment as tool_watchdog: without
 		// it the effective Codex budget is invisible until a timeout fires.
@@ -6896,6 +6898,49 @@ func gateCodexResumeToRolloutPresence(task *Task, taskCtx *execenv.TaskContextFo
 	task.PriorSessionResumeUnavailable = true
 }
 
+// claudeResumeMaxIdleFor picks the idle bound for this task: chats and issue
+// runs are switched separately (RUSL-1741).
+func (d *Daemon) claudeResumeMaxIdleFor(task Task) time.Duration {
+	if task.ChatSessionID != "" {
+		return d.cfg.ClaudeResumeMaxIdleChat
+	}
+	return d.cfg.ClaudeResumeMaxIdle
+}
+
+// gateClaudeResumeToMaxIdle drops the prior Claude session when its transcript
+// was last written more than maxIdle ago (RUSL-1741). By then the provider's
+// prompt cache has expired, and the first request of a resumed run writes the
+// whole history into the cache again. The drop takes the same path as an
+// unreachable session store: the prompt is built cold and carries the
+// continuity notice. maxIdle <= 0 disables the gate. When the last activity
+// cannot be read (no transcript file), the resume is left alone — the backend
+// already falls back to a fresh session if Claude cannot find it.
+func gateClaudeResumeToMaxIdle(task *Task, taskCtx *execenv.TaskContextForEnv, maxIdle time.Duration, now time.Time, lastActivity func() (time.Time, error), taskLog *slog.Logger) bool {
+	if maxIdle <= 0 || task.PriorSessionID == "" {
+		return false
+	}
+	last, err := lastActivity()
+	if err != nil {
+		taskLog.Info("resume idle check skipped: last session activity unknown",
+			"session_id", task.PriorSessionID, "error", err)
+		return false
+	}
+	idle := now.Sub(last)
+	if idle <= maxIdle {
+		return false
+	}
+	taskLog.Info(fmt.Sprintf("resume skipped: idle %s > %s", idle.Round(time.Minute), maxIdle),
+		"session_id", task.PriorSessionID,
+		"idle", idle.Round(time.Second),
+		"max_idle", maxIdle,
+	)
+	task.PriorSessionID = ""
+	taskCtx.PriorSessionResumed = false
+	taskCtx.PriorSessionResumeUnavailable = true
+	task.PriorSessionResumeUnavailable = true
+	return true
+}
+
 const (
 	// codexRolloutFlushWait bounds how long the daemon waits for Codex to finish
 	// writing a session's rollout into the per-task store before treating that
@@ -8428,6 +8473,19 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// conversation Codex will silently restart from scratch.
 	if resumeReachable {
 		gateCodexResumeToRolloutPresence(&task, &taskCtx, provider, env.CodexHome, taskLog)
+	}
+	// RUSL-1741: a Claude session idle past the prompt cache TTL costs more to
+	// resume than to restart. Dropped here, before the brief and prompt are
+	// built, so the fresh session gets the cold prompt with the full reads.
+	if resumeReachable && provider == "claude" && task.PriorSessionID != "" {
+		var customEnv map[string]string
+		if task.Agent != nil {
+			customEnv = sanitizeAgentEnv(task.Agent.CustomEnv)
+		}
+		gateClaudeResumeToMaxIdle(&task, &taskCtx, d.claudeResumeMaxIdleFor(task), time.Now(),
+			func() (time.Time, error) {
+				return agent.ClaudeSessionLastActivity(customEnv, env.WorkDir, task.PriorSessionID)
+			}, taskLog)
 	}
 
 	// Inject runtime-specific config (meta skill) so the agent discovers .agent_context/.

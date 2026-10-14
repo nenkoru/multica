@@ -158,6 +158,13 @@ type Config struct {
 	QwenArgs                    []string
 	QwenpawArgs                 []string
 
+	// ClaudeResumeMaxIdle / ClaudeResumeMaxIdleChat bound how stale a Claude
+	// session may be and still be resumed (RUSL-1741). Past the prompt cache
+	// TTL a resume re-writes the whole transcript into the cache, which costs
+	// more than a fresh session that re-reads the issue. 0 = always resume.
+	ClaudeResumeMaxIdle     time.Duration
+	ClaudeResumeMaxIdleChat time.Duration
+
 	// ProfileCommandOverrides maps a custom runtime profile_id -> the absolute
 	// executable path to use for that profile on THIS machine (MUL-3284).
 	// Sourced from the local CLI config (cli.CLIConfig.ProfileCommandOverrides),
@@ -343,6 +350,18 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	// cannot extend the global bound, and the global zero still disables the
 	// whole mechanism.
 	openCodeIdleWatchdog, err := durationFromEnv("MULTICA_OPENCODE_IDLE_WATCHDOG", DefaultOpenCodeIdleWatchdog)
+	if err != nil {
+		return Config{}, err
+	}
+	// RUSL-1741: start a fresh Claude session instead of resuming one idle
+	// longer than this. Unset or 0 keeps the upstream behaviour (always
+	// resume). Chats have their own switch, off by default: a chat without its
+	// history can lose the thread of the conversation.
+	claudeResumeMaxIdle, err := durationFromEnv("MULTICA_CLAUDE_RESUME_MAX_IDLE", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	claudeResumeMaxIdleChat, err := durationFromEnv("MULTICA_CLAUDE_RESUME_MAX_IDLE_CHAT", 0)
 	if err != nil {
 		return Config{}, err
 	}
@@ -660,6 +679,8 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		CodexTurnInterruptTimeout:       codexTurnInterruptTimeout,
 		CodexThreadHandshakeTimeout:     codexThreadHandshakeTimeout,
 		OpenCodeIdleWatchdog:            openCodeIdleWatchdog,
+		ClaudeResumeMaxIdle:             claudeResumeMaxIdle,
+		ClaudeResumeMaxIdleChat:         claudeResumeMaxIdleChat,
 		AgentIdleWatchdog:               agentIdleWatchdog,
 		AgentToolWatchdog:               agentToolWatchdog,
 		ClaudeArgs:                      claudeArgs,

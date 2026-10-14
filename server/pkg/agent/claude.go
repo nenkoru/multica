@@ -880,6 +880,27 @@ func (s *claudeUsageSnapshot) appendedCostStateUsage() (map[string]TokenUsage, b
 	return readLastClaudeCostStateUsage(f, s.offset, info.Size())
 }
 
+// ClaudeSessionLastActivity reports when the Claude Code transcript of
+// sessionID was last written, locating it the way the backend does (the
+// daemon environment overlaid with extraEnv, then CLAUDE_CONFIG_DIR or HOME).
+// The daemon uses it to skip resuming sessions whose prompt cache has expired
+// (RUSL-1741).
+func ClaudeSessionLastActivity(extraEnv map[string]string, cwd, sessionID string) (time.Time, error) {
+	configDir, err := claudeConfigDir(buildEnv(extraEnv), cwd)
+	if err != nil {
+		return time.Time{}, err
+	}
+	path, err := findClaudeSessionFile(configDir, sessionID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("stat Claude session: %w", err)
+	}
+	return info.ModTime(), nil
+}
+
 func claudeConfigDir(env []string, cwd string) (string, error) {
 	if value, ok := lastClaudeEnvValue(env, "CLAUDE_CONFIG_DIR"); ok && value != "" {
 		return resolveClaudeConfigPath(value, cwd)
