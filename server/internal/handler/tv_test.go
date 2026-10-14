@@ -65,7 +65,7 @@ func TestKioskTokenLifecycle(t *testing.T) {
 			cookie = c
 		}
 	}
-	if cookie == nil || !cookie.HttpOnly || cookie.Value != created.Token {
+	if cookie == nil || !cookie.HttpOnly || cookie.Value != created.Token || cookie.Path != auth.KioskCookiePath {
 		t.Fatalf("kiosk cookie = %+v", cookie)
 	}
 	byCookie := tvRequest("GET", "/api/tv/overview", "", nil)
@@ -155,6 +155,8 @@ func TestTVOverviewAggregates(t *testing.T) {
 	fx.Task(t, runtimeAgent, testutil.Cols{"status": "running", "runtime_id": runtime, "issue_id": newest, "started_at": ago(time.Minute)})
 	fx.Task(t, runtimeAgent, testutil.Cols{"status": "failed", "issue_id": second, "completed_at": ago(10 * time.Minute), "failure_reason": "timeout", "error": "SECRET-ERROR"})
 	fx.Task(t, runtimeAgent, testutil.Cols{"status": "failed", "issue_id": second, "completed_at": ago(48 * time.Hour), "failure_reason": "timeout"})
+	// A failed chat run (no issue) stays off the screen.
+	fx.Task(t, runtimeAgent, testutil.Cols{"status": "failed", "completed_at": ago(5 * time.Minute), "failure_reason": "timeout"})
 
 	resp := testutil.Call(t, testHandler.GetTVOverview, tvRequest("GET", "/api/tv/overview", raw, nil)).Want(http.StatusOK)
 	body := resp.Text()

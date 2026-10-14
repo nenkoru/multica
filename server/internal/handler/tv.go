@@ -758,7 +758,8 @@ SELECT kind, at, number, title, actor, reason FROM (
   FROM agent_task_queue q
   JOIN agent ag ON ag.id = q.agent_id
   LEFT JOIN issue i ON i.id = q.issue_id
-  WHERE ag.workspace_id = $1 AND q.status = 'failed' AND q.completed_at >= $2
+  -- Issue runs only: a chat run is private to its member.
+  WHERE ag.workspace_id = $1 AND q.status = 'failed' AND q.completed_at >= $2 AND q.issue_id IS NOT NULL
 ) feed
 ORDER BY at DESC
 LIMIT %[5]d`, planningBucketExpr, tvSinceExpr, tvAssigneeName, tvAssigneeJoin, tvFeedLimit), wsID, since)

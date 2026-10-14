@@ -16,9 +16,6 @@ func TestAuth_KioskCredentialsAreForbidden(t *testing.T) {
 		{"bearer kiosk token", func(r *http.Request) {
 			r.Header.Set("Authorization", "Bearer "+auth.KioskTokenPrefix+"0123456789abcdef")
 		}},
-		{"kiosk cookie alone", func(r *http.Request) {
-			r.AddCookie(&http.Cookie{Name: auth.KioskCookieName, Value: auth.KioskTokenPrefix + "0123456789abcdef"})
-		}},
 	}
 	for _, tc := range cases {
 		for _, method := range []string{http.MethodGet, http.MethodPost} {
@@ -49,5 +46,20 @@ func TestAuth_KioskCookieDoesNotShadowSession(t *testing.T) {
 	handler.ServeHTTP(w, req)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected the session to authenticate, got %d", w.Code)
+	}
+}
+
+// A browser that once paired a TV screen must still reach the sign-in flow:
+// the frontend ends a session only on 401.
+func TestAuth_KioskCookieAloneIsUnauthenticated(t *testing.T) {
+	handler := authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called")
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.AddCookie(&http.Cookie{Name: auth.KioskCookieName, Value: auth.KioskTokenPrefix + "0123456789abcdef"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
 }

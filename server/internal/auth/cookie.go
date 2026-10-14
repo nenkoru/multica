@@ -387,13 +387,18 @@ func ValidateCSRF(r *http.Request) bool {
 	})
 }
 
-// SetKioskCookie stores a kiosk token in an HttpOnly cookie, with the same
-// domain and Secure rules as the session cookie. maxAge < 0 clears it.
+// KioskCookiePath scopes the kiosk cookie to the TV routes, so it never rides
+// along with requests to the rest of the API.
+const KioskCookiePath = "/api/tv"
+
+// SetKioskCookie stores a kiosk token in an HttpOnly cookie scoped to
+// KioskCookiePath, with the same domain and Secure rules as the session
+// cookie. maxAge < 0 clears it.
 func SetKioskCookie(w http.ResponseWriter, token string, maxAge time.Duration) {
 	cookie := &http.Cookie{
 		Name:     KioskCookieName,
 		Value:    token,
-		Path:     "/",
+		Path:     KioskCookiePath,
 		Domain:   cookieDomain(),
 		HttpOnly: true,
 		Secure:   isSecureCookie(),
