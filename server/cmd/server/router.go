@@ -2165,6 +2165,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.ListKioskTokens)
 				r.Post("/", h.CreateKioskToken)
 				r.Delete("/{id}", h.RevokeKioskToken)
+				r.Post("/{id}/pairing", h.CreateKioskPairing)
 			})
 
 			// Epics

@@ -125,9 +125,14 @@ func (h *Handler) ResolveKioskToken(ctx context.Context, raw string) (KioskSessi
 	if !strings.HasPrefix(raw, auth.KioskTokenPrefix) {
 		return s, ErrKioskTokenInvalid
 	}
+	// A device token (paired through a one-time code) lives as long as its
+	// parent token and takes the owner label from it.
 	err := h.DB.QueryRow(ctx, `
-SELECT id, workspace_id, owner_label FROM kiosk_token
-WHERE token_hash = $1 AND revoked_at IS NULL`, auth.HashToken(raw)).Scan(&s.TokenID, &s.WorkspaceID, &s.OwnerLabel)
+SELECT t.id, t.workspace_id, COALESCE(p.owner_label, t.owner_label)
+FROM kiosk_token t
+LEFT JOIN kiosk_token p ON p.id = t.parent_id
+WHERE t.token_hash = $1 AND t.revoked_at IS NULL
+  AND (t.parent_id IS NULL OR (p.id IS NOT NULL AND p.revoked_at IS NULL))`, auth.HashToken(raw)).Scan(&s.TokenID, &s.WorkspaceID, &s.OwnerLabel)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return s, ErrKioskTokenInvalid
 	}
@@ -183,6 +188,7 @@ type KioskTokenResponse struct {
 	Name        string  `json:"name"`
 	TokenPrefix string  `json:"token_prefix"`
 	OwnerLabel  string  `json:"owner_label"`
+	ParentID    *string `json:"parent_id"`
 	CreatedAt   string  `json:"created_at"`
 	LastUsedAt  *string `json:"last_used_at"`
 	RevokedAt   *string `json:"revoked_at"`
@@ -211,21 +217,23 @@ func scanKioskToken(row pgx.Row) (KioskTokenResponse, error) {
 	var (
 		out       KioskTokenResponse
 		id        pgtype.UUID
+		parentID  pgtype.UUID
 		createdAt pgtype.Timestamptz
 		lastUsed  pgtype.Timestamptz
 		revoked   pgtype.Timestamptz
 	)
-	if err := row.Scan(&id, &out.Name, &out.TokenPrefix, &out.OwnerLabel, &createdAt, &lastUsed, &revoked); err != nil {
+	if err := row.Scan(&id, &out.Name, &out.TokenPrefix, &out.OwnerLabel, &parentID, &createdAt, &lastUsed, &revoked); err != nil {
 		return out, err
 	}
 	out.ID = uuidToString(id)
+	out.ParentID = uuidToPtr(parentID)
 	out.CreatedAt = timestampToString(createdAt)
 	out.LastUsedAt = timestampToPtr(lastUsed)
 	out.RevokedAt = timestampToPtr(revoked)
 	return out, nil
 }
 
-const kioskTokenColumns = `id, name, token_prefix, owner_label, created_at, last_used_at, revoked_at`
+const kioskTokenColumns = `id, name, token_prefix, owner_label, parent_id, created_at, last_used_at, revoked_at`
 
 func (h *Handler) CreateKioskToken(w http.ResponseWriter, r *http.Request) {
 	wsID, userID, ok := h.requireKioskAdmin(w, r)
@@ -314,11 +322,100 @@ WHERE id = $1 AND workspace_id = $2`, id, wsID)
 }
 
 // ---------------------------------------------------------------------------
+// One-time pairing codes (link or QR for a phone or TV)
+// ---------------------------------------------------------------------------
+
+const tvPairingTTL = 15 * time.Minute
+
+type KioskPairingResponse struct {
+	Code      string `json:"code"`
+	ExpiresAt string `json:"expires_at"`
+	// Path is relative to the web app; URL is absolute when the server knows
+	// its public web origin.
+	Path string `json:"path"`
+	URL  string `json:"url"`
+}
+
+// CreateKioskPairing issues a single-use code for a top-level kiosk token.
+// Redeeming it at POST /api/tv/session mints a device token under that
+// token; the code itself dies on first use or after tvPairingTTL.
+func (h *Handler) CreateKioskPairing(w http.ResponseWriter, r *http.Request) {
+	wsID, userID, ok := h.requireKioskAdmin(w, r)
+	if !ok {
+		return
+	}
+	tokenID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "token id")
+	if !ok {
+		return
+	}
+	var exists bool
+	if err := h.DB.QueryRow(r.Context(), `
+SELECT EXISTS (SELECT 1 FROM kiosk_token
+  WHERE id = $1 AND workspace_id = $2 AND parent_id IS NULL AND revoked_at IS NULL)`, tokenID, wsID).Scan(&exists); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check token")
+		return
+	}
+	if !exists {
+		writeError(w, http.StatusNotFound, "token not found")
+		return
+	}
+	code, err := auth.GenerateKioskPairingCode()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate code")
+		return
+	}
+	var expiresAt pgtype.Timestamptz
+	if err := h.DB.QueryRow(r.Context(), `
+INSERT INTO kiosk_pairing (workspace_id, token_id, code_hash, expires_at, created_by)
+VALUES ($1, $2, $3, now() + make_interval(secs => $4), $5)
+RETURNING expires_at`, wsID, tokenID, auth.HashToken(code), tvPairingTTL.Seconds(), parseUUID(userID)).Scan(&expiresAt); err != nil {
+		slog.Error("create kiosk pairing failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to create pairing code")
+		return
+	}
+	resp := KioskPairingResponse{Code: code, ExpiresAt: timestampToString(expiresAt), Path: "/tv#pair=" + code}
+	if app := resolveFrontendAppURL(); app != "" {
+		resp.URL = app + resp.Path
+	}
+	writeJSON(w, http.StatusCreated, resp)
+}
+
+// redeemKioskPairing consumes a pairing code and returns a new device token.
+func (h *Handler) redeemKioskPairing(ctx context.Context, code string) (string, error) {
+	raw, err := auth.GenerateKioskToken()
+	if err != nil {
+		return "", err
+	}
+	// One statement: the code is consumed only if the device token is made.
+	var deviceID pgtype.UUID
+	err = h.DB.QueryRow(ctx, `
+WITH used AS (
+  UPDATE kiosk_pairing kp SET used_at = now()
+  FROM kiosk_token t
+  WHERE kp.code_hash = $1 AND kp.used_at IS NULL AND kp.expires_at > now()
+    AND t.id = kp.token_id AND t.revoked_at IS NULL AND t.parent_id IS NULL
+  RETURNING t.id, t.workspace_id, t.name
+)
+INSERT INTO kiosk_token (workspace_id, name, token_hash, token_prefix, parent_id)
+SELECT workspace_id, name || ' · device', $2, $3, id FROM used
+RETURNING id`, auth.HashToken(code), auth.HashToken(raw), raw[:12]).Scan(&deviceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrKioskTokenInvalid
+	}
+	if err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+// ---------------------------------------------------------------------------
 // Kiosk session: one-time exchange of the token for an HttpOnly cookie
 // ---------------------------------------------------------------------------
 
 type CreateTVSessionRequest struct {
 	Token string `json:"token"`
+	// Code is a one-time pairing code; it is used instead of Token.
+	Code string `json:"code"`
 }
 
 // CreateTVSession trades a kiosk token sent in the body for the kiosk cookie,
@@ -330,6 +427,19 @@ func (h *Handler) CreateTVSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := strings.TrimSpace(req.Token)
+	if code := strings.TrimSpace(req.Code); code != "" {
+		minted, err := h.redeemKioskPairing(r.Context(), code)
+		if errors.Is(err, ErrKioskTokenInvalid) {
+			writeError(w, http.StatusUnauthorized, "invalid or used pairing code")
+			return
+		}
+		if err != nil {
+			slog.Error("kiosk pairing redeem failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to redeem pairing code")
+			return
+		}
+		token = minted
+	}
 	if _, err := h.ResolveKioskToken(r.Context(), token); err != nil {
 		if errors.Is(err, ErrKioskTokenInvalid) {
 			writeError(w, http.StatusUnauthorized, "invalid kiosk token")

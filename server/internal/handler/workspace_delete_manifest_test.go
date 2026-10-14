@@ -115,6 +115,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"epic":                               workspaceDelete,
 	"sprint":                             workspaceDelete,
 	"kiosk_token":                        workspaceDelete,
+	"kiosk_pairing":                      workspaceDelete,
 	"project_resource":                   workspaceDelete,
 	"quick_action":                       workspaceDelete,
 	"runtime_profile":                    workspaceDelete,
