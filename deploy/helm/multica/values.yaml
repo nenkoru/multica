@@ -61,6 +61,8 @@ postgres:
     size: 10Gi
     # Leave empty to use the cluster's default StorageClass.
     storageClass: ""
+    # Keep the PVC when the release is uninstalled (helm.sh/resource-policy: keep).
+    keep: false
   resources:
     requests:
       cpu: 100m
@@ -108,6 +110,8 @@ backend:
       # backend replicas without S3.
       accessModes:
         - ReadWriteOnce
+      # Keep the PVC when the release is uninstalled (helm.sh/resource-policy: keep).
+      keep: false
   # Extra CA certificates for the backend's outbound HTTPS — e.g. a self-hosted
   # Gitea / Forgejo / GitLab whose certificate comes from an internal CA. Set
   # configMap to an existing ConfigMap in the release namespace whose keys are
@@ -118,6 +122,18 @@ backend:
   # `kubectl rollout restart` after updating it.
   extraCACerts:
     configMap: ""
+  # Extra non-secret backend env, added to the release ConfigMap as is — for
+  # settings the chart has no field for, e.g. MULTICA_PLANNING_ENABLED or the
+  # TV screen's MULTICA_TV_CONFIG JSON. Values must be strings. Secrets belong
+  # in `existingSecret`, never here.
+  extraEnv: {}
+  # Alarm sounds of the TV screen (/tv). List existing ConfigMaps in the release
+  # namespace whose keys are the sound files; several are merged into one
+  # read-only directory (a ConfigMap holds at most 1 MiB). The chart mounts it
+  # at mountPath and sets MULTICA_TV_SOUNDS_DIR. Empty disables the sounds.
+  tvSounds:
+    configMaps: []
+    mountPath: /app/tv-sounds
   # All non-secret backend env. Secret values come from `existingSecret`.
   config:
     # Optional container-loopback maintenance API; empty disables it. Never expose via Service/Ingress.
