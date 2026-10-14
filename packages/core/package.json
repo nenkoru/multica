@@ -94,6 +94,7 @@
     "./plugins/queries": "./plugins/queries.ts",
     "./plugins/mutations": "./plugins/mutations.ts",
     "./planning": "./planning/index.ts",
+    "./tv": "./tv/index.ts",
     "./epics": "./epics/index.ts",
     "./epics/queries": "./epics/queries.ts",
     "./epics/mutations": "./epics/mutations.ts",
