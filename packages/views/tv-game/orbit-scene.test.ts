@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { emptySnapshot, type TvGameSnapshot } from "./model";
-import { MAX_PLANETS, RING_PERIOD_MS, SATELLITE_R, buildOrbit, layoutLabels, type OrbitLabelPlace } from "./orbit-scene";
+import { MAX_PLANETS, RING_PERIOD_MS, SATELLITE_R, SETTLE_MS, buildOrbit, layoutLabels, type OrbitLabelPlace } from "./orbit-scene";
 
 const NOW = Date.UTC(2026, 9, 14, 9, 0, 0);
 const fresh = new Date(NOW - 60_000).toISOString();
@@ -138,11 +138,19 @@ describe("layoutLabels", () => {
   it("keeps a label on the side it had while that side stays free", () => {
     const scene = alone(195, 100);
     expect(layoutLabels(scene, measure, px)[0]!.side).toBe("below");
-    const memory = new Map<string, OrbitLabelPlace>([["e4", { side: "above", variant: 0 }]]);
+    const memory = new Map<string, OrbitLabelPlace>([["e4", { side: "above", variant: 0, since: 0 }]]);
     expect(layoutLabels(scene, measure, px, memory)[0]!.side).toBe("above");
     // Close to the top edge "above" no longer fits: the label moves and the
     // memory follows it.
     expect(layoutLabels(alone(195, 20), measure, px, memory)[0]!.side).toBe("below");
-    expect(memory.get("e4")).toEqual({ side: "below", variant: 0 });
+    expect(memory.get("e4")).toEqual({ side: "below", variant: 0, since: 0 });
+  });
+
+  it("grows a shortened label back only after it has settled", () => {
+    const scene = alone(195, 100);
+    const memory = new Map<string, OrbitLabelPlace>([["e4", { side: "below", variant: 1, since: 0 }]]);
+    expect(layoutLabels(scene, measure, px, memory, SETTLE_MS - 1)[0]!.text).toBe("Автоматич… · 8");
+    expect(layoutLabels(scene, measure, px, memory, SETTLE_MS)[0]!.text).toBe(scene.planets[0]!.label);
+    expect(memory.get("e4")).toEqual({ side: "below", variant: 0, since: SETTLE_MS });
   });
 });

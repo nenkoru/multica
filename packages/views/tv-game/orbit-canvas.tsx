@@ -68,7 +68,7 @@ function draw(
     ctx.font = `500 ${labelPx}px system-ui, sans-serif`;
     ctx.fillStyle = "#9fb4c8";
     const dim = new Set(scene.planets.filter((p) => p.dim).map((p) => p.id));
-    for (const label of layoutLabels(scene, (text) => ctx.measureText(text).width, labelPx, labelPlaces)) {
+    for (const label of layoutLabels(scene, (text) => ctx.measureText(text).width, labelPx, labelPlaces, t)) {
       ctx.globalAlpha = dim.has(label.planetId) ? 0.45 : 1;
       ctx.fillText(label.text, label.x, label.y);
     }

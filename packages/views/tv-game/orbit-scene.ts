@@ -227,10 +227,14 @@ function planetReach(p: OrbitPlanet, unit: number): Circle {
 export interface OrbitLabelPlace {
   side: OrbitLabelSide;
   variant: number;
+  /** When the label took this place, ms on the caller's clock. */
+  since: number;
 }
 
 /** Extra clearance a label needs to move somewhere better than where it sits. */
 const SETTLE_PX = 8;
+/** A label that fits where it is stays there at least this long. */
+export const SETTLE_MS = 4_000;
 
 /**
  * Places planet labels (RUSL-1818): inside the stage, clear of the orb, of
@@ -239,38 +243,40 @@ const SETTLE_PX = 8;
  * label slides sideways to stay on screen, and a long title is shortened
  * before the label is given up. Inner (busier) planets choose first.
  * `memory` keeps each label where it was between frames while that place is
- * free; it grows back to a longer text only with room to spare, so labels do
- * not flicker as the planets pass each other.
+ * free; it moves or grows back to a longer text only after SETTLE_MS there
+ * and with room to spare, so labels do not flicker as planets pass each other.
  */
 export function layoutLabels(
   scene: OrbitScene,
   measure: (text: string) => number,
   fontPx: number,
   memory?: Map<string, OrbitLabelPlace>,
+  now = 0,
 ): OrbitLabel[] {
   const { width, height } = scene;
   const unit = Math.min(width, height);
-  const obstacles: Circle[] = [
-    { x: scene.cx, y: scene.cy, r: scene.orbR * 1.1 },
-    ...scene.planets.map((p) => planetReach(p, unit)),
-  ];
+  const orb: Circle = { x: scene.cx, y: scene.cy, r: scene.orbR * 1.1 };
+  const reaches = new Map(scene.planets.map((p) => [p.id, planetReach(p, unit)]));
   const placed: Box[] = [];
   const labels: OrbitLabel[] = [];
   const h = fontPx + 2 * LABEL_PAD;
-  const fits = (b: Box, m: number) => {
+  // The margin applies to everything but the label's own planet, which the
+  // candidate boxes already sit next to.
+  const fits = (b: Box, m: number, own: string) => {
     const grown = { x0: b.x0 - m, x1: b.x1 + m, y0: b.y0 - m, y1: b.y1 + m };
     return (
       b.x0 >= EDGE &&
       b.x1 <= width - EDGE &&
       b.y0 >= EDGE &&
       b.y1 <= height - EDGE &&
-      !obstacles.some((c) => hitsCircle(grown, c)) &&
+      !hitsCircle(grown, orb) &&
+      ![...reaches].some(([id, c]) => hitsCircle(id === own ? b : grown, c)) &&
       !placed.some((o) => hitsBox(grown, o))
     );
   };
 
   for (const p of scene.planets) {
-    const reach = planetReach(p, unit).r + 2;
+    const reach = reaches.get(p.id)!.r + 2;
     const texts = [p.label, `${truncate(p.title, 10)} · ${p.open}`, `${truncate(p.title, 6)} · ${p.open}`];
     const boxAt = (variant: number, side: OrbitLabelSide): Box => {
       const w = measure(texts[variant]!) + 2 * LABEL_PAD;
@@ -283,12 +289,15 @@ export function layoutLabels(
     const order = last ? [last.side, ...SIDES.filter((side) => side !== last.side)] : SIDES;
     const search = (variants: number, margin: number): OrbitLabelPlace | null => {
       for (let variant = 0; variant < variants; variant++) {
-        for (const side of order) if (fits(boxAt(variant, side), margin)) return { side, variant };
+        for (const side of order) if (fits(boxAt(variant, side), margin, p.id)) return { side, variant, since: now };
       }
       return null;
     };
+    const stays = last && fits(boxAt(last.variant, last.side), 0, p.id);
+    const settled = !last || now - last.since >= SETTLE_MS;
     const place =
-      (last && (search(last.variant, SETTLE_PX) ?? (fits(boxAt(last.variant, last.side), 0) ? last : null))) ??
+      (last && settled && last.variant > 0 ? search(last.variant, SETTLE_PX) : null) ??
+      (stays ? last : null) ??
       search(texts.length, 0);
     if (!place) {
       memory?.delete(p.id);
