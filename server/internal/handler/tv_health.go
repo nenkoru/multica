@@ -259,7 +259,10 @@ SELECT
   count(*) FILTER (WHERE status = 'failed'),
   min(completed_at) FILTER (WHERE status = 'failed'),
   (SELECT count(*) FROM (
-     SELECT issue_id FROM q WHERE status IN ('dispatched', 'running') GROUP BY issue_id HAVING count(*) > 1
+     SELECT issue_id FROM q
+     -- Chat runs have no issue; GROUP BY would lump them together.
+     WHERE status IN ('dispatched', 'running') AND issue_id IS NOT NULL
+     GROUP BY issue_id HAVING count(*) > 1
    ) d)
 FROM q`, ws, now.Add(-cfg.StallAfter), now.Add(-cfg.FailedBurstWindow)).Scan(
 		&running, &waiting, &oldestWaiting, &failed, &firstFailed, &duplicates)

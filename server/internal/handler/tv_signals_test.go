@@ -113,6 +113,19 @@ func TestTvWorkAndAutopilotSignals(t *testing.T) {
 	if signals[2].Key != tvHealthKeyDuplicateRun || signals[2].Status != tvHealthOK {
 		t.Fatalf("parent and sub-issue runs are not a duplicate: %+v", signals[2])
 	}
+	// Two chat runs at once have no issue at all: not a duplicate either.
+	for _, name := range []string{"tv chat a", "tv chat b"} {
+		chatAgent := dbfx.Agent(t, name, runtime)
+		session := dbfx.ChatSession(t, chatAgent)
+		dbfx.Task(t, chatAgent, testutil.Cols{"issue_id": nil, "chat_session_id": session, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
+	}
+	signals, err = testHandler.tvWorkSignals(ctx, ws, time.Now(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals[2].Status != tvHealthOK {
+		t.Fatalf("chat runs are not a duplicate: %+v", signals[2])
+	}
 	other := dbfx.Agent(t, "tv signals second agent", runtime)
 	dbfx.Task(t, other, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
 	for _, n := range []int{1, 2} {
