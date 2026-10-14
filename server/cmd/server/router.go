@@ -430,6 +430,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmailDomains:      splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation: os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 		PlanningEnabled:          os.Getenv("MULTICA_PLANNING_ENABLED") == "true",
+		TvHealthLLMURL:           strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_LLM_URL")),
+		TvHealthLLMToken:         strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_LLM_TOKEN")),
+		TvHealthSiteURL:          strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_SITE_URL")),
 		VCSIntegrationEnabled:    os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		AppURL:                   appURLFromEnv(),
@@ -2011,6 +2014,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
+
+			// TV screen infrastructure health (RUSL-1786), read-only.
+			r.Get("/api/tv/health", h.GetTvHealth)
 
 			// Local search index sync for Web/Desktop (MUL-7754). Human clients
 			// only: agents search through /api/issues/search.
