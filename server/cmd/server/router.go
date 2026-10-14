@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -1511,6 +1512,27 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Post("/auth/google", h.GoogleLogin)
 	r.Post("/auth/logout", h.Logout)
 
+	// TV dashboard (kiosk). Public by design: a read-only kiosk token bound
+	// to one workspace is the credential, exchanged once for an HttpOnly
+	// cookie. The token reaches only the aggregate and a content-free change
+	// signal; middleware.Auth rejects it everywhere else with 403.
+	r.With(authVerifyRL).Post("/api/tv/session", h.CreateTVSession)
+	r.Delete("/api/tv/session", h.DeleteTVSession)
+	r.Get("/api/tv/overview", h.GetTVOverview)
+	kioskResolver := func(ctx context.Context, token string) (string, error) {
+		session, err := h.ResolveKioskToken(ctx, token)
+		if errors.Is(err, handler.ErrKioskTokenInvalid) {
+			return "", realtime.KioskRejectedError{}
+		}
+		if err != nil {
+			return "", err
+		}
+		return util.UUIDToString(session.WorkspaceID), nil
+	}
+	r.Get("/api/tv/ws", func(w http.ResponseWriter, r *http.Request) {
+		realtime.HandleKioskWebSocket(hub, handler.KioskTokenFromRequest(r), kioskResolver, w, r)
+	})
+
 	// Public API
 	r.Get("/api/config", h.GetConfig)
 	r.With(contactSalesRL).Post("/api/contact-sales", h.CreateContactSales)
@@ -2136,6 +2158,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Put("/resources/{resourceId}", h.UpdateProjectResource)
 					r.Delete("/resources/{resourceId}", h.DeleteProjectResource)
 				})
+			})
+
+			// Kiosk tokens for the TV dashboard (owners and admins).
+			r.Route("/api/kiosk-tokens", func(r chi.Router) {
+				r.Get("/", h.ListKioskTokens)
+				r.Post("/", h.CreateKioskToken)
+				r.Delete("/{id}", h.RevokeKioskToken)
 			})
 
 			// Epics

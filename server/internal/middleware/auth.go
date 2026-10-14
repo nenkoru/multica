@@ -84,6 +84,12 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			r.Header.Del("X-Task-ID")
 
 			tokenString, fromCookie := extractToken(r)
+			if isKioskCredential(r, tokenString) {
+				// Kiosk tokens are read-only and bound to the TV aggregate;
+				// they are a valid credential that is never allowed here.
+				http.Error(w, `{"error":"kiosk token is limited to the TV dashboard"}`, http.StatusForbidden)
+				return
+			}
 			if tokenString == "" {
 				slog.Debug("auth: no token found", "path", r.URL.Path)
 				http.Error(w, `{"error":"missing authorization"}`, http.StatusUnauthorized)
@@ -297,6 +303,19 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 
 // extractToken returns the bearer token and whether it came from a cookie.
 // Priority: Authorization header > multica_auth cookie.
+// isKioskCredential reports whether the request carries only a kiosk token:
+// as the bearer token, or as the kiosk cookie with no session token beside it.
+func isKioskCredential(r *http.Request, tokenString string) bool {
+	if strings.HasPrefix(tokenString, auth.KioskTokenPrefix) {
+		return true
+	}
+	if tokenString != "" {
+		return false
+	}
+	cookie, err := r.Cookie(auth.KioskCookieName)
+	return err == nil && cookie.Value != ""
+}
+
 func extractToken(r *http.Request) (token string, fromCookie bool) {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")

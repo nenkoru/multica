@@ -226,6 +226,9 @@ type Client struct {
 	send        chan []byte
 	userID      string
 	workspaceID string
+	// kiosk marks a read-only TV dashboard connection: it receives only a
+	// content-free change signal (see kioskProjection) and may not subscribe.
+	kiosk bool
 
 	// subscriptions is guarded by hub.mu. Tracks the scopes this client is
 	// currently in. Used to clean up rooms on disconnect.
@@ -935,6 +938,9 @@ func (c *Client) handleFrame(raw []byte) {
 		slog.Debug("ws inbound: invalid json", "error", err, "user_id", c.userID)
 		return
 	}
+	if c.kiosk && f.Type != "ping" {
+		return
+	}
 	switch f.Type {
 	case "subscribe", "unsubscribe":
 		var p subPayload
@@ -1056,6 +1062,11 @@ func (c *Client) writePump() {
 			if !ok {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
+			}
+			if c.kiosk {
+				if message = kioskProjection(message); message == nil {
+					continue
+				}
 			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				slog.Warn("websocket write error", "error", err, "user_id", c.userID, "workspace_id", c.workspaceID)
