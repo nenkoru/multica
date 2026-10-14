@@ -239,14 +239,17 @@ func tvCountSignal(key, reason string, count int64, since pgtype.Timestamptz, th
 
 // tvWorkSignals reads the run-queue signals in one round trip: stall (no run
 // going while a task has waited past the threshold), failed_burst and
-// duplicate_run (two active runs on the same issue). A run on a parent and
-// one on its sub-issue — the usual work and review pair — are not a duplicate.
+// duplicate_run (two active runs on the same issue for longer than
+// DuplicateRunAfter). A run on a parent and one on its sub-issue — the usual
+// work and review pair — are not a duplicate, and neither is a hand-off where
+// the next agent starts seconds before the previous run ends.
 func (h *Handler) tvWorkSignals(ctx context.Context, ws pgtype.UUID, now time.Time, cfg TVConfig) ([]TVHealthSignal, error) {
 	var running, waiting, failed, duplicates int64
 	var oldestWaiting, firstFailed pgtype.Timestamptz
 	err := h.DB.QueryRow(ctx, `
 WITH q AS (
-  SELECT t.status, t.created_at, t.completed_at, t.issue_id
+  SELECT t.status, t.created_at, t.completed_at, t.issue_id,
+    COALESCE(t.started_at, t.dispatched_at, t.created_at) AS active_since
   FROM agent_task_queue t
   JOIN agent a ON a.id = t.agent_id
   WHERE a.workspace_id = $1
@@ -260,11 +263,12 @@ SELECT
   min(completed_at) FILTER (WHERE status = 'failed'),
   (SELECT count(*) FROM (
      SELECT issue_id FROM q
-     -- Chat runs have no issue; GROUP BY would lump them together.
-     WHERE status IN ('dispatched', 'running') AND issue_id IS NOT NULL
+     -- Chat runs have no issue; GROUP BY would lump them together. Two runs
+     -- have overlapped past the threshold once both were active before $4.
+     WHERE status IN ('dispatched', 'running') AND issue_id IS NOT NULL AND active_since < $4
      GROUP BY issue_id HAVING count(*) > 1
    ) d)
-FROM q`, ws, now.Add(-cfg.StallAfter), now.Add(-cfg.FailedBurstWindow)).Scan(
+FROM q`, ws, now.Add(-cfg.StallAfter), now.Add(-cfg.FailedBurstWindow), now.Add(-cfg.DuplicateRunAfter)).Scan(
 		&running, &waiting, &oldestWaiting, &failed, &firstFailed, &duplicates)
 	if err != nil {
 		return nil, err

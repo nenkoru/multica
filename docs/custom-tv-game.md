@@ -100,7 +100,7 @@ reason codes only — never URLs, hostnames, runtime names or error text.
 | `oom` | a run failed with an out-of-memory kill (`oom_kill`, "out of memory", exit status 137) within `oom_window_minutes`; runs killed by their own timeout or idle watchdog do not count |
 | `autopilot` | an active autopilot's run failed within `autopilot_window_minutes` |
 | `failed_burst` | `failed_burst` runs failed within `failed_burst_window_minutes` |
-| `duplicate_run` | two active runs on the same issue (a parent and its sub-issue are not a duplicate) |
+| `duplicate_run` | two runs on the same issue have been active together for over `duplicate_run_minutes` (a hand-off between agents overlaps for seconds and does not count; a parent and its sub-issue are not a duplicate) |
 | `minimums` | the active sprint ends within `minimums_hours` with less than `minimums_percent` done |
 
 ### Configuration
@@ -114,6 +114,7 @@ Every threshold and probe is one JSON in `MULTICA_TV_CONFIG`, read at start
   "stall_minutes": 10,
   "failed_burst": 5,
   "failed_burst_window_minutes": 10,
+  "duplicate_run_minutes": 2,
   "oom_window_minutes": 15,
   "autopilot_window_minutes": 30,
   "minimums_hours": 24,
