@@ -157,6 +157,10 @@ type Config struct {
 	// Surfaced through /api/config so self-hosted operators can confirm which
 	// server build is deployed. Empty in dev builds.
 	ServerVersion string
+
+	// TV alarm thresholds and probes (RUSL-1786), from MULTICA_TV_CONFIG.
+	// The zero value means the defaults.
+	TV TVConfig
 }
 
 type cloudRuntimeProxy interface {

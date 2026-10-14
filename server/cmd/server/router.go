@@ -430,6 +430,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmailDomains:      splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation: os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 		PlanningEnabled:          os.Getenv("MULTICA_PLANNING_ENABLED") == "true",
+		TV:                       tvConfigFromEnv(),
 		VCSIntegrationEnabled:    os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		AppURL:                   appURLFromEnv(),
@@ -1514,11 +1515,14 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 	// TV dashboard (kiosk). Public by design: a read-only kiosk token bound
 	// to one workspace is the credential, exchanged once for an HttpOnly
-	// cookie. The token reaches only the aggregate and a content-free change
-	// signal; middleware.Auth rejects it everywhere else with 403.
+	// cookie. The token reaches only the aggregates (overview, game, health)
+	// and a content-free change signal; middleware.Auth rejects it everywhere else with 403.
 	r.With(authVerifyRL).Post("/api/tv/session", h.CreateTVSession)
 	r.Delete("/api/tv/session", h.DeleteTVSession)
 	r.Get("/api/tv/overview", h.GetTVOverview)
+	r.Get("/api/tv/health", h.GetTVHealth)
+	r.Get("/api/tv/game", h.GetTVGame)
+	r.Get("/api/tv/sounds/{file}", h.GetTVSound)
 	kioskResolver := func(ctx context.Context, token string) (string, error) {
 		session, err := h.ResolveKioskToken(ctx, token)
 		if errors.Is(err, handler.ErrKioskTokenInvalid) {
@@ -2727,4 +2731,15 @@ func wecomMetricsOrNil(m *obsmetrics.WecomMetrics) wecom.Metrics {
 		return nil
 	}
 	return m
+}
+
+// tvConfigFromEnv reads MULTICA_TV_CONFIG; an invalid value is logged and
+// the defaults are used, so a typo never takes the server down.
+func tvConfigFromEnv() handler.TVConfig {
+	cfg, err := handler.ParseTVConfig(os.Getenv("MULTICA_TV_CONFIG"), os.Getenv)
+	if err != nil {
+		slog.Warn("invalid MULTICA_TV_CONFIG, using defaults", "error", err)
+	}
+	cfg.SoundsDir = strings.TrimSpace(os.Getenv("MULTICA_TV_SOUNDS_DIR"))
+	return cfg
 }

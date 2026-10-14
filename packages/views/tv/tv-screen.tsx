@@ -119,10 +119,15 @@ export interface TvScreenProps {
   layer?: (overview: TvOverview) => ReactNode;
   /** Discrete changes between consecutive snapshots, oldest first. */
   onEvents?: (events: TvStreamEvent[], overview: TvOverview) => void;
+  /**
+   * A full-screen view in place of the dashboard (the Orbit, RUSL-1786). It
+   * gets the same snapshot, pairing, realtime and wake lock as the board.
+   */
+  screen?: (overview: TvOverview, state: { now: Date; offline: boolean }) => ReactNode;
 }
 
 /** Full-screen, read-only status screen authenticated by a kiosk token. */
-export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", layer, onEvents }: TvScreenProps) {
+export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", layer, onEvents, screen }: TvScreenProps) {
   const copy = TV_COPY[lang];
   const queryClient = useQueryClient();
   const visible = usePageVisible();
@@ -149,9 +154,10 @@ export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", layer, onEvents 
   });
   const unauthorized = query.error instanceof TvUnauthorizedError;
 
+  // Every TV feed sits under "tv": the overview, and a screen's own feeds.
   const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: tvKeys.overview(apiBaseUrl) });
-  }, [apiBaseUrl, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: ["tv"] });
+  }, [queryClient]);
   const [socketUrl, setSocketUrl] = useState<string | null>(null);
   useEffect(() => {
     setSocketUrl(tvWsUrl({ wsUrl, apiBaseUrl, pageOrigin: window.location.origin }));
@@ -186,6 +192,8 @@ export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", layer, onEvents 
           setPairing("idle");
           refresh();
         }} />
+      ) : query.data && screen ? (
+        screen(query.data, { now, offline: query.isError })
       ) : query.data ? (
         <TvDashboard data={query.data} copy={copy} now={now} offline={query.isError} layer={layer?.(query.data)} />
       ) : (

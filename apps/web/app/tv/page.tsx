@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { TvScreen, tvLang } from "@multica/views/tv";
+import { tvLang } from "@multica/views/tv";
+import { TvOrbitDemo, TvOrbitPage } from "@multica/views/tv-game";
 import { resolveBrowserApiBaseUrl, resolveBrowserWsUrl } from "@/config/runtime-urls";
 
 export const metadata: Metadata = {
@@ -27,11 +28,16 @@ export default async function TvPage({
 }) {
   const params = await searchParams;
   const lang = tvLang(typeof params.lang === "string" ? params.lang : undefined);
+  const apiBaseUrl = resolveBrowserApiBaseUrl(process.env) ?? "";
+  // The demo plays a script, not workspace data, so it needs no pairing.
+  if (params.demo === "1") return <TvOrbitDemo lang={lang} apiBaseUrl={apiBaseUrl} />;
+  // Orbit (RUSL-1786) is the main view; the board stays at ?view=board.
   return (
-    <TvScreen
-      apiBaseUrl={resolveBrowserApiBaseUrl(process.env) ?? ""}
+    <TvOrbitPage
+      apiBaseUrl={apiBaseUrl}
       wsUrl={resolveBrowserWsUrl(process.env)}
       lang={lang}
+      view={params.view === "board" ? "board" : "orbit"}
     />
   );
 }
