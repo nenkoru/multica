@@ -1,0 +1,16 @@
+{
+  "supply": "Supply",
+  "resources": "Terminé",
+  "enable_sound": "Activer le son",
+  "mute_hour": "Silence 1 h",
+  "unmute": "Rétablir le son",
+  "muted_until": "Silence jusqu’à {{time}}",
+  "quiet_hours": "Nuit : alertes seules",
+  "map_label": "Carte du travail : {{running}} exécutions en cours, {{done}} terminées ce sprint",
+  "no_epic": "Sans épopée",
+  "acknowledge": "Acquitter",
+  "level_warning": "Alerte",
+  "level_caution": "Attention",
+  "more_plates": "+{{count}} autres",
+  "demo": "Démo"
+}

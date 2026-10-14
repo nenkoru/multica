@@ -1,0 +1,16 @@
+{
+  "supply": "Supply",
+  "resources": "Done",
+  "enable_sound": "Enable sound",
+  "mute_hour": "Quiet for 1 h",
+  "unmute": "Sound on",
+  "muted_until": "Muted until {{time}}",
+  "quiet_hours": "Night: warnings only",
+  "map_label": "Work map: {{running}} runs going, {{done}} done this sprint",
+  "no_epic": "No epic",
+  "acknowledge": "Acknowledge",
+  "level_warning": "Warning",
+  "level_caution": "Caution",
+  "more_plates": "+{{count}} more",
+  "demo": "Demo"
+}

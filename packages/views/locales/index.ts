@@ -27,9 +27,11 @@ import enBilling from "./en/billing.json";
 import enEpics from "./en/epics.json";
 import enSprints from "./en/sprints.json";
 import enPlanning from "./en/planning.json";
+import enTvGame from "./en/tv-game.json";
 import frEpics from "./fr/epics.json";
 import frSprints from "./fr/sprints.json";
 import frPlanning from "./fr/planning.json";
+import frTvGame from "./fr/tv-game.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
 import zhHansSettings from "./zh-Hans/settings.json";
@@ -58,6 +60,7 @@ import zhHansBilling from "./zh-Hans/billing.json";
 import zhHansEpics from "./zh-Hans/epics.json";
 import zhHansSprints from "./zh-Hans/sprints.json";
 import zhHansPlanning from "./zh-Hans/planning.json";
+import zhHansTvGame from "./zh-Hans/tv-game.json";
 import koCommon from "./ko/common.json";
 import koAuth from "./ko/auth.json";
 import koSettings from "./ko/settings.json";
@@ -86,6 +89,7 @@ import koBilling from "./ko/billing.json";
 import koEpics from "./ko/epics.json";
 import koSprints from "./ko/sprints.json";
 import koPlanning from "./ko/planning.json";
+import koTvGame from "./ko/tv-game.json";
 import jaCommon from "./ja/common.json";
 import jaAuth from "./ja/auth.json";
 import jaSettings from "./ja/settings.json";
@@ -139,6 +143,7 @@ import frBilling from "./fr/billing.json";
 import jaEpics from "./ja/epics.json";
 import jaSprints from "./ja/sprints.json";
 import jaPlanning from "./ja/planning.json";
+import jaTvGame from "./ja/tv-game.json";
 
 // Single source of truth for the resource bundle. Both apps (web layout +
 // desktop App.tsx) import from here so adding a locale or namespace happens
@@ -173,6 +178,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     epics: enEpics,
     sprints: enSprints,
     planning: enPlanning,
+    "tv-game": enTvGame,
   },
   "zh-Hans": {
     common: zhHansCommon,
@@ -203,6 +209,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     epics: zhHansEpics,
     sprints: zhHansSprints,
     planning: zhHansPlanning,
+    "tv-game": zhHansTvGame,
   },
   ko: {
     common: koCommon,
@@ -233,6 +240,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     epics: koEpics,
     sprints: koSprints,
     planning: koPlanning,
+    "tv-game": koTvGame,
   },
   ja: {
     common: jaCommon,
@@ -263,11 +271,13 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     epics: jaEpics,
     sprints: jaSprints,
     planning: jaPlanning,
+    "tv-game": jaTvGame,
   },
   fr: {
     epics: frEpics,
     sprints: frSprints,
     planning: frPlanning,
+    "tv-game": frTvGame,
     common: frCommon,
     auth: frAuth,
     settings: frSettings,
