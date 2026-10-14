@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SPARK_LIFETIME_MS, type OrbMood, type TvGameView } from "./controller";
-import { buildOrbit, type OrbitScene } from "./orbit-scene";
+import { SATELLITE_R, buildOrbit, layoutLabels, type OrbitLabelPlace, type OrbitScene } from "./orbit-scene";
 
 // The Orbit stage on a canvas. A phone draws it, so the loop is capped at
 // 24 fps (12 when calm), pauses with the tab (requestAnimationFrame does), and a reduced
@@ -22,7 +22,15 @@ export function prefersReducedMotion(): boolean {
     : false;
 }
 
-function draw(ctx: CanvasRenderingContext2D, scene: OrbitScene, mood: OrbMood, t: number, orbLabel: string, focus: boolean) {
+function draw(
+  ctx: CanvasRenderingContext2D,
+  scene: OrbitScene,
+  mood: OrbMood,
+  t: number,
+  orbLabel: string,
+  focus: boolean,
+  labelPlaces: Map<string, OrbitLabelPlace>,
+) {
   const { width, height, cx, cy, orbR } = scene;
   ctx.clearRect(0, 0, width, height);
   const unit = Math.min(width, height);
@@ -39,12 +47,6 @@ function draw(ctx: CanvasRenderingContext2D, scene: OrbitScene, mood: OrbMood, t
     }
     ctx.restore();
 
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.font = `500 ${Math.max(11, Math.round(unit * 0.03))}px system-ui, sans-serif`;
-    // Inner (busier) planets label first; a label that would overlap one
-    // already drawn is skipped rather than smeared over it.
-    const labelled: { x0: number; x1: number; y0: number; y1: number }[] = [];
     const labelPx = Math.max(11, Math.round(unit * 0.03));
     for (const p of scene.planets) {
       ctx.globalAlpha = p.dim ? 0.45 : 1;
@@ -55,18 +57,22 @@ function draw(ctx: CanvasRenderingContext2D, scene: OrbitScene, mood: OrbMood, t
       ctx.fillStyle = "#ffd27a";
       for (const s of p.satellites) {
         ctx.beginPath();
-        ctx.arc(s.x, s.y, Math.max(2.5, unit * 0.011), 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, Math.max(2.5, unit * SATELLITE_R), 0, Math.PI * 2);
         ctx.fill();
-      }
-      const w = ctx.measureText(p.label).width;
-      const box = { x0: p.x - w / 2 - 4, x1: p.x + w / 2 + 4, y0: p.y + p.r + 2, y1: p.y + p.r + 6 + labelPx };
-      if (!labelled.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) {
-        labelled.push(box);
-        ctx.fillStyle = "#9fb4c8";
-        ctx.fillText(p.label, p.x, p.y + p.r + 4);
       }
       ctx.globalAlpha = 1;
     }
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.font = `500 ${labelPx}px system-ui, sans-serif`;
+    ctx.fillStyle = "#9fb4c8";
+    const dim = new Set(scene.planets.filter((p) => p.dim).map((p) => p.id));
+    for (const label of layoutLabels(scene, (text) => ctx.measureText(text).width, labelPx, labelPlaces)) {
+      ctx.globalAlpha = dim.has(label.planetId) ? 0.45 : 1;
+      ctx.fillText(label.text, label.x, label.y);
+    }
+    ctx.globalAlpha = 1;
   }
 
   const m = MOOD[mood];
@@ -133,6 +139,7 @@ export function OrbitCanvas({ view, mood, now: clock, ariaLabel, orbLabel, focus
     if (!canvas || !ctx) return;
     let frame = 0;
     let last = 0;
+    const labelPlaces = new Map<string, OrbitLabelPlace>();
     const started = performance.now();
     const render = (stamp: number) => {
       const { view: current, mood: currentMood, focus: currentFocus } = stateRef.current;
@@ -158,7 +165,7 @@ export function OrbitCanvas({ view, mood, now: clock, ariaLabel, orbLabel, focus
         sparks: reducedMotion ? [] : current.sparks,
         sparkLifetimeMs: SPARK_LIFETIME_MS,
       });
-      draw(ctx, scene, currentMood, t, orbLabel, currentFocus);
+      draw(ctx, scene, currentMood, t, orbLabel, currentFocus, labelPlaces);
     };
     if (reducedMotion) {
       render(started);
