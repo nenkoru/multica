@@ -1,9 +1,9 @@
 # TV screen (`/tv`)
 
-A custom, read-only, single-screen view of a workspace for a wall monitor or
-TV: the current sprint, three large counters, epics with work in flight, a
-"needs you" column and the last day's events. No scrolling, dark theme, Moscow
-time everywhere.
+A custom, read-only status view of a workspace, phone first, with the same
+picture in landscape for a monitor or TV: the current sprint, three large
+counters, epics with work in flight, a "needs you" column and the last day's
+events. Dark theme, Moscow time everywhere; no scrolling in landscape.
 
 ## Pairing a phone or screen
 
