@@ -38,18 +38,18 @@ describe("demo script", () => {
 
     expect(at("start").cues).toEqual([]);
     expect(at("deliver").cues).toEqual(["ding"]);
-    expect(at("crash").cues).toEqual(["caution:Внимание: Упал запуск у Ops"]);
+    expect(at("crash").cues).toEqual(["caution:Внимание: запуск упал — Ops"]);
     // Two more crashes and a blocked worker inside 2 minutes: plates only.
     expect(at("more-trouble").cues).toEqual([]);
     expect([...at("more-trouble").plates].sort()).toEqual(["caution:need_you!", "caution:run_failed!"]);
-    expect(at("rate-limit-passes").cues).toEqual(["caution:Внимание: 2 запуска упали. Нужен ты: новая задача"]);
-    expect(at("warning").cues).toEqual(["warning:Тревога: Модель недоступна"]);
+    expect(at("rate-limit-passes").cues).toEqual(["caution:Внимание: 2 запуска упали. Нужен ты — новая задача"]);
+    expect(at("warning").cues).toEqual(["warning:Тревога: модель недоступна"]);
     expect(at("acknowledge").plates[0]).toBe("warning:llm");
     expect(at("recover").cues).toEqual(["ding"]);
     expect(at("night").quiet).toBe(true);
     expect(at("night").cues).toEqual([]);
     expect(at("night").plates).toContain("caution:run_failed!");
-    expect(at("night-warning").cues).toEqual(["warning:Тревога: Демон Multica не на связи"]);
+    expect(at("night-warning").cues).toEqual(["warning:Тревога: демон Multica не на связи"]);
     // The recovery ding is info: silent at night.
     expect(at("night-recover").cues).toEqual([]);
 

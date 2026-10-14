@@ -28,7 +28,7 @@ describe("TvGameLayer", () => {
     expect(screen.getByRole("button", { name: /quiet for 1 h/i })).toBeInTheDocument();
   });
 
-  it("acknowledges a flashing plate by click and by any key", () => {
+  it("acknowledges a flashing plate by click and by any key", async () => {
     const { controller, player } = setup();
     act(() => controller.update({ ...emptySnapshot(NOON) }));
     act(() =>
@@ -41,7 +41,10 @@ describe("TvGameLayer", () => {
     expect(screen.getByRole("button", { name: /warning: сайт недоступен/i }).className).not.toContain("animate-pulse");
 
     act(() => controller.pushEvents([{ type: "need_you", issueId: "n-1", title: "x" }]));
-    fireEvent.keyDown(window, { key: "Enter" });
+    // The first key also unlocks audio, which settles asynchronously.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "Enter" });
+    });
     expect(player.stop).toHaveBeenCalledTimes(2);
   });
 });

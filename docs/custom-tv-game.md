@@ -8,15 +8,22 @@ changes. Code lives in `packages/views/tv-game/`; the health aggregate in
 ## Wiring it into a screen
 
 ```tsx
-import { TvGameLayer, useTvGameController, TvGameDemo } from "@multica/views/tv-game";
+import { parseTVGame, parseTVHealth } from "@multica/core/api/tv-game-schemas";
+import { FailedRunTracker, TvGameDemo, TvGameLayer, toTvGameSnapshot, useTvGameController } from "@multica/views/tv-game";
 
 const game = useTvGameController({ labels: { llm: "27B" } });
-useEffect(() => game.update(toTvGameSnapshot(aggregate, health)), [aggregate, health]);
-// From the realtime stream, for what a snapshot cannot carry:
-game.pushEvents([{ type: "run_failed", issueId, title, agentId, agentName, epicId }]);
+const failed = useRef(new FailedRunTracker());
+// On every refresh (the change signal on /api/tv/ws, or the 60 s fallback):
+const g = parseTVGame(await getJSON("/api/tv/game"));
+const h = parseTVHealth(await getJSON("/api/tv/health"));
+game.update(toTvGameSnapshot(g, h, needsYouIds, Date.now()));
+game.pushEvents(failed.current.next(g));
 
 return demo ? <TvGameDemo /> : <TvGameLayer controller={game} />;
 ```
+
+`needsYouIds` are the issue ids the base screen shows under "needs you"; a
+blocked worker gets a "!" either way, and a caution only when it is one of them.
 
 The layer fills its container; give it 35–40 % of the screen height. Numbers
 and lists of the base screen stay where they are.
@@ -68,10 +75,21 @@ snapshot after load is a baseline and raises no info or caution events.
 - `prefers-reduced-motion: reduce` draws a still picture, redrawn on changes,
   and plates do not flash. The animation is capped at 30 fps.
 
-## Health aggregate
+## Endpoints
 
-`GET /api/tv/health`, workspace-scoped and read-only. It returns counts and
-reason codes only, never URLs, hostnames, runtime names or error text.
+Both are read-only and take the TV kiosk credential (bearer token or the
+kiosk cookie), like `/api/tv/overview`; the token's workspace scopes them.
+
+`GET /api/tv/game`: agents with a run in the last week (name, slots), work
+(a running task shown on its top-level issue, or a top-level issue in review
+or blocked assigned to an agent), open epics with open issues and done in the
+active sprint, running and queued task counts, the host ceiling
+(`MULTICA_TV_HOST_CEILING`, default 12), issues done and epics closed in the
+last 24 h, and runs failed in the last 10 minutes. Titles and names only, no
+descriptions or comments.
+
+`GET /api/tv/health` returns counts and reason codes only, never URLs,
+hostnames, runtime names or error text.
 
 | Signal | Warning when |
 |---|---|

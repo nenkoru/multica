@@ -45,7 +45,7 @@ const (
 	tvOOMWindow = 15 * time.Minute
 )
 
-type TvHealthSignal struct {
+type TVHealthSignal struct {
 	Key    string `json:"key"`
 	Status string `json:"status"`
 	// Reason is a stable code ("offline", "http_5xx", "http_status",
@@ -56,8 +56,8 @@ type TvHealthSignal struct {
 	Since *string `json:"since,omitempty"`
 }
 
-type TvHealthResponse struct {
-	Signals   []TvHealthSignal `json:"signals"`
+type TVHealthResponse struct {
+	Signals   []TVHealthSignal `json:"signals"`
 	CheckedAt string           `json:"checked_at"`
 }
 
@@ -115,9 +115,9 @@ func tvProbeOnce(ctx context.Context, url, bearer string) string {
 
 // check runs the probe at most once per TTL and folds the result into the
 // consecutive-failure counter.
-func (p *tvProbe) check(ctx context.Context, key, url, bearer string, now time.Time, probe func(context.Context, string, string) string) TvHealthSignal {
+func (p *tvProbe) check(ctx context.Context, key, url, bearer string, now time.Time, probe func(context.Context, string, string) string) TVHealthSignal {
 	if url == "" {
-		return TvHealthSignal{Key: key, Status: tvHealthUnknown, Reason: "not_configured"}
+		return TVHealthSignal{Key: key, Status: tvHealthUnknown, Reason: "not_configured"}
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -138,11 +138,11 @@ func (p *tvProbe) check(ctx context.Context, key, url, bearer string, now time.T
 	}
 	switch {
 	case p.failures == 0:
-		return TvHealthSignal{Key: key, Status: tvHealthOK}
+		return TVHealthSignal{Key: key, Status: tvHealthOK}
 	case p.failures < tvProbeFailThreshold:
-		return TvHealthSignal{Key: key, Status: tvHealthUnknown, Reason: p.reason, Count: int64(p.failures), Since: tvTime(p.since)}
+		return TVHealthSignal{Key: key, Status: tvHealthUnknown, Reason: p.reason, Count: int64(p.failures), Since: tvTime(p.since)}
 	default:
-		return TvHealthSignal{Key: key, Status: tvHealthWarning, Reason: p.reason, Count: int64(p.failures), Since: tvTime(p.since)}
+		return TVHealthSignal{Key: key, Status: tvHealthWarning, Reason: p.reason, Count: int64(p.failures), Since: tvTime(p.since)}
 	}
 }
 
@@ -164,7 +164,7 @@ func tvTimestamptz(t pgtype.Timestamptz) *string {
 // tvDaemonSignal reports local daemons that heartbeated recently and are now
 // offline, grouped by daemon so one machine with three providers counts once.
 // A daemon that still has any online runtime is not down.
-func (h *Handler) tvDaemonSignal(ctx context.Context, ws pgtype.UUID, now time.Time) (TvHealthSignal, error) {
+func (h *Handler) tvDaemonSignal(ctx context.Context, ws pgtype.UUID, now time.Time) (TVHealthSignal, error) {
 	var count int64
 	var since pgtype.Timestamptz
 	err := h.DB.QueryRow(ctx, `
@@ -181,18 +181,18 @@ FROM (
      AND max(r.last_seen_at) < $3
 ) d`, ws, now.Add(-tvDaemonRecentWindow), now.Add(-tvDaemonGrace)).Scan(&count, &since)
 	if err != nil {
-		return TvHealthSignal{}, err
+		return TVHealthSignal{}, err
 	}
 	if count == 0 {
-		return TvHealthSignal{Key: tvHealthKeyDaemon, Status: tvHealthOK}, nil
+		return TVHealthSignal{Key: tvHealthKeyDaemon, Status: tvHealthOK}, nil
 	}
-	return TvHealthSignal{Key: tvHealthKeyDaemon, Status: tvHealthWarning, Reason: "offline", Count: count, Since: tvTimestamptz(since)}, nil
+	return TVHealthSignal{Key: tvHealthKeyDaemon, Status: tvHealthWarning, Reason: "offline", Count: count, Since: tvTimestamptz(since)}, nil
 }
 
 // tvOOMSignal counts runs in this workspace that failed with an
 // out-of-memory kill inside the window. The daemon reports the child's exit,
 // so the kernel's wording or exit status 137 is what reaches `error`.
-func (h *Handler) tvOOMSignal(ctx context.Context, ws pgtype.UUID, now time.Time) (TvHealthSignal, error) {
+func (h *Handler) tvOOMSignal(ctx context.Context, ws pgtype.UUID, now time.Time) (TVHealthSignal, error) {
 	var count int64
 	var since pgtype.Timestamptz
 	err := h.DB.QueryRow(ctx, `
@@ -207,20 +207,22 @@ WHERE a.workspace_id = $1
     OR t.failure_reason ~* 'oom'
   )`, ws, now.Add(-tvOOMWindow)).Scan(&count, &since)
 	if err != nil {
-		return TvHealthSignal{}, err
+		return TVHealthSignal{}, err
 	}
 	if count == 0 {
-		return TvHealthSignal{Key: tvHealthKeyOOM, Status: tvHealthOK}, nil
+		return TVHealthSignal{Key: tvHealthKeyOOM, Status: tvHealthOK}, nil
 	}
-	return TvHealthSignal{Key: tvHealthKeyOOM, Status: tvHealthWarning, Reason: "oom_kill", Count: count, Since: tvTimestamptz(since)}, nil
+	return TVHealthSignal{Key: tvHealthKeyOOM, Status: tvHealthWarning, Reason: "oom_kill", Count: count, Since: tvTimestamptz(since)}, nil
 }
 
-// GetTvHealth serves GET /api/tv/health.
-func (h *Handler) GetTvHealth(w http.ResponseWriter, r *http.Request) {
-	wsUUID, ok := parseUUIDOrBadRequest(w, h.resolveWorkspaceID(r), "workspace id")
+// GetTVHealth serves GET /api/tv/health with the same kiosk credential as
+// the TV overview; the token's workspace scopes the database signals.
+func (h *Handler) GetTVHealth(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireKiosk(w, r)
 	if !ok {
 		return
 	}
+	wsUUID := session.WorkspaceID
 	ctx := r.Context()
 	now := time.Now()
 
@@ -235,21 +237,22 @@ func (h *Handler) GetTvHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var llm, site TvHealthSignal
+	var llm, site TVHealthSignal
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		llm = tvProbeFor(h.cfg.TvHealthLLMURL).check(ctx, tvHealthKeyLLM, h.cfg.TvHealthLLMURL, h.cfg.TvHealthLLMToken, now, tvProbeOnce)
+		llm = tvProbeFor(h.cfg.TVHealthLLMURL).check(ctx, tvHealthKeyLLM, h.cfg.TVHealthLLMURL, h.cfg.TVHealthLLMToken, now, tvProbeOnce)
 	}()
 	go func() {
 		defer wg.Done()
-		site = tvProbeFor(h.cfg.TvHealthSiteURL).check(ctx, tvHealthKeySite, h.cfg.TvHealthSiteURL, "", now, tvProbeOnce)
+		site = tvProbeFor(h.cfg.TVHealthSiteURL).check(ctx, tvHealthKeySite, h.cfg.TVHealthSiteURL, "", now, tvProbeOnce)
 	}()
 	wg.Wait()
 
-	writeJSON(w, http.StatusOK, TvHealthResponse{
-		Signals:   []TvHealthSignal{daemon, llm, oom, site},
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, TVHealthResponse{
+		Signals:   []TVHealthSignal{daemon, llm, oom, site},
 		CheckedAt: now.UTC().Format(time.RFC3339),
 	})
 }

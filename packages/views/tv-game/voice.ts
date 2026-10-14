@@ -38,11 +38,12 @@ export function cautionGroupOf(event: TvGameEvent): CautionGroup | null {
 export function cautionPhrase(group: CautionGroup, count: number, last: TvGameEvent): string {
   switch (group) {
     case "run_failed":
-      if (count === 1 && last.type === "run_failed") return `Упал запуск у ${last.agentName}`;
+      // Agent names do not decline in Russian, so the name goes after a dash.
+      if (count === 1 && last.type === "run_failed") return `Запуск упал — ${last.agentName}`;
       return `${count} ${pluralRu(count, "запуск упал", "запуска упали", "запусков упали")}`;
     case "need_you":
-      if (count === 1) return "Нужен ты: новая задача";
-      return `Нужен ты: ${count} ${pluralRu(count, "задача", "задачи", "задач")}`;
+      if (count === 1) return "Нужен ты — новая задача";
+      return `Нужен ты — ${count} ${pluralRu(count, "задача", "задачи", "задач")}`;
     case "stuck":
       if (count === 1) return "Задача застряла больше суток";
       return `${count} ${pluralRu(count, "задача застряла", "задачи застряли", "задач застряли")} больше суток`;
@@ -66,3 +67,8 @@ export function warningPhrase(key: TvHealthKey, labels: VoiceLabels): string {
 
 export const CAUTION_PREFIX = "Внимание: ";
 export const WARNING_PREFIX = "Тревога: ";
+
+/** "Внимание: " + "Сайт недоступен" reads as "Внимание: сайт недоступен". */
+export function spoken(prefix: string, phrase: string): string {
+  return prefix + phrase.charAt(0).toLocaleLowerCase("ru-RU") + phrase.slice(1);
+}

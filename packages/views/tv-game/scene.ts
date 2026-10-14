@@ -4,7 +4,7 @@ import { isStale, type TvGameSnapshot, type TvGameWorkState } from "./model";
 // worker stand at animation time `t`. The canvas renderer only draws what this
 // returns, so the mapping from work to pictures is unit-tested here.
 
-export const MAX_FIELDS = 6;
+export const MAX_FIELDS = 5;
 export const NO_EPIC_FIELD = "__no_epic__";
 /** Carrying a load from a field to the base takes this long, then repeats. */
 export const CARRY_LOOP_MS = 6_000;
@@ -117,7 +117,9 @@ export function buildScene(snapshot: TvGameSnapshot, options: BuildSceneOptions)
     .sort((a, b) => Number(busy.has(b.id)) - Number(busy.has(a.id)) || b.open - a.open);
   const hasNoEpic = busy.has(NO_EPIC_FIELD);
   const slots = MAX_FIELDS - (hasNoEpic ? 1 : 0);
-  const shown = epics.slice(0, slots);
+  // Busy epics win the slots; the order on screen is by title, so a field
+  // does not jump sideways when work moves between epics.
+  const shown = epics.slice(0, slots).sort((a, b) => a.title.localeCompare(b.title, "ru") || a.id.localeCompare(b.id));
 
   const fieldInputs = shown.map((e) => ({
     id: e.id,

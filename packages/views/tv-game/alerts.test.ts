@@ -37,7 +37,7 @@ describe("AlertEngine", () => {
 
   it("sounds a caution at most once per 2 minutes and groups the rest", () => {
     const engine = new AlertEngine();
-    expect(engine.push([failed(1)], NOON)).toEqual([{ kind: "caution", voice: "Внимание: Упал запуск у Ops" }]);
+    expect(engine.push([failed(1)], NOON)).toEqual([{ kind: "caution", voice: "Внимание: запуск упал — Ops" }]);
     expect(engine.push([failed(2), failed(3)], NOON + 30_000)).toEqual([]);
     expect(engine.push([failed(4)], NOON + 60_000)).toEqual([]);
     expect(engine.tick(NOON + 2 * MIN - 1)).toEqual([]);
@@ -55,7 +55,7 @@ describe("AlertEngine", () => {
       NOON,
     );
     expect(cues).toEqual([
-      { kind: "caution", voice: "Внимание: 2 запуска упали. Нужен ты: новая задача. Агенты стоят, а очередь не пуста" },
+      { kind: "caution", voice: "Внимание: 2 запуска упали. Нужен ты — новая задача. Агенты стоят, а очередь не пуста" },
     ]);
   });
 
@@ -64,7 +64,7 @@ describe("AlertEngine", () => {
     expect(engine.push([done, failed(1)], NIGHT)).toEqual([]);
     expect(engine.plates()).toHaveLength(1);
     expect(engine.syncHealth([health("llm", "warning")], NIGHT)).toEqual([
-      { kind: "warning", voice: "Тревога: Модель недоступна" },
+      { kind: "warning", voice: "Тревога: модель недоступна" },
     ]);
   });
 
@@ -90,7 +90,7 @@ describe("AlertEngine", () => {
     engine.syncHealth([health("daemon", "warning")], NOON);
     engine.acknowledge();
     const cues = engine.syncHealth([health("daemon", "warning"), health("site", "warning")], NOON + 1000);
-    expect(cues).toEqual([{ kind: "warning", voice: "Тревога: Сайт недоступен" }]);
+    expect(cues).toEqual([{ kind: "warning", voice: "Тревога: сайт недоступен" }]);
     expect(engine.hasUnacknowledged()).toBe(true);
     expect(engine.plates().map((p) => p.id)).toEqual(["warning:site", "warning:daemon"]);
   });
@@ -100,7 +100,7 @@ describe("AlertEngine", () => {
     engine.muteFor(60 * MIN, NOON);
     expect(engine.syncHealth([health("oom", "warning")], NOON + MIN)).toEqual([]);
     expect(engine.mutedUntilAt(NOON + MIN)).toBe(NOON + 60 * MIN);
-    expect(engine.tick(NOON + 61 * MIN)).toEqual([{ kind: "warning", voice: "Тревога: Запуски падают по памяти" }]);
+    expect(engine.tick(NOON + 61 * MIN)).toEqual([{ kind: "warning", voice: "Тревога: запуски падают по памяти" }]);
   });
 
   it("drops caution plates after 10 minutes without updates", () => {
