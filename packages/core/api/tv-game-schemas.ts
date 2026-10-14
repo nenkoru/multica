@@ -17,6 +17,7 @@ const work = z.object({
   epic_id: nullableString,
   state: z.enum(["running", "in_review", "blocked"]).catch("running"),
   last_activity_at: nullableString,
+  since: nullableString,
 });
 const epic = z.object({
   id: z.string(),
@@ -50,6 +51,8 @@ export const TVGameSchema = z.object({
   running: count,
   queued: count,
   done_in_sprint: count,
+  done_today: count,
+  streak_days: count,
   agents: list(agent),
   work: list(work),
   epics: list(epic),
@@ -59,7 +62,21 @@ export const TVGameSchema = z.object({
 });
 export type TVGame = z.infer<typeof TVGameSchema>;
 
-const healthKey = z.enum(["daemon", "llm", "oom", "site"]);
+// Keys in the sound table's priority order; an unknown key is dropped.
+export const TV_HEALTH_KEYS = [
+  "daemon",
+  "llm",
+  "site",
+  "stall",
+  "budget",
+  "oom",
+  "autopilot",
+  "failed_burst",
+  "duplicate_run",
+  "llm_slow",
+  "minimums",
+] as const;
+const healthKey = z.enum(TV_HEALTH_KEYS);
 const healthSignal = z.object({
   key: healthKey,
   // Anything this client does not know is not a warning.

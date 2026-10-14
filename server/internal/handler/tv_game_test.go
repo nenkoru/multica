@@ -35,6 +35,12 @@ func TestTVGameAggregate(t *testing.T) {
 		"issue_id": failedIssue, "status": "failed", "completed_at": time.Now().Add(-2 * time.Minute), "error": "boom",
 	})
 	done := dbfx.Issue(t, "TV game done", testutil.Cols{"epic_id": epic, "status": "done"})
+	for _, at := range []time.Time{time.Now(), time.Now().Add(-24 * time.Hour), time.Now().Add(-48 * time.Hour)} {
+		dbfx.Insert(t, "activity_log", testutil.Cols{
+			"workspace_id": testWorkspaceID, "issue_id": done, "actor_type": "member", "actor_id": testUserID,
+			"action": "status_changed", "details": `{"from":"in_review","to":"done"}`, "created_at": at,
+		})
+	}
 
 	// The game aggregate is behind the kiosk token like the overview.
 	testutil.Call(t, testHandler.GetTVGame, tvRequest("GET", "/api/tv/game", "", nil)).Want(http.StatusUnauthorized)
@@ -44,6 +50,9 @@ func TestTVGameAggregate(t *testing.T) {
 
 	if got.HostCeiling != 12 || got.Running < 1 || got.Queued < 1 {
 		t.Fatalf("counters: ceiling=%d running=%d queued=%d", got.HostCeiling, got.Running, got.Queued)
+	}
+	if got.DoneToday < 1 || got.StreakDays < 3 {
+		t.Fatalf("streak: today=%d days=%d", got.DoneToday, got.StreakDays)
 	}
 	slots := map[string]int32{}
 	for _, a := range got.Agents {

@@ -3,29 +3,40 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/logger"
 )
 
-// TV health is the read-only infrastructure aggregate behind the TV screen's
-// warning tier (RUSL-1786). Every signal is either "ok", "warning" or
-// "unknown"; the screen sounds a master warning only for "warning", so an
-// unconfigured or not-yet-confirmed probe stays silent instead of raising a
-// false alarm. The response carries counts and coarse reason codes only —
-// no URLs, hostnames, runtime names or error text.
+// TV health is the read-only aggregate behind the TV screen's alarms
+// (RUSL-1786). Every signal is "ok", "warning" (raised) or "unknown"; the
+// screen decides from its sound table whether a raised signal is a warning or
+// a caution, and never sounds "unknown", so an unconfigured or
+// not-yet-confirmed probe stays silent instead of raising a false alarm. The
+// response carries counts and coarse reason codes only — no URLs, hostnames,
+// runtime names or error text. Thresholds come from TVConfig.
 const (
 	tvHealthOK      = "ok"
 	tvHealthWarning = "warning"
 	tvHealthUnknown = "unknown"
 
-	tvHealthKeyDaemon = "daemon"
-	tvHealthKeyLLM    = "llm"
-	tvHealthKeySite   = "site"
-	tvHealthKeyOOM    = "oom"
+	tvHealthKeyDaemon       = "daemon"
+	tvHealthKeyLLM          = "llm"
+	tvHealthKeySite         = "site"
+	tvHealthKeyStall        = "stall"
+	tvHealthKeyBudget       = "budget"
+	tvHealthKeyOOM          = "oom"
+	tvHealthKeyAutopilot    = "autopilot"
+	tvHealthKeyFailedBurst  = "failed_burst"
+	tvHealthKeyDuplicateRun = "duplicate_run"
+	tvHealthKeyLLMSlow      = "llm_slow"
+	tvHealthKeyMinimums     = "minimums"
 
 	// A probe result is reused for this long, so a wall of TVs polling once a
 	// minute still costs one upstream request per interval.
@@ -35,21 +46,18 @@ const (
 	// dropped request is noise; two in a row, at least 30 s apart, is not.
 	tvProbeFailThreshold = 2
 
-	// A runtime that heartbeated within this window and is now offline counts
-	// as a daemon that went down. Older ones are retired machines, not alarms.
-	tvDaemonRecentWindow = 24 * time.Hour
 	// A daemon restart flips the runtime offline for a few seconds; only an
 	// outage longer than this is reported.
 	tvDaemonGrace = 2 * time.Minute
-	// OOM-killed runs inside this window keep the oom signal raised.
-	tvOOMWindow = 15 * time.Minute
 )
 
 type TVHealthSignal struct {
 	Key    string `json:"key"`
 	Status string `json:"status"`
 	// Reason is a stable code ("offline", "http_5xx", "http_status",
-	// "unreachable", "timeout", "not_configured", "oom_kill"); the screen maps it to copy.
+	// "unreachable", "timeout", "not_configured", "oom_kill", "queue_idle",
+	// "failed_runs", "autopilot_failed", "same_issue", "sprint_behind");
+	// the screen maps it to copy.
 	Reason string `json:"reason,omitempty"`
 	Count  int64  `json:"count"`
 	// Since is when the current non-ok state was first observed (RFC3339).
@@ -161,10 +169,15 @@ func tvTimestamptz(t pgtype.Timestamptz) *string {
 	return tvTime(t.Time)
 }
 
-// tvDaemonSignal reports local daemons that heartbeated recently and are now
-// offline, grouped by daemon so one machine with three providers counts once.
-// A daemon that still has any online runtime is not down.
-func (h *Handler) tvDaemonSignal(ctx context.Context, ws pgtype.UUID, now time.Time) (TVHealthSignal, error) {
+// tvDaemonSignal reports watched daemons (TVConfig.WatchedDaemons, by
+// daemon id) that have had every runtime offline for longer than the grace
+// period. Only servers belong on that list: a laptop that is closed for the
+// night would otherwise raise a master warning every evening. With no list
+// the signal is "unknown" and never sounds.
+func (h *Handler) tvDaemonSignal(ctx context.Context, ws pgtype.UUID, now time.Time, watched []string) (TVHealthSignal, error) {
+	if len(watched) == 0 {
+		return TVHealthSignal{Key: tvHealthKeyDaemon, Status: tvHealthUnknown, Reason: "not_configured"}, nil
+	}
 	var count int64
 	var since pgtype.Timestamptz
 	err := h.DB.QueryRow(ctx, `
@@ -173,13 +186,11 @@ FROM (
   SELECT r.daemon_id, max(r.last_seen_at) AS last_seen
   FROM agent_runtime r
   WHERE r.workspace_id = $1
-    AND r.runtime_mode = 'local'
-    AND r.daemon_id IS NOT NULL
+    AND r.daemon_id = ANY($2::text[])
   GROUP BY r.daemon_id
   HAVING bool_and(r.status = 'offline')
-     AND max(r.last_seen_at) > $2
      AND max(r.last_seen_at) < $3
-) d`, ws, now.Add(-tvDaemonRecentWindow), now.Add(-tvDaemonGrace)).Scan(&count, &since)
+) d`, ws, watched, now.Add(-tvDaemonGrace)).Scan(&count, &since)
 	if err != nil {
 		return TVHealthSignal{}, err
 	}
@@ -192,7 +203,7 @@ FROM (
 // tvOOMSignal counts runs in this workspace that failed with an
 // out-of-memory kill inside the window. The daemon reports the child's exit,
 // so the kernel's wording or exit status 137 is what reaches `error`.
-func (h *Handler) tvOOMSignal(ctx context.Context, ws pgtype.UUID, now time.Time) (TVHealthSignal, error) {
+func (h *Handler) tvOOMSignal(ctx context.Context, ws pgtype.UUID, now time.Time, window time.Duration) (TVHealthSignal, error) {
 	var count int64
 	var since pgtype.Timestamptz
 	err := h.DB.QueryRow(ctx, `
@@ -203,9 +214,11 @@ WHERE a.workspace_id = $1
   AND t.status = 'failed'
   AND t.completed_at > $2
   AND (
-    t.error ~* '(oom[_ -]?kill|out of memory|signal: killed|exit status 137)'
+    t.error ~* '(oom[_ -]?kill|out of memory|exit status 137)'
     OR t.failure_reason ~* 'oom'
-  )`, ws, now.Add(-tvOOMWindow)).Scan(&count, &since)
+  )
+  -- A run killed by its own timeout or idle watchdog also exits on SIGKILL.
+  AND COALESCE(t.failure_reason, '') !~* '(timeout|idle)'`, ws, now.Add(-window)).Scan(&count, &since)
 	if err != nil {
 		return TVHealthSignal{}, err
 	}
@@ -215,6 +228,92 @@ WHERE a.workspace_id = $1
 	return TVHealthSignal{Key: tvHealthKeyOOM, Status: tvHealthWarning, Reason: "oom_kill", Count: count, Since: tvTimestamptz(since)}, nil
 }
 
+// tvCountSignal turns a count and its oldest timestamp into a signal that is
+// raised when count >= threshold.
+func tvCountSignal(key, reason string, count int64, since pgtype.Timestamptz, threshold int64) TVHealthSignal {
+	if count < threshold || count == 0 {
+		return TVHealthSignal{Key: key, Status: tvHealthOK, Count: count}
+	}
+	return TVHealthSignal{Key: key, Status: tvHealthWarning, Reason: reason, Count: count, Since: tvTimestamptz(since)}
+}
+
+// tvWorkSignals reads the run-queue signals in one round trip: stall (no run
+// going while a task has waited past the threshold), failed_burst and
+// duplicate_run (two active runs on one top-level issue).
+func (h *Handler) tvWorkSignals(ctx context.Context, ws pgtype.UUID, now time.Time, cfg TVConfig) ([]TVHealthSignal, error) {
+	var running, waiting, failed, duplicates int64
+	var oldestWaiting, firstFailed pgtype.Timestamptz
+	err := h.DB.QueryRow(ctx, `
+WITH q AS (
+  SELECT t.status, t.created_at, t.completed_at, COALESCE(i.parent_issue_id, i.id) AS root_id
+  FROM agent_task_queue t
+  JOIN agent a ON a.id = t.agent_id
+  JOIN issue i ON i.id = t.issue_id
+  WHERE a.workspace_id = $1
+    AND (t.status IN ('queued', 'dispatched', 'running') OR (t.status = 'failed' AND t.completed_at > $3))
+)
+SELECT
+  count(*) FILTER (WHERE status IN ('dispatched', 'running')),
+  count(*) FILTER (WHERE status = 'queued' AND created_at < $2),
+  min(created_at) FILTER (WHERE status = 'queued'),
+  count(*) FILTER (WHERE status = 'failed'),
+  min(completed_at) FILTER (WHERE status = 'failed'),
+  (SELECT count(*) FROM (
+     SELECT root_id FROM q WHERE status IN ('dispatched', 'running') GROUP BY root_id HAVING count(*) > 1
+   ) d)
+FROM q`, ws, now.Add(-cfg.StallAfter), now.Add(-cfg.FailedBurstWindow)).Scan(
+		&running, &waiting, &oldestWaiting, &failed, &firstFailed, &duplicates)
+	if err != nil {
+		return nil, err
+	}
+	stall := TVHealthSignal{Key: tvHealthKeyStall, Status: tvHealthOK}
+	if running == 0 && waiting > 0 {
+		stall = TVHealthSignal{Key: tvHealthKeyStall, Status: tvHealthWarning, Reason: "queue_idle", Count: waiting, Since: tvTimestamptz(oldestWaiting)}
+	}
+	return []TVHealthSignal{
+		stall,
+		tvCountSignal(tvHealthKeyFailedBurst, "failed_runs", failed, firstFailed, int64(cfg.FailedBurst)),
+		tvCountSignal(tvHealthKeyDuplicateRun, "same_issue", duplicates, pgtype.Timestamptz{}, 1),
+	}, nil
+}
+
+func (h *Handler) tvAutopilotSignal(ctx context.Context, ws pgtype.UUID, now time.Time, window time.Duration) (TVHealthSignal, error) {
+	var count int64
+	var since pgtype.Timestamptz
+	err := h.DB.QueryRow(ctx, `
+SELECT count(*), min(r.completed_at)
+FROM autopilot_run r
+JOIN autopilot a ON a.id = r.autopilot_id
+WHERE a.workspace_id = $1 AND a.status = 'active' AND r.status = 'failed' AND r.completed_at > $2`,
+		ws, now.Add(-window)).Scan(&count, &since)
+	if err != nil {
+		return TVHealthSignal{}, err
+	}
+	return tvCountSignal(tvHealthKeyAutopilot, "autopilot_failed", count, since, 1), nil
+}
+
+// tvMinimumsSignal: the active sprint ends (end of its last day, Moscow time)
+// within the threshold with too little done.
+func tvMinimumsSignal(sprint *TVSprint, now time.Time, cfg TVConfig) TVHealthSignal {
+	ok := TVHealthSignal{Key: tvHealthKeyMinimums, Status: tvHealthOK}
+	if sprint == nil || sprint.Total == 0 {
+		return ok
+	}
+	end, err := time.ParseInLocation("2006-01-02", sprint.EndDate, tvMoscow)
+	if err != nil {
+		return ok
+	}
+	end = end.Add(24 * time.Hour)
+	left := end.Sub(now)
+	donePercent := sprint.Done * 100 / sprint.Total
+	if left <= 0 || left > time.Duration(cfg.MinimumsHours)*time.Hour || donePercent >= int64(cfg.MinimumsPercent) {
+		return ok
+	}
+	return TVHealthSignal{Key: tvHealthKeyMinimums, Status: tvHealthWarning, Reason: "sprint_behind", Count: donePercent}
+}
+
+var tvMoscow = time.FixedZone("MSK", 3*60*60)
+
 // GetTVHealth serves GET /api/tv/health with the same kiosk credential as
 // the TV overview; the token's workspace scopes the database signals.
 func (h *Handler) GetTVHealth(w http.ResponseWriter, r *http.Request) {
@@ -222,37 +321,71 @@ func (h *Handler) GetTVHealth(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	wsUUID := session.WorkspaceID
-	ctx := r.Context()
-	now := time.Now()
-
-	daemon, err := h.tvDaemonSignal(ctx, wsUUID, now)
+	resp, err := h.loadTVHealth(r.Context(), session.WorkspaceID, time.Now())
 	if err != nil {
+		slog.Error("tv health failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to load health")
 		return
 	}
-	oom, err := h.tvOOMSignal(ctx, wsUUID, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load health")
-		return
-	}
-
-	var llm, site TVHealthSignal
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		llm = tvProbeFor(h.cfg.TVHealthLLMURL).check(ctx, tvHealthKeyLLM, h.cfg.TVHealthLLMURL, h.cfg.TVHealthLLMToken, now, tvProbeOnce)
-	}()
-	go func() {
-		defer wg.Done()
-		site = tvProbeFor(h.cfg.TVHealthSiteURL).check(ctx, tvHealthKeySite, h.cfg.TVHealthSiteURL, "", now, tvProbeOnce)
-	}()
-	wg.Wait()
-
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, TVHealthResponse{
-		Signals:   []TVHealthSignal{daemon, llm, oom, site},
-		CheckedAt: now.UTC().Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) loadTVHealth(ctx context.Context, ws pgtype.UUID, now time.Time) (TVHealthResponse, error) {
+	cfg := h.cfg.TV
+	if cfg.HostCeiling == 0 {
+		cfg = DefaultTVConfig()
+	}
+	daemon, err := h.tvDaemonSignal(ctx, ws, now, cfg.WatchedDaemons)
+	if err != nil {
+		return TVHealthResponse{}, fmt.Errorf("daemon: %w", err)
+	}
+	work, err := h.tvWorkSignals(ctx, ws, now, cfg)
+	if err != nil {
+		return TVHealthResponse{}, fmt.Errorf("work: %w", err)
+	}
+	oom, err := h.tvOOMSignal(ctx, ws, now, cfg.OOMWindow)
+	if err != nil {
+		return TVHealthResponse{}, fmt.Errorf("oom: %w", err)
+	}
+	autopilot, err := h.tvAutopilotSignal(ctx, ws, now, cfg.AutopilotWindow)
+	if err != nil {
+		return TVHealthResponse{}, fmt.Errorf("autopilot: %w", err)
+	}
+	sprint, err := h.loadTVSprint(ctx, ws)
+	if err != nil {
+		return TVHealthResponse{}, fmt.Errorf("sprint: %w", err)
+	}
+
+	probed := make([]TVHealthSignal, len(tvProbeKeys))
+	var wg sync.WaitGroup
+	for n, key := range tvProbeKeys {
+		probe := cfg.Probes[key]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			probed[n] = tvProbeFor(key+"|"+probe.URL).check(ctx, key, probe.URL, probe.Bearer, now, tvProbeOnce)
+		}()
+	}
+	wg.Wait()
+	byKey := map[string]TVHealthSignal{}
+	for _, s := range probed {
+		byKey[s.Key] = s
+	}
+
+	// Order follows the sound table's priority, most important first.
+	signals := []TVHealthSignal{
+		daemon,
+		byKey[tvHealthKeyLLM],
+		byKey[tvHealthKeySite],
+		work[0],
+		byKey[tvHealthKeyBudget],
+		oom,
+		autopilot,
+		work[1],
+		work[2],
+		byKey[tvHealthKeyLLMSlow],
+		tvMinimumsSignal(sprint, now, cfg),
+	}
+	return TVHealthResponse{Signals: signals, CheckedAt: now.UTC().Format(time.RFC3339)}, nil
 }

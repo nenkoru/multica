@@ -34,9 +34,23 @@ export interface TvGameWork {
   needsYou?: boolean;
   /** ISO timestamp of the issue's last activity. */
   lastActivityAt: string | null;
+  /** ISO timestamp the run started or the issue entered its status. */
+  since?: string | null;
 }
 
-export type TvHealthKey = "daemon" | "llm" | "oom" | "site";
+/** Signals the server raises (/api/tv/health), in sound-table order. */
+export type TvHealthKey =
+  | "daemon"
+  | "llm"
+  | "site"
+  | "stall"
+  | "budget"
+  | "oom"
+  | "autopilot"
+  | "failed_burst"
+  | "duplicate_run"
+  | "llm_slow"
+  | "minimums";
 export type TvHealthStatus = "ok" | "warning" | "unknown";
 
 export interface TvHealthSignal {
@@ -52,8 +66,12 @@ export interface TvGameSnapshot {
   epics: TvGameEpic[];
   agents: TvGameAgent[];
   work: TvGameWork[];
-  /** Issues done in the current sprint — the "resources" counter. */
+  /** Issues done in the current sprint. */
   doneInSprint: number;
+  /** Top-level issues finished today (Moscow time). */
+  doneToday: number;
+  /** Consecutive days with at least one finished issue. */
+  streakDays: number;
   /** Runs executing right now. */
   runningRuns: number;
   /** Real concurrency ceiling of the host, not the sum of agent slots. */
@@ -72,8 +90,7 @@ export type TvGameEvent =
   | { type: "epic_closed"; epicId: string; title: string }
   | { type: "run_failed"; issueId: string; title: string; agentId: string; agentName: string; epicId: string | null }
   | { type: "need_you"; issueId: string; title: string }
-  | { type: "stuck"; issueId: string; title: string }
-  | { type: "no_agents"; queued: number };
+  | { type: "stuck"; issueId: string; title: string };
 
 export const STUCK_AFTER_MS = 24 * 60 * 60 * 1000;
 
@@ -90,6 +107,8 @@ export function emptySnapshot(at = 0): TvGameSnapshot {
     agents: [],
     work: [],
     doneInSprint: 0,
+    doneToday: 0,
+    streakDays: 0,
     runningRuns: 0,
     hostCeiling: 12,
     queued: 0,
@@ -134,10 +153,6 @@ export function deriveEvents(prev: TvGameSnapshot | null, next: TvGameSnapshot):
       events.push({ type: "stuck", issueId: work.issueId, title: work.title });
     }
   }
-
-  const idleBefore = prev.runningRuns === 0 && prev.queued > 0;
-  const idleNow = next.runningRuns === 0 && next.queued > 0;
-  if (idleNow && !idleBefore) events.push({ type: "no_agents", queued: next.queued });
 
   return events;
 }

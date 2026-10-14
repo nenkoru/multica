@@ -1,31 +1,34 @@
 import { AlertEngine, isQuietHours, type AlertEngineOptions, type AlertPlate, type SoundCue } from "./alerts";
 import { deriveEvents, type TvGameEvent, type TvGameSnapshot } from "./model";
-import type { SceneWreckInput } from "./scene";
 import type { SoundPlayer } from "./sound";
+import { priorityOf } from "./sound-table";
 
-// Glue between the data the base TV screen already has and the game layer:
-// snapshots and pushed events in, cues to the speaker and view state out.
-// It is a plain object held in a ref by the component, not a store — nothing
-// here is server state, and nothing outlives the screen.
+// Glue between the screen's data and the alarm layer: snapshots and pushed
+// events in, cues to the speaker and view state out. A plain object held in a
+// ref by the screen, not a store — nothing here is server state, and nothing
+// outlives the screen.
 
-export const WRECK_LIFETIME_MS = 60_000;
-export const POPUP_LIFETIME_MS = 2_500;
+export const SPARK_LIFETIME_MS = 1_600;
 export const MUTE_MS = 60 * 60_000;
 
-export interface TvGamePopup {
+/** A finished issue flying from its epic's planet into the orb. */
+export interface TvGameSpark {
   id: string;
   epicId: string | null;
   at: number;
 }
 
+export type OrbMood = "calm" | "call" | "alarm" | "talk";
+
 export interface TvGameView {
   snapshot: TvGameSnapshot | null;
   plates: AlertPlate[];
-  wrecks: SceneWreckInput[];
-  popups: TvGamePopup[];
+  sparks: TvGameSpark[];
   mutedUntil: number | null;
   quietHours: boolean;
   soundUnlocked: boolean;
+  /** A voice conversation is going (driven by the voice feature). */
+  talking: boolean;
   /** Bumped on every change; lets React skip identical renders. */
   version: number;
 }
@@ -40,11 +43,11 @@ export class TvGameController {
   private readonly player: SoundPlayer;
   readonly now: () => number;
   private snapshot: TvGameSnapshot | null = null;
-  private wrecks: SceneWreckInput[] = [];
-  private popups: TvGamePopup[] = [];
+  private sparks: TvGameSpark[] = [];
+  private talking = false;
   private listeners = new Set<() => void>();
   private view: TvGameView;
-  /** Every cue the controller decided to play, for the demo and tests. */
+  /** The last cues the controller played, for the demo and tests. */
   readonly played: { at: number; cue: SoundCue }[] = [];
 
   constructor(options: TvGameControllerOptions) {
@@ -54,17 +57,20 @@ export class TvGameController {
     this.view = this.buildView(0);
   }
 
-  /** A fresh snapshot from the base screen's aggregate. */
+  /** A fresh snapshot from the screen's aggregates. */
   update(snapshot: TvGameSnapshot): void {
     const now = this.now();
     const events = deriveEvents(this.snapshot, snapshot);
     this.snapshot = snapshot;
     this.trackEvents(events, now);
-    this.play([...this.engine.push(events, now), ...this.engine.syncHealth(snapshot.health, now)], now);
+    // Health first: a raised signal joins the pending cautions before they
+    // are flushed, so the grouped sound is the most important of them.
+    const health = this.engine.syncHealth(snapshot.health, now);
+    this.play(pickOne([...health, ...this.engine.push(events, now)]), now);
     this.changed();
   }
 
-  /** Events the snapshot cannot carry, such as a run that just failed. */
+  /** Events a snapshot cannot carry, such as a run that just failed. */
   pushEvents(events: TvGameEvent[]): void {
     if (events.length === 0) return;
     const now = this.now();
@@ -76,18 +82,16 @@ export class TvGameController {
   /** Call about once a second. */
   tick(): void {
     const now = this.now();
-    const before = this.wrecks.length + this.popups.length;
-    this.wrecks = this.wrecks.filter((w) => now - w.at < WRECK_LIFETIME_MS);
-    this.popups = this.popups.filter((p) => now - p.at < POPUP_LIFETIME_MS);
-    const platesBefore = this.engine.plates().length;
+    const sparks = this.sparks.length;
+    this.sparks = this.sparks.filter((s) => now - s.at < SPARK_LIFETIME_MS);
+    const plates = this.engine.plates().length;
     const cues = this.engine.tick(now);
     this.play(cues, now);
-    const quiet = isQuietHours(now);
     if (
       cues.length > 0 ||
-      before !== this.wrecks.length + this.popups.length ||
-      platesBefore !== this.engine.plates().length ||
-      quiet !== this.view.quietHours ||
+      sparks !== this.sparks.length ||
+      plates !== this.engine.plates().length ||
+      isQuietHours(now) !== this.view.quietHours ||
       (this.view.mutedUntil !== null && this.engine.mutedUntilAt(now) === null)
     ) {
       this.changed();
@@ -110,6 +114,12 @@ export class TvGameController {
     this.changed();
   }
 
+  setTalking(talking: boolean): void {
+    if (this.talking === talking) return;
+    this.talking = talking;
+    this.changed();
+  }
+
   async unlockSound(): Promise<boolean> {
     const ok = await this.player.unlock();
     this.changed();
@@ -125,13 +135,8 @@ export class TvGameController {
 
   private trackEvents(events: TvGameEvent[], now: number): void {
     for (const event of events) {
-      if (event.type === "run_failed") {
-        this.wrecks = [
-          ...this.wrecks.filter((w) => w.issueId !== event.issueId),
-          { issueId: event.issueId, title: event.title, epicId: event.epicId, agentId: event.agentId, at: now },
-        ];
-      } else if (event.type === "issue_done") {
-        this.popups = [...this.popups, { id: `${event.issueId}:${now}`, epicId: event.epicId, at: now }];
+      if (event.type === "issue_done") {
+        this.sparks = [...this.sparks, { id: `${event.issueId}:${now}`, epicId: event.epicId, at: now }];
       }
     }
   }
@@ -149,11 +154,11 @@ export class TvGameController {
     return {
       snapshot: this.snapshot,
       plates: this.engine.plates(),
-      wrecks: this.wrecks,
-      popups: this.popups,
+      sparks: this.sparks,
       mutedUntil: this.engine.mutedUntilAt(now),
       quietHours: isQuietHours(now),
       soundUnlocked: this.player.unlocked,
+      talking: this.talking,
       version,
     };
   }
@@ -164,7 +169,21 @@ export class TvGameController {
   }
 }
 
-/** A player that records nothing and plays nothing (tests, SSR). */
+/** Two engine calls in one update still give the speaker a single cue. */
+function pickOne(cues: SoundCue[]): SoundCue[] {
+  if (cues.length <= 1) return cues;
+  return [cues.reduce((a, b) => (priorityOf(b.signal) < priorityOf(a.signal) ? b : a))];
+}
+
+/** The orb's state: talk while talking, red on a warning, amber when Ruslan is needed. */
+export function orbMood(view: TvGameView, needsYou: number): OrbMood {
+  if (view.talking) return "talk";
+  if (view.plates.some((p) => p.level === "warning")) return "alarm";
+  if (needsYou > 0 || view.plates.some((p) => p.flashing)) return "call";
+  return "calm";
+}
+
+/** A player that plays nothing (tests, SSR). */
 export function silentPlayer(): SoundPlayer {
   let unlocked = false;
   return {

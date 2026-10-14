@@ -18,13 +18,13 @@ import (
 // titles but no descriptions or comments.
 
 const (
-	tvGameAgentLimit     = 16
-	tvGameWorkLimit      = 60
-	tvGameRecentLimit    = 20
-	tvGameAgentWindow    = 7 * 24 * time.Hour
-	tvGameRecentWindow   = 24 * time.Hour
-	tvGameFailedWindow   = 10 * time.Minute
-	tvGameDefaultCeiling = 12
+	tvGameAgentLimit   = 16
+	tvGameWorkLimit    = 60
+	tvGameRecentLimit  = 20
+	tvGameAgentWindow  = 7 * 24 * time.Hour
+	tvGameRecentWindow = 24 * time.Hour
+	tvGameFailedWindow = 10 * time.Minute
+	tvGameStreakDays   = 60
 )
 
 type TVGameAgent struct {
@@ -40,6 +40,8 @@ type TVGameWork struct {
 	EpicID         *string `json:"epic_id"`
 	State          string  `json:"state"`
 	LastActivityAt *string `json:"last_activity_at"`
+	// Since is when the run started, or when the issue entered its status.
+	Since *string `json:"since"`
 }
 
 type TVGameEpic struct {
@@ -80,6 +82,8 @@ type TVGameResponse struct {
 	Running           int64              `json:"running"`
 	Queued            int64              `json:"queued"`
 	DoneInSprint      int64              `json:"done_in_sprint"`
+	DoneToday         int64              `json:"done_today"`
+	StreakDays        int                `json:"streak_days"`
 	Agents            []TVGameAgent      `json:"agents"`
 	Work              []TVGameWork       `json:"work"`
 	Epics             []TVGameEpic       `json:"epics"`
@@ -108,9 +112,9 @@ func (h *Handler) GetTVGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) loadTVGame(ctx context.Context, ws pgtype.UUID, now time.Time) (TVGameResponse, error) {
-	ceiling := h.cfg.TVHostCeiling
+	ceiling := h.cfg.TV.HostCeiling
 	if ceiling <= 0 {
-		ceiling = tvGameDefaultCeiling
+		ceiling = DefaultTVConfig().HostCeiling
 	}
 	resp := TVGameResponse{
 		GeneratedAt:       now.UTC().Format(time.RFC3339),
@@ -153,6 +157,9 @@ WHERE a.workspace_id = $1 AND q.status IN ('queued', 'dispatched', 'running')`, 
 	if err := h.loadTVGameRecent(ctx, ws, now, &resp); err != nil {
 		return resp, fmt.Errorf("recent: %w", err)
 	}
+	if err := h.loadTVGameStreak(ctx, ws, now, &resp); err != nil {
+		return resp, fmt.Errorf("streak: %w", err)
+	}
 	return resp, nil
 }
 
@@ -190,7 +197,8 @@ func (h *Handler) loadTVGameWork(ctx context.Context, ws pgtype.UUID, resp *TVGa
 	rows, err := h.DB.Query(ctx, fmt.Sprintf(`
 WITH running AS (
   SELECT DISTINCT ON (r.id, q.agent_id) r.id AS issue_id, r.title, q.agent_id, COALESCE(r.epic_id, i.epic_id) AS epic_id,
-    'running' AS state, COALESCE(r.last_activity_at, r.updated_at) AS activity_at, q.started_at AS sort_at
+    'running' AS state, COALESCE(r.last_activity_at, r.updated_at) AS activity_at, q.started_at AS sort_at,
+    COALESCE(q.started_at, q.dispatched_at) AS since_at
   FROM agent_task_queue q
   JOIN agent a ON a.id = q.agent_id
   JOIN issue i ON i.id = q.issue_id
@@ -201,34 +209,36 @@ WITH running AS (
 waiting AS (
   SELECT i.id AS issue_id, i.title, i.assignee_id AS agent_id, i.epic_id,
     CASE %[1]s WHEN 'in_review' THEN 'in_review' ELSE 'blocked' END AS state,
-    COALESCE(i.last_activity_at, i.updated_at) AS activity_at, COALESCE(i.last_activity_at, i.updated_at) AS sort_at
+    COALESCE(i.last_activity_at, i.updated_at) AS activity_at, COALESCE(i.last_activity_at, i.updated_at) AS sort_at,
+    %[3]s AS since_at
   FROM issue i
   WHERE i.workspace_id = $1 AND i.parent_issue_id IS NULL AND i.assignee_type = 'agent'
     AND %[1]s IN ('in_review', 'blocked')
     AND NOT EXISTS (SELECT 1 FROM running x WHERE x.issue_id = i.id)
 )
-SELECT issue_id, title, agent_id, epic_id, state, activity_at FROM (
+SELECT issue_id, title, agent_id, epic_id, state, activity_at, since_at FROM (
   SELECT * FROM running
   UNION ALL
   SELECT * FROM waiting
 ) w
 ORDER BY (state = 'running') DESC, sort_at DESC NULLS LAST, issue_id
-LIMIT $2`, planningBucketExpr, tvRootIssue), ws, tvGameWorkLimit)
+LIMIT $2`, planningBucketExpr, tvRootIssue, tvSinceExpr), ws, tvGameWorkLimit)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var issueID, agentID, epicID pgtype.UUID
-		var activity pgtype.Timestamptz
+		var activity, since pgtype.Timestamptz
 		var work TVGameWork
-		if err := rows.Scan(&issueID, &work.Title, &agentID, &epicID, &work.State, &activity); err != nil {
+		if err := rows.Scan(&issueID, &work.Title, &agentID, &epicID, &work.State, &activity, &since); err != nil {
 			return err
 		}
 		work.IssueID = uuidToString(issueID)
 		work.AgentID = uuidToString(agentID)
 		work.EpicID = tvUUIDPtr(epicID)
 		work.LastActivityAt = timestampToPtr(activity)
+		work.Since = timestampToPtr(since)
 		resp.Work = append(resp.Work, work)
 	}
 	return rows.Err()
@@ -364,4 +374,45 @@ func tvUUIDPtr(id pgtype.UUID) *string {
 	}
 	s := uuidToString(id)
 	return &s
+}
+
+// loadTVGameStreak counts top-level issues finished today (Moscow time) and
+// the run of consecutive days, ending today or yesterday, with at least one.
+func (h *Handler) loadTVGameStreak(ctx context.Context, ws pgtype.UUID, now time.Time, resp *TVGameResponse) error {
+	rows, err := h.DB.Query(ctx, `
+SELECT (al.created_at AT TIME ZONE 'Europe/Moscow')::date AS day, count(DISTINCT al.issue_id)
+FROM activity_log al
+JOIN issue i ON i.id = al.issue_id
+WHERE i.workspace_id = $1 AND i.parent_issue_id IS NULL
+  AND al.action = 'status_changed' AND al.details->>'to' = 'done'
+  AND al.created_at > $2
+GROUP BY day`, ws, now.Add(-tvGameStreakDays*24*time.Hour))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	days := map[string]int64{}
+	for rows.Next() {
+		var day pgtype.Date
+		var n int64
+		if err := rows.Scan(&day, &n); err != nil {
+			return err
+		}
+		days[day.Time.Format("2006-01-02")] = n
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	today := now.In(tvMoscow)
+	resp.DoneToday = days[today.Format("2006-01-02")]
+	day := today
+	if resp.DoneToday == 0 {
+		// Today is not over yet: an empty morning does not break the streak.
+		day = day.AddDate(0, 0, -1)
+	}
+	for days[day.Format("2006-01-02")] > 0 {
+		resp.StreakDays++
+		day = day.AddDate(0, 0, -1)
+	}
+	return nil
 }

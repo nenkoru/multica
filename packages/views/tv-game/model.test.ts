@@ -47,12 +47,4 @@ describe("deriveEvents", () => {
     const c = snap({ at: T0 + 120_000, work: [item] });
     expect(deriveEvents(b, c)).toEqual([]);
   });
-
-  it("reports agents going idle over a non-empty queue", () => {
-    const busy = snap({ runningRuns: 2, queued: 3 });
-    const idle = snap({ runningRuns: 0, queued: 3 });
-    expect(deriveEvents(busy, idle)).toEqual([{ type: "no_agents", queued: 3 }]);
-    expect(deriveEvents(idle, idle)).toEqual([]);
-    expect(deriveEvents(busy, snap({ runningRuns: 0, queued: 0 }))).toEqual([]);
-  });
 });

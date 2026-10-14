@@ -36,11 +36,13 @@ describe("TV game schemas", () => {
         { key: "llm", status: "warning", reason: "http_5xx", count: 2 },
         { key: "site", status: "degraded", count: 1 },
         { key: "gpu", status: "warning", count: 1 },
+        { key: "stall", status: "warning", reason: "queue_idle", count: 3 },
       ],
     });
     expect(health.signals).toEqual([
       { key: "llm", status: "warning", reason: "http_5xx", count: 2 },
       { key: "site", status: "unknown", count: 1 },
+      { key: "stall", status: "warning", reason: "queue_idle", count: 3 },
     ]);
     expect(parseTVHealth(null).signals).toEqual([]);
   });

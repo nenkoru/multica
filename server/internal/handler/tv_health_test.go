@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,10 +101,10 @@ func TestTvHealthDaemonAndOOM(t *testing.T) {
 		"runtime_mode": "local", "daemon_id": "tv-daemon-restart", "provider": "tv_claude",
 		"status": "offline", "last_seen_at": time.Now().Add(-20 * time.Second),
 	})
-	// Retired a week ago: not an alarm.
-	dbfx.Runtime(t, "tv retired", testutil.Cols{
-		"runtime_mode": "local", "daemon_id": "tv-daemon-retired", "provider": "tv_claude",
-		"status": "offline", "last_seen_at": time.Now().Add(-7 * 24 * time.Hour),
+	// A laptop closed for the night: not watched, not an alarm.
+	dbfx.Runtime(t, "tv laptop", testutil.Cols{
+		"runtime_mode": "local", "daemon_id": "tv-daemon-laptop", "provider": "tv_claude",
+		"status": "offline", "last_seen_at": time.Now().Add(-3 * time.Hour),
 	})
 	// One provider offline but the same daemon still online: not an alarm.
 	dbfx.Runtime(t, "tv half a", testutil.Cols{
@@ -116,13 +117,26 @@ func TestTvHealthDaemonAndOOM(t *testing.T) {
 
 	agent := dbfx.Agent(t, "tv oom agent", online)
 	issue := dbfx.Issue(t, "tv oom issue")
-	failed := func(errText string, at time.Time) {
-		dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "status": "failed", "error": errText, "completed_at": at})
+	failed := func(errText string, at time.Time, reason ...string) {
+		cols := testutil.Cols{"issue_id": issue, "status": "failed", "error": errText, "completed_at": at}
+		if len(reason) > 0 {
+			cols["failure_reason"] = reason[0]
+		}
+		dbfx.Task(t, agent, cols)
 	}
 	failed("worker exited: signal: killed (oom_kill)", time.Now().Add(-3*time.Minute))
 	failed("exit status 137", time.Now().Add(-5*time.Minute))
 	failed("model returned 429", time.Now().Add(-1*time.Minute))
 	failed("Out of memory", time.Now().Add(-2*time.Hour))
+	// Killed by its own timeout or idle watchdog: SIGKILL, but not memory.
+	failed("worker exited: signal: killed", time.Now().Add(-2*time.Minute))
+	failed("exit status 137", time.Now().Add(-2*time.Minute), "timeout")
+	failed("exit status 137", time.Now().Add(-2*time.Minute), "agent_error.idle_watchdog")
+
+	previous := testHandler.cfg.TV
+	testHandler.cfg.TV = DefaultTVConfig()
+	testHandler.cfg.TV.WatchedDaemons = []string{"tv-daemon-down", "tv-daemon-restart", "tv-daemon-half"}
+	t.Cleanup(func() { testHandler.cfg.TV = previous })
 
 	var created CreateKioskTokenResponse
 	testutil.Call(t, testHandler.CreateKioskToken, newRequest("POST", "/api/kiosk-tokens", map[string]string{
@@ -140,11 +154,26 @@ func TestTvHealthDaemonAndOOM(t *testing.T) {
 	if daemon.Status != tvHealthWarning || daemon.Count != 1 || daemon.Since == nil {
 		t.Fatalf("daemon: %+v", daemon)
 	}
+	// Without a watch list the daemon signal never sounds.
+	testHandler.cfg.TV.WatchedDaemons = nil
+	var unwatched TVHealthResponse
+	testutil.Call(t, testHandler.GetTVHealth, tvRequest("GET", "/api/tv/health", created.Token, nil)).Want(http.StatusOK).JSON(&unwatched)
+	if s := tvSignal(t, unwatched, tvHealthKeyDaemon); s.Status != tvHealthUnknown || s.Reason != "not_configured" {
+		t.Fatalf("unwatched daemon: %+v", s)
+	}
 	oom := tvSignal(t, got, tvHealthKeyOOM)
 	if oom.Status != tvHealthWarning || oom.Count != 2 {
 		t.Fatalf("oom: %+v", oom)
 	}
-	for _, key := range []string{tvHealthKeyLLM, tvHealthKeySite} {
+	// Order follows the sound table's priority.
+	keys := []string{}
+	for _, s := range got.Signals {
+		keys = append(keys, s.Key)
+	}
+	if strings.Join(keys, ",") != "daemon,llm,site,stall,budget,oom,autopilot,failed_burst,duplicate_run,llm_slow,minimums" {
+		t.Fatalf("signal order: %v", keys)
+	}
+	for _, key := range []string{tvHealthKeyLLM, tvHealthKeySite, tvHealthKeyBudget, tvHealthKeyLLMSlow} {
 		if s := tvSignal(t, got, key); s.Status != tvHealthUnknown || s.Reason != "not_configured" {
 			t.Fatalf("%s: %+v", key, s)
 		}

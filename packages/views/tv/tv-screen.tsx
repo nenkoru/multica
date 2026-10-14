@@ -33,6 +33,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { TV_COPY, type TvCopy, type TvLang } from "./copy";
 import { elapsedMs, epicSegments, percent, truncateTitle, tvDate, tvTime, type TvSegmentKey, type TvTone } from "./model";
 import { useTvRealtime } from "./use-tv-realtime";
+import { TvOrbitLive } from "../tv-game/tv-orbit";
 
 // A wall screen read from about three metres. Sizes follow the viewport width
 // so 1080p and 4K show the same picture; the app's --text-* scale stops at
@@ -85,10 +86,14 @@ export interface TvScreenProps {
   /** Explicit realtime URL (…/ws) when the deployment sets one. */
   wsUrl?: string;
   lang?: TvLang;
+  /** Orbit (RUSL-1786) or the board; the /tv page picks Orbit unless ?view=board. */
+  view?: TvView;
 }
 
+export type TvView = "orbit" | "board";
+
 /** Full-screen, read-only TV dashboard authenticated by a kiosk token. */
-export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru" }: TvScreenProps) {
+export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", view = "board" }: TvScreenProps) {
   const copy = TV_COPY[lang];
   const queryClient = useQueryClient();
   const [pairing, setPairing] = useState<"idle" | "exchanging">("idle");
@@ -112,9 +117,10 @@ export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru" }: TvScreenProps)
   const query = useQuery({ ...tvOverviewOptions(apiBaseUrl), enabled: pairing === "idle" });
   const unauthorized = query.error instanceof TvUnauthorizedError;
 
+  // Every TV feed (overview, and the Orbit's game and health) sits under "tv".
   const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: tvKeys.overview(apiBaseUrl) });
-  }, [apiBaseUrl, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: ["tv"] });
+  }, [queryClient]);
   const [socketUrl, setSocketUrl] = useState<string | null>(null);
   useEffect(() => {
     setSocketUrl(tvWsUrl({ wsUrl, apiBaseUrl, pageOrigin: window.location.origin }));
@@ -131,6 +137,8 @@ export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru" }: TvScreenProps)
     >
       {unauthorized ? (
         <TvPairing apiBaseUrl={apiBaseUrl} copy={copy} onPaired={refresh} />
+      ) : query.data && view === "orbit" ? (
+        <TvOrbitLive apiBaseUrl={apiBaseUrl} overview={query.data} lang={lang} now={now} offline={query.isError} />
       ) : query.data ? (
         <TvDashboard data={query.data} copy={copy} now={now} offline={query.isError} />
       ) : (

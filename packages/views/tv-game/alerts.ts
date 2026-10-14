@@ -1,39 +1,37 @@
 import type { TvGameEvent, TvHealthKey, TvHealthSignal } from "./model";
-import {
-  CAUTION_PREFIX,
-  DEFAULT_VOICE_LABELS,
-  WARNING_PREFIX,
-  cautionGroupOf,
-  cautionPhrase,
-  spoken,
-  warningPhrase,
-  type CautionGroup,
-  type VoiceLabels,
-} from "./voice";
+import { priorityOf, soundEntry, type AlarmLevel, type SignalId } from "./sound-table";
 
-// Cockpit alerting for the TV screen (RUSL-1786). Three tiers, like advisory /
-// caution / warning:
-//   info    — one soft ding: an issue or an epic is done.
-//   caution — double gong and a voice line, once: a run failed, a new "needs
-//             you" issue, an issue stuck for a day, agents idle over a queue.
-//   warning — master warning repeating until acknowledged: infrastructure
-//             health from /api/tv/health.
-// Only a change sounds, never a steady state. The engine is pure: it gets the
-// clock from the caller, returns the cues to play, and keeps the plates the
-// screen shows. Playing a cue is sound.ts's job.
+// Cockpit alerting for the TV screen (RUSL-1786), driven by SOUND_TABLE:
+//   warning — repeats until acknowledged; the plate stays until the signal
+//             is "ok" again, then "cleared" sounds.
+//   caution — sounds once; the plate stays while the signal is raised (or
+//             10 minutes for event cautions).
+//   info    — sounds once, no plate.
+// Only a change sounds, never a steady state. At most one caution per
+// 2 minutes; cautions inside the interval are grouped into the next one.
+// 23:00–08:00 MSK only warnings sound. One sound at a time: of everything
+// that wants the speaker, the signal highest in the table plays, and nothing
+// below an unacknowledged warning sounds while it is active.
+// The engine is pure: the caller passes the clock and plays the cues.
 
-export type AlertLevel = "info" | "caution" | "warning";
+export interface SoundCue {
+  signal: SignalId;
+  level: AlarmLevel;
+  /** A repeat of a warning that is still unacknowledged. */
+  repeat: boolean;
+}
 
-export type SoundCue =
-  | { kind: "ding" }
-  | { kind: "caution"; voice: string }
-  | { kind: "warning"; voice: string | null };
+/** What a master-caution plate counts. */
+export type CautionGroup = "run_failed" | "need_you" | "stuck";
 
 export interface AlertPlate {
   id: string;
-  level: "caution" | "warning";
-  text: string;
+  signal: SignalId;
+  level: "warning" | "caution";
+  group: CautionGroup | null;
   count: number;
+  /** Reason code from the server, or the agent of a single failed run. */
+  detail: string | null;
   /** Flashing until acknowledged. */
   flashing: boolean;
   since: number;
@@ -41,15 +39,10 @@ export interface AlertPlate {
 }
 
 export interface AlertEngineOptions {
-  /** At most one caution sound per this interval; the rest are grouped. */
   cautionCooldownMs?: number;
-  /** Master warning chime repeats this often until acknowledged. */
   warningRepeatMs?: number;
-  /** The voice line of an unacknowledged warning repeats this often. */
-  warningVoiceRepeatMs?: number;
-  /** A caution plate leaves the screen after this long without updates. */
+  /** An event caution plate leaves after this long without updates. */
   cautionPlateMs?: number;
-  labels?: VoiceLabels;
 }
 
 const MINUTE = 60_000;
@@ -61,116 +54,126 @@ export function isQuietHours(now: number): boolean {
   return hour >= 23 || hour < 8;
 }
 
-interface PendingCaution {
-  count: number;
-  last: TvGameEvent;
+function cautionGroupOf(event: TvGameEvent): CautionGroup | null {
+  return event.type === "run_failed" || event.type === "need_you" || event.type === "stuck" ? event.type : null;
 }
 
-interface ActiveWarning {
-  key: TvHealthKey;
-  since: number;
+interface RaisedSignal {
+  plate: AlertPlate;
   acked: boolean;
   lastChimeAt: number;
-  lastVoiceAt: number;
 }
 
 export class AlertEngine {
   private readonly cautionCooldownMs: number;
   private readonly warningRepeatMs: number;
-  private readonly warningVoiceRepeatMs: number;
   private readonly cautionPlateMs: number;
-  private readonly labels: VoiceLabels;
 
   private lastCautionSoundAt = Number.NEGATIVE_INFINITY;
-  private pending = new Map<CautionGroup, PendingCaution>();
-  private cautionPlates = new Map<CautionGroup, AlertPlate>();
-  private warnings = new Map<TvHealthKey, ActiveWarning>();
+  /** Cautions waiting for the rate limit; one sound covers all of them. */
+  private pending = new Set<SignalId>();
+  /** Health signals currently raised (warning and caution level). */
+  private raised = new Map<TvHealthKey, RaisedSignal>();
+  /** Event cautions: failed runs, "needs you", stuck issues. */
+  private eventPlates = new Map<CautionGroup, AlertPlate>();
   private mutedUntil = 0;
 
   constructor(options: AlertEngineOptions = {}) {
     this.cautionCooldownMs = options.cautionCooldownMs ?? 2 * MINUTE;
     this.warningRepeatMs = options.warningRepeatMs ?? 8_000;
-    this.warningVoiceRepeatMs = options.warningVoiceRepeatMs ?? MINUTE;
     this.cautionPlateMs = options.cautionPlateMs ?? 10 * MINUTE;
-    this.labels = options.labels ?? DEFAULT_VOICE_LABELS;
   }
 
-  /** Feeds info and caution events. Returns the cues to play now. */
+  /** Feeds info and caution events. Returns the cue to play now, if any. */
   push(events: TvGameEvent[], now: number): SoundCue[] {
     const cues: SoundCue[] = [];
-    let ding = false;
     for (const event of events) {
+      if (event.type === "issue_done") cues.push(this.cue("issue_done"));
+      else if (event.type === "epic_closed") cues.push(this.cue("epic_closed"));
       const group = cautionGroupOf(event);
-      if (!group) {
-        ding = true;
-        continue;
-      }
-      const pending = this.pending.get(group);
-      this.pending.set(group, { count: (pending?.count ?? 0) + 1, last: event });
-      const plate = this.cautionPlates.get(group);
-      const count = plate && plate.flashing ? plate.count + 1 : 1;
-      this.cautionPlates.set(group, {
+      if (!group) continue;
+      this.pending.add("master_caution");
+      const plate = this.eventPlates.get(group);
+      const fresh = !plate || !plate.flashing;
+      const count = fresh ? 1 : plate.count + 1;
+      this.eventPlates.set(group, {
         id: `caution:${group}`,
+        signal: "master_caution",
         level: "caution",
-        text: cautionPhrase(group, count, event),
+        group,
         count,
+        detail: event.type === "run_failed" && count === 1 ? event.agentName : null,
         flashing: true,
-        since: plate && plate.flashing ? plate.since : now,
+        since: fresh ? now : plate.since,
         updatedAt: now,
       });
     }
-    if (ding) cues.push({ kind: "ding" });
     cues.push(...this.flushCautions(now));
     return this.audible(cues, now);
   }
 
-  /** Reads the current infrastructure health. Returns the cues to play now. */
+  /** Reads the current health signals. Returns the cue to play now, if any. */
   syncHealth(signals: TvHealthSignal[], now: number): SoundCue[] {
     const cues: SoundCue[] = [];
-    const warningKeys = new Set(signals.filter((s) => s.status === "warning").map((s) => s.key));
-    for (const key of warningKeys) {
-      if (this.warnings.has(key)) continue;
-      this.warnings.set(key, { key, since: now, acked: false, lastChimeAt: now, lastVoiceAt: now });
-      cues.push({ kind: "warning", voice: spoken(WARNING_PREFIX, warningPhrase(key, this.labels)) });
+    for (const signal of signals) {
+      const entry = soundEntry(signal.key);
+      const current = this.raised.get(signal.key);
+      if (signal.status === "warning") {
+        if (current) {
+          current.plate.count = signal.count;
+          current.plate.detail = signal.reason ?? null;
+          continue;
+        }
+        this.raised.set(signal.key, {
+          acked: false,
+          lastChimeAt: now,
+          plate: {
+            id: `${entry.level}:${signal.key}`,
+            signal: signal.key,
+            level: entry.level === "warning" ? "warning" : "caution",
+            group: null,
+            count: signal.count,
+            detail: signal.reason ?? null,
+            flashing: true,
+            since: now,
+            updatedAt: now,
+          },
+        });
+        if (entry.level === "warning") cues.push(this.cue(signal.key));
+        else this.pending.add(signal.key);
+      } else if (signal.status === "ok" && current) {
+        // "unknown" is not a recovery: only an explicit "ok" clears a signal,
+        // so a probe that goes quiet does not silence a real outage.
+        this.raised.delete(signal.key);
+        this.pending.delete(signal.key);
+        if (entry.level === "warning") cues.push(this.cue("cleared"));
+      }
     }
-    for (const key of [...this.warnings.keys()]) {
-      if (warningKeys.has(key)) continue;
-      // "unknown" is not a recovery: only an explicit "ok" clears a warning,
-      // so a probe that goes quiet does not silence a real outage.
-      const signal = signals.find((s) => s.key === key);
-      if (signal && signal.status === "unknown") continue;
-      this.warnings.delete(key);
-      cues.push({ kind: "ding" });
-    }
+    cues.push(...this.flushCautions(now));
     return this.audible(cues, now);
   }
 
-  /** Advances timers: grouped cautions and warning repeats. */
+  /** Advances timers: grouped cautions and the warning repeat. */
   tick(now: number): SoundCue[] {
     const cues = this.flushCautions(now);
-    for (const [group, plate] of this.cautionPlates) {
-      if (now - plate.updatedAt >= this.cautionPlateMs) this.cautionPlates.delete(group);
+    for (const [group, plate] of this.eventPlates) {
+      if (now - plate.updatedAt >= this.cautionPlateMs) this.eventPlates.delete(group);
     }
-    for (const warning of this.warnings.values()) {
-      if (warning.acked || now - warning.lastChimeAt < this.warningRepeatMs) continue;
-      warning.lastChimeAt = now;
-      let voice: string | null = null;
-      if (now - warning.lastVoiceAt >= this.warningVoiceRepeatMs) {
-        warning.lastVoiceAt = now;
-        voice = spoken(WARNING_PREFIX, warningPhrase(warning.key, this.labels));
-      }
-      cues.push({ kind: "warning", voice });
+    const top = this.topUnackedWarning();
+    if (top && now - top.lastChimeAt >= this.warningRepeatMs) {
+      top.lastChimeAt = now;
+      cues.push({ ...this.cue(top.plate.signal), repeat: true });
     }
     return this.audible(cues, now);
   }
 
-  /**
-   * Master caution button: silences what is sounding and stops the flashing.
-   * Warning plates stay until the signal recovers.
-   */
+  /** Master warning/caution button: silence and stop the flashing. */
   acknowledge(): void {
-    for (const warning of this.warnings.values()) warning.acked = true;
-    for (const plate of this.cautionPlates.values()) plate.flashing = false;
+    for (const raised of this.raised.values()) {
+      raised.acked = true;
+      raised.plate.flashing = false;
+    }
+    for (const plate of this.eventPlates.values()) plate.flashing = false;
   }
 
   muteFor(ms: number, now: number): void {
@@ -185,37 +188,51 @@ export class AlertEngine {
     return this.mutedUntil > now ? this.mutedUntil : null;
   }
 
-  /** Plates to show, warnings first, newest first inside a tier. */
+  /** Plates in table order, newest first within a signal. */
   plates(): AlertPlate[] {
-    const warnings: AlertPlate[] = [...this.warnings.values()].map((w) => ({
-      id: `warning:${w.key}`,
-      level: "warning",
-      text: warningPhrase(w.key, this.labels),
-      count: 1,
-      flashing: !w.acked,
-      since: w.since,
-      updatedAt: w.since,
-    }));
-    const cautions = [...this.cautionPlates.values()];
-    const newest = (a: AlertPlate, b: AlertPlate) => b.updatedAt - a.updatedAt;
-    return [...warnings.sort(newest), ...cautions.sort(newest)];
+    const all = [...[...this.raised.values()].map((r) => r.plate), ...this.eventPlates.values()];
+    return all
+      .map((p) => ({ ...p }))
+      .sort((a, b) => priorityOf(a.signal) - priorityOf(b.signal) || b.updatedAt - a.updatedAt);
   }
 
   hasUnacknowledged(): boolean {
     return this.plates().some((p) => p.flashing);
   }
 
+  private cue(signal: SignalId): SoundCue {
+    return { signal, level: soundEntry(signal).level, repeat: false };
+  }
+
+  private topUnackedWarning(): RaisedSignal | null {
+    let top: RaisedSignal | null = null;
+    for (const raised of this.raised.values()) {
+      if (raised.acked || raised.plate.level !== "warning") continue;
+      if (!top || priorityOf(raised.plate.signal) < priorityOf(top.plate.signal)) top = raised;
+    }
+    return top;
+  }
+
   private flushCautions(now: number): SoundCue[] {
     if (this.pending.size === 0 || now - this.lastCautionSoundAt < this.cautionCooldownMs) return [];
-    const parts = [...this.pending].map(([group, p]) => cautionPhrase(group, p.count, p.last));
+    // One sound for the whole group: the most important pending caution.
+    const top = [...this.pending].sort((a, b) => priorityOf(a) - priorityOf(b))[0]!;
     this.pending.clear();
     this.lastCautionSoundAt = now;
-    return [{ kind: "caution", voice: spoken(CAUTION_PREFIX, parts.join(". ")) }];
+    return [this.cue(top)];
   }
 
   private audible(cues: SoundCue[], now: number): SoundCue[] {
-    if (this.mutedUntil > now) return [];
-    if (!isQuietHours(now)) return cues;
-    return cues.filter((cue) => cue.kind === "warning");
+    if (cues.length === 0 || this.mutedUntil > now) return [];
+    const quiet = isQuietHours(now);
+    const allowed = cues.filter((cue) => !quiet || cue.level === "warning");
+    if (allowed.length === 0) return [];
+    const best = allowed.reduce((a, b) => (priorityOf(b.signal) < priorityOf(a.signal) ? b : a));
+    // Nothing below an active, unacknowledged warning gets the speaker.
+    const blocking = this.topUnackedWarning();
+    if (blocking && best.signal !== blocking.plate.signal && priorityOf(best.signal) > priorityOf(blocking.plate.signal)) {
+      return [];
+    }
+    return [best];
   }
 }
