@@ -109,7 +109,8 @@ func TestTVOverviewAggregates(t *testing.T) {
 	quiet := fx.Insert(t, "epic", testutil.Cols{"workspace_id": ws, "title": "Quiet epic"})
 	closed := fx.Insert(t, "epic", testutil.Cols{"workspace_id": ws, "title": "Closed epic", "status": "closed"})
 
-	runtimeAgent := fx.Agent(t, "TV agent", "")
+	runtime := fx.Runtime(t, "TV runtime")
+	runtimeAgent := fx.Agent(t, "TV agent", runtime)
 	issue := func(title, status string, activity time.Time, over testutil.Cols) string {
 		cols := testutil.Cols{"status": status, "last_activity_at": activity, "updated_at": activity}
 		for k, v := range over {
@@ -151,7 +152,7 @@ func TestTVOverviewAggregates(t *testing.T) {
 	label := fx.Insert(t, "issue_label", testutil.Cols{"workspace_id": ws, "name": "Needs owner", "color": "#ff0000", "resource_type": "issue"})
 	fx.InsertNoID(t, "issue_to_label", testutil.Cols{"issue_id": blocked, "label_id": label}, "issue_id = $1 AND label_id = $2", blocked, label)
 
-	fx.Task(t, runtimeAgent, testutil.Cols{"status": "running", "issue_id": newest, "started_at": ago(time.Minute)})
+	fx.Task(t, runtimeAgent, testutil.Cols{"status": "running", "runtime_id": runtime, "issue_id": newest, "started_at": ago(time.Minute)})
 	fx.Task(t, runtimeAgent, testutil.Cols{"status": "failed", "issue_id": second, "completed_at": ago(10 * time.Minute), "failure_reason": "timeout", "error": "SECRET-ERROR"})
 	fx.Task(t, runtimeAgent, testutil.Cols{"status": "failed", "issue_id": second, "completed_at": ago(48 * time.Hour), "failure_reason": "timeout"})
 
