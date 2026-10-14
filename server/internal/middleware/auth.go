@@ -84,7 +84,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			r.Header.Del("X-Task-ID")
 
 			tokenString, fromCookie := extractToken(r)
-			if isKioskCredential(r, tokenString) {
+			if isKioskCredential(tokenString) {
 				// Kiosk tokens are read-only and bound to the TV aggregate;
 				// they are a valid credential that is never allowed here.
 				http.Error(w, `{"error":"kiosk token is limited to the TV dashboard"}`, http.StatusForbidden)
@@ -303,17 +303,11 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 
 // extractToken returns the bearer token and whether it came from a cookie.
 // Priority: Authorization header > multica_auth cookie.
-// isKioskCredential reports whether the request carries only a kiosk token:
-// as the bearer token, or as the kiosk cookie with no session token beside it.
-func isKioskCredential(r *http.Request, tokenString string) bool {
-	if strings.HasPrefix(tokenString, auth.KioskTokenPrefix) {
-		return true
-	}
-	if tokenString != "" {
-		return false
-	}
-	cookie, err := r.Cookie(auth.KioskCookieName)
-	return err == nil && cookie.Value != ""
+// isKioskCredential reports whether the bearer token is a kiosk token. The
+// kiosk cookie is scoped to /api/tv and never reaches this middleware; a
+// request without a session is a plain 401 so the app's sign-in flow runs.
+func isKioskCredential(tokenString string) bool {
+	return strings.HasPrefix(tokenString, auth.KioskTokenPrefix)
 }
 
 func extractToken(r *http.Request) (token string, fromCookie bool) {

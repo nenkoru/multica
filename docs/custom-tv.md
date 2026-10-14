@@ -20,7 +20,7 @@ multica kiosk-token revoke <id>          # revoking the parent signs out all its
 Scan the QR code with the phone (or open the link on the TV). The link carries a
 single-use code in the fragment (`/tv#pair=…`); the page sends it once in a POST
 body to `/api/tv/session`, which mints a device token under the parent token
-and answers with an HttpOnly cookie (`multica_tv`, SameSite=Strict, one year).
+and answers with an HttpOnly cookie (`multica_tv`, `Path=/api/tv`, SameSite=Strict, one year).
 The fragment is removed from the address, fragments never reach the server,
 and the code is dead after first use — so no working key lives in a URL. A
 kiosk token or a code can also be pasted on `/tv`. `?lang=en` switches the copy
@@ -49,7 +49,8 @@ to English; Russian is the default.
 |---|---|
 | `GET /api/tv/overview` | 200, aggregate below |
 | `GET /api/tv/ws` | WebSocket that only ever receives `{"type":"tv:changed"}` |
-| any other `/api/*` (issues, comments, chat, …) with the token as bearer or as the only cookie | 403 |
+| any other `/api/*` (issues, comments, chat, …) with the token as bearer | 403 |
+| any other `/api/*` with only the kiosk cookie | the cookie is not sent (`Path=/api/tv`); 401 without a session |
 | after `revoke` | 401 on the aggregate; the socket is closed within a minute |
 
 Only SHA-256 hashes of tokens and pairing codes are stored (`kiosk_token`,
@@ -83,7 +84,8 @@ screen. Put the label on a blocked issue when the next action is Ruslan's
   time since they entered the status.
 - **Current sprint:** the active sprint, else a planned sprint whose dates
   include today.
-- **Feed:** issues closed as done and failed agent runs of the last 24 h,
+- **Feed:** issues closed as done and failed agent runs on issues (chat runs
+  stay private) of the last 24 h,
   newest first, at most eight.
 
 ## Updates

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const DEBOUNCE_MS = 750;
+// A steady stream of events must not postpone the refresh forever.
+const MAX_WAIT_MS = 3_000;
 const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 30_000;
 
@@ -21,10 +23,18 @@ export function useTvRealtime(url: string | null, onChange: () => void): boolean
     let retryDelay = RECONNECT_MIN_MS;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    let firstPending: number | null = null;
 
+    const fire = () => {
+      firstPending = null;
+      onChangeRef.current();
+    };
     const schedule = () => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => onChangeRef.current(), DEBOUNCE_MS);
+      const now = Date.now();
+      firstPending ??= now;
+      const wait = Math.max(0, Math.min(DEBOUNCE_MS, firstPending + MAX_WAIT_MS - now));
+      debounceTimer = setTimeout(fire, wait);
     };
 
     const connect = () => {
