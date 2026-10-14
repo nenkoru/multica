@@ -1,0 +1,16 @@
+{
+  "supply": "동시 실행",
+  "resources": "완료",
+  "enable_sound": "소리 켜기",
+  "mute_hour": "1시간 무음",
+  "unmute": "소리 다시 켜기",
+  "muted_until": "{{time}}까지 무음",
+  "quiet_hours": "야간: 경고만",
+  "map_label": "작업 지도: 실행 중 {{running}}개, 이번 스프린트 완료 {{done}}개",
+  "no_epic": "에픽 없음",
+  "acknowledge": "확인",
+  "level_warning": "경고",
+  "level_caution": "주의",
+  "more_plates": "외 {{count}}개",
+  "demo": "데모"
+}

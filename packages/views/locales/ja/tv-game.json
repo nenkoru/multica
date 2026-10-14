@@ -1,0 +1,16 @@
+{
+  "supply": "同時実行",
+  "resources": "完了",
+  "enable_sound": "音をオン",
+  "mute_hour": "1 時間ミュート",
+  "unmute": "音を戻す",
+  "muted_until": "{{time}} までミュート",
+  "quiet_hours": "夜間：警告のみ",
+  "map_label": "作業マップ：実行中 {{running}} 件、今スプリントの完了 {{done}} 件",
+  "no_epic": "エピックなし",
+  "acknowledge": "確認",
+  "level_warning": "警告",
+  "level_caution": "注意",
+  "more_plates": "ほか {{count}} 件",
+  "demo": "デモ"
+}
