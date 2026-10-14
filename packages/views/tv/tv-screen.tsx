@@ -131,7 +131,11 @@ export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", layer, onEvents,
   const copy = TV_COPY[lang];
   const queryClient = useQueryClient();
   const visible = usePageVisible();
-  const [pairing, setPairing] = useState<"idle" | "exchanging" | "rejected">("idle");
+  // Known before the first fetch, so the aggregate is not requested (and
+  // rejected) ahead of the cookie the pairing link is about to set.
+  const [pairing, setPairing] = useState<"idle" | "exchanging" | "rejected">(() =>
+    typeof window !== "undefined" && /(?:^#|&)pair=/.test(window.location.hash) ? "exchanging" : "idle",
+  );
 
   // A pairing link carries a one-time code in the fragment, which never
   // reaches a server log. Redeem it once for the cookie and drop it.
@@ -142,8 +146,10 @@ export function TvScreen({ apiBaseUrl = "", wsUrl, lang = "ru", layer, onEvents,
     createTvSession(apiBaseUrl, { code })
       .catch(() => false)
       .then((ok) => {
+        // Drop any answer cached before the cookie existed; enabling the
+        // query then fetches with it.
+        queryClient.removeQueries({ queryKey: tvKeys.overview(apiBaseUrl) });
         setPairing(ok ? "idle" : "rejected");
-        void queryClient.invalidateQueries({ queryKey: tvKeys.overview(apiBaseUrl) });
       });
   }, [apiBaseUrl, queryClient]);
 
