@@ -5,6 +5,7 @@ import {
   WARNING_PREFIX,
   cautionGroupOf,
   cautionPhrase,
+  spoken,
   warningPhrase,
   type CautionGroup,
   type VoiceLabels,
@@ -130,7 +131,7 @@ export class AlertEngine {
     for (const key of warningKeys) {
       if (this.warnings.has(key)) continue;
       this.warnings.set(key, { key, since: now, acked: false, lastChimeAt: now, lastVoiceAt: now });
-      cues.push({ kind: "warning", voice: WARNING_PREFIX + warningPhrase(key, this.labels) });
+      cues.push({ kind: "warning", voice: spoken(WARNING_PREFIX, warningPhrase(key, this.labels)) });
     }
     for (const key of [...this.warnings.keys()]) {
       if (warningKeys.has(key)) continue;
@@ -156,7 +157,7 @@ export class AlertEngine {
       let voice: string | null = null;
       if (now - warning.lastVoiceAt >= this.warningVoiceRepeatMs) {
         warning.lastVoiceAt = now;
-        voice = WARNING_PREFIX + warningPhrase(warning.key, this.labels);
+        voice = spoken(WARNING_PREFIX, warningPhrase(warning.key, this.labels));
       }
       cues.push({ kind: "warning", voice });
     }
@@ -209,7 +210,7 @@ export class AlertEngine {
     const parts = [...this.pending].map(([group, p]) => cautionPhrase(group, p.count, p.last));
     this.pending.clear();
     this.lastCautionSoundAt = now;
-    return [{ kind: "caution", voice: CAUTION_PREFIX + parts.join(". ") }];
+    return [{ kind: "caution", voice: spoken(CAUTION_PREFIX, parts.join(". ")) }];
   }
 
   private audible(cues: SoundCue[], now: number): SoundCue[] {

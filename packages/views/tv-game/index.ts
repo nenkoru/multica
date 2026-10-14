@@ -1,3 +1,4 @@
+export { FailedRunTracker, toTvGameSnapshot } from "./adapter";
 export { AlertEngine, isQuietHours, type AlertPlate, type SoundCue } from "./alerts";
 export { TvGameController, silentPlayer, type TvGameView } from "./controller";
 export { deriveEvents, emptySnapshot, type TvGameEvent, type TvGameSnapshot, type TvHealthSignal } from "./model";

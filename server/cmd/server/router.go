@@ -430,9 +430,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmailDomains:      splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation: os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 		PlanningEnabled:          os.Getenv("MULTICA_PLANNING_ENABLED") == "true",
-		TvHealthLLMURL:           strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_LLM_URL")),
-		TvHealthLLMToken:         strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_LLM_TOKEN")),
-		TvHealthSiteURL:          strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_SITE_URL")),
+		TVHealthLLMURL:           strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_LLM_URL")),
+		TVHealthLLMToken:         strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_LLM_TOKEN")),
+		TVHealthSiteURL:          strings.TrimSpace(os.Getenv("MULTICA_TV_HEALTH_SITE_URL")),
+		TVHostCeiling:            int(envInt32("MULTICA_TV_HOST_CEILING", 0)),
 		VCSIntegrationEnabled:    os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		AppURL:                   appURLFromEnv(),
@@ -1517,11 +1518,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 	// TV dashboard (kiosk). Public by design: a read-only kiosk token bound
 	// to one workspace is the credential, exchanged once for an HttpOnly
-	// cookie. The token reaches only the aggregate and a content-free change
-	// signal; middleware.Auth rejects it everywhere else with 403.
+	// cookie. The token reaches only the aggregates (overview, game, health)
+	// and a content-free change signal; middleware.Auth rejects it everywhere else with 403.
 	r.With(authVerifyRL).Post("/api/tv/session", h.CreateTVSession)
 	r.Delete("/api/tv/session", h.DeleteTVSession)
 	r.Get("/api/tv/overview", h.GetTVOverview)
+	r.Get("/api/tv/health", h.GetTVHealth)
+	r.Get("/api/tv/game", h.GetTVGame)
 	kioskResolver := func(ctx context.Context, token string) (string, error) {
 		session, err := h.ResolveKioskToken(ctx, token)
 		if errors.Is(err, handler.ErrKioskTokenInvalid) {
@@ -2014,9 +2017,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
-
-			// TV screen infrastructure health (RUSL-1786), read-only.
-			r.Get("/api/tv/health", h.GetTvHealth)
 
 			// Local search index sync for Web/Desktop (MUL-7754). Human clients
 			// only: agents search through /api/issues/search.

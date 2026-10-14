@@ -158,10 +158,12 @@ type Config struct {
 	// server build is deployed. Empty in dev builds.
 	ServerVersion string
 
-	// TV health probes (RUSL-1786). Empty URL leaves the signal "unknown".
-	TvHealthLLMURL   string
-	TvHealthLLMToken string
-	TvHealthSiteURL  string
+	// TV game layer (RUSL-1786). An empty probe URL leaves its health
+	// signal "unknown"; TVHostCeiling <= 0 means the default of 12 runs.
+	TVHealthLLMURL   string
+	TVHealthLLMToken string
+	TVHealthSiteURL  string
+	TVHostCeiling    int
 }
 
 type cloudRuntimeProxy interface {

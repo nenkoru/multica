@@ -10,7 +10,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
-func tvSignal(t *testing.T, resp TvHealthResponse, key string) TvHealthSignal {
+func tvSignal(t *testing.T, resp TVHealthResponse, key string) TVHealthSignal {
 	t.Helper()
 	for _, s := range resp.Signals {
 		if s.Key == key {
@@ -18,7 +18,7 @@ func tvSignal(t *testing.T, resp TvHealthResponse, key string) TvHealthSignal {
 		}
 	}
 	t.Fatalf("signal %q missing in %+v", key, resp.Signals)
-	return TvHealthSignal{}
+	return TVHealthSignal{}
 }
 
 func TestTvProbeNeedsTwoFailuresAndCaches(t *testing.T) {
@@ -124,8 +124,17 @@ func TestTvHealthDaemonAndOOM(t *testing.T) {
 	failed("model returned 429", time.Now().Add(-1*time.Minute))
 	failed("Out of memory", time.Now().Add(-2*time.Hour))
 
-	var got TvHealthResponse
-	testutil.Call(t, testHandler.GetTvHealth, newRequest("GET", "/api/tv/health", nil)).Want(http.StatusOK).JSON(&got)
+	var created CreateKioskTokenResponse
+	testutil.Call(t, testHandler.CreateKioskToken, newRequest("POST", "/api/kiosk-tokens", map[string]string{
+		"name": "TV health", "owner_label": "Owner",
+	})).Want(http.StatusCreated).JSON(&created)
+	dbfx.Cleanup(t, `DELETE FROM kiosk_token WHERE id = $1`, created.ID)
+
+	// Without a kiosk token the aggregate is closed.
+	testutil.Call(t, testHandler.GetTVHealth, tvRequest("GET", "/api/tv/health", "", nil)).Want(http.StatusUnauthorized)
+
+	var got TVHealthResponse
+	testutil.Call(t, testHandler.GetTVHealth, tvRequest("GET", "/api/tv/health", created.Token, nil)).Want(http.StatusOK).JSON(&got)
 
 	daemon := tvSignal(t, got, tvHealthKeyDaemon)
 	if daemon.Status != tvHealthWarning || daemon.Count != 1 || daemon.Since == nil {
