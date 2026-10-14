@@ -316,7 +316,14 @@ function TopBar({ data, copy, now, offline }: { data: TvOverview; copy: TvCopy; 
     <header className="flex flex-col gap-4 landscape:col-span-2 landscape:flex-row landscape:items-center landscape:gap-[2.5vw]">
       <div className="flex items-start justify-between gap-4 landscape:contents">
         <SprintBlock sprint={data.sprint} copy={copy} now={now} />
-        <Clock now={now} data={data} copy={copy} offline={offline} className="shrink-0 landscape:hidden" />
+        <div className="flex shrink-0 flex-col items-end landscape:hidden">
+          <time className="font-semibold tabular-nums" style={fs("title")} dateTime={now.toISOString()}>
+            {tvTime(now)} <span className="text-muted-foreground" style={fs("small")}>{copy.timeZone}</span>
+          </time>
+          {offline && (
+            <WifiOff className="size-[1.1em]" style={{ ...fs("small"), color: TONE_VAR.warning }} aria-label={copy.offline} />
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-3 landscape:flex landscape:gap-[2.5vw]">
         <Stat label={copy.agentsWorking} value={data.agents_working} icon={Bot} tone={data.agents_working > 0 ? "good" : "neutral"} />

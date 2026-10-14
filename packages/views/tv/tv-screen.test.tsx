@@ -65,7 +65,7 @@ describe("TvDashboard", () => {
     expect(screen.getByLabelText("Ждут Руслана: 6")).toBeTruthy();
     expect(screen.getByLabelText("Застряли > 24 ч: 2")).toBeTruthy();
     // One clock per layout; CSS shows the portrait or the landscape one.
-    expect(screen.getAllByText("12:00")).toHaveLength(2);
+    expect(screen.getAllByText("12:00", { exact: false })).toHaveLength(2);
   });
 
   it("lists at most the epic's three issues, folds the rest into numbers and dims stale work", () => {
