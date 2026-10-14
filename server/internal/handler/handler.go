@@ -157,6 +157,11 @@ type Config struct {
 	// Surfaced through /api/config so self-hosted operators can confirm which
 	// server build is deployed. Empty in dev builds.
 	ServerVersion string
+
+	// TV health probes (RUSL-1786). Empty URL leaves the signal "unknown".
+	TvHealthLLMURL   string
+	TvHealthLLMToken string
+	TvHealthSiteURL  string
 }
 
 type cloudRuntimeProxy interface {
