@@ -1299,6 +1299,13 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		{
+			name: "delete kiosk tokens",
+			run: func() error {
+				_, err := tx.Exec(ctx, "DELETE FROM kiosk_token WHERE workspace_id = $1", requester.WorkspaceID)
+				return err
+			},
+		},
+		{
 			name: "delete autopilot children",
 			run:  func() error { return qtx.DeleteWorkspaceAutopilotChildren(ctx, requester.WorkspaceID) },
 		},
