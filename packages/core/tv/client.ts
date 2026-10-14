@@ -30,13 +30,24 @@ export async function fetchTvOverview(baseUrl: string): Promise<TvOverview> {
   });
 }
 
-/** Trades a kiosk token for the kiosk cookie. Resolves false when rejected. */
-export async function createTvSession(baseUrl: string, token: string): Promise<boolean> {
+export type TvCredential = { token: string } | { code: string };
+
+/** Kiosk tokens start with this prefix; anything else is a pairing code. */
+export function tvCredential(value: string): TvCredential {
+  const v = value.trim();
+  return v.startsWith("mkt_") ? { token: v } : { code: v };
+}
+
+/**
+ * Trades a kiosk token or a one-time pairing code for the kiosk cookie.
+ * Resolves false when rejected.
+ */
+export async function createTvSession(baseUrl: string, credential: TvCredential): Promise<boolean> {
   const res = await fetch(tvUrl(baseUrl, "/api/tv/session"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
+    body: JSON.stringify(credential),
   });
   if (res.status === 204) return true;
   if (res.status === 401 || res.status === 400) return false;
@@ -59,7 +70,8 @@ export function tvOverviewOptions(baseUrl: string) {
     queryKey: tvKeys.overview(baseUrl),
     queryFn: () => fetchTvOverview(baseUrl),
     refetchInterval: TV_POLL_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    // A phone in a pocket must not poll: no refresh while the page is hidden.
+    refetchIntervalInBackground: false,
     // Keep the last good picture on screen while refetching or offline.
     placeholderData: (previous) => previous,
     retry: (failures, error) => !(error instanceof TvUnauthorizedError) && failures < 3,

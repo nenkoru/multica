@@ -239,16 +239,16 @@ func tvCountSignal(key, reason string, count int64, since pgtype.Timestamptz, th
 
 // tvWorkSignals reads the run-queue signals in one round trip: stall (no run
 // going while a task has waited past the threshold), failed_burst and
-// duplicate_run (two active runs on one top-level issue).
+// duplicate_run (two active runs on the same issue). A run on a parent and
+// one on its sub-issue — the usual work and review pair — are not a duplicate.
 func (h *Handler) tvWorkSignals(ctx context.Context, ws pgtype.UUID, now time.Time, cfg TVConfig) ([]TVHealthSignal, error) {
 	var running, waiting, failed, duplicates int64
 	var oldestWaiting, firstFailed pgtype.Timestamptz
 	err := h.DB.QueryRow(ctx, `
 WITH q AS (
-  SELECT t.status, t.created_at, t.completed_at, COALESCE(i.parent_issue_id, i.id) AS root_id
+  SELECT t.status, t.created_at, t.completed_at, t.issue_id
   FROM agent_task_queue t
   JOIN agent a ON a.id = t.agent_id
-  JOIN issue i ON i.id = t.issue_id
   WHERE a.workspace_id = $1
     AND (t.status IN ('queued', 'dispatched', 'running') OR (t.status = 'failed' AND t.completed_at > $3))
 )
@@ -259,7 +259,7 @@ SELECT
   count(*) FILTER (WHERE status = 'failed'),
   min(completed_at) FILTER (WHERE status = 'failed'),
   (SELECT count(*) FROM (
-     SELECT root_id FROM q WHERE status IN ('dispatched', 'running') GROUP BY root_id HAVING count(*) > 1
+     SELECT issue_id FROM q WHERE status IN ('dispatched', 'running') GROUP BY issue_id HAVING count(*) > 1
    ) d)
 FROM q`, ws, now.Add(-cfg.StallAfter), now.Add(-cfg.FailedBurstWindow)).Scan(
 		&running, &waiting, &oldestWaiting, &failed, &firstFailed, &duplicates)

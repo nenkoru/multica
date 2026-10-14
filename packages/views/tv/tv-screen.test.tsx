@@ -64,7 +64,8 @@ describe("TvDashboard", () => {
     expect(screen.getByLabelText("Агенты работают: 3")).toBeTruthy();
     expect(screen.getByLabelText("Ждут Руслана: 6")).toBeTruthy();
     expect(screen.getByLabelText("Застряли > 24 ч: 2")).toBeTruthy();
-    expect(screen.getByText("12:00")).toBeTruthy();
+    // One clock per layout; CSS shows the portrait or the landscape one.
+    expect(screen.getAllByText("12:00", { exact: false })).toHaveLength(2);
   });
 
   it("lists at most the epic's three issues, folds the rest into numbers and dims stale work", () => {
@@ -134,5 +135,39 @@ describe("TvScreen pairing", () => {
     await waitFor(() => expect(screen.getByText("Спринт 2")).toBeTruthy());
     // The token went in a POST body, never in a URL.
     for (const [url] of fetchMock.mock.calls) expect(String(url)).not.toContain("mkt_");
+  });
+});
+
+describe("TvScreen one-time link and event stream", () => {
+  it("redeems a #pair= code once, clears it from the address and reports changes", async () => {
+    window.history.replaceState(null, "", "/tv#pair=abc123");
+    let paired = false;
+    let snapshot: TvOverview = overview;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/tv/session") {
+        paired = JSON.parse(String(init?.body)).code === "abc123";
+        return new Response(null, { status: paired ? 204 : 401 });
+      }
+      return paired ? new Response(JSON.stringify(snapshot), { status: 200 }) : new Response("{}", { status: 401 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", class { close() {} } as unknown as typeof WebSocket);
+    const onEvents = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TvScreen apiBaseUrl="" lang="ru" onEvents={onEvents} layer={(o) => <div>карта {o.agents_working}</div>} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("карта 3")).toBeTruthy());
+    expect(window.location.hash).toBe("");
+    expect(fetchMock.mock.calls.filter(([u]) => u === "/api/tv/session")).toHaveLength(1);
+
+    snapshot = { ...overview, agents_working: 4 };
+    await client.invalidateQueries();
+    await waitFor(() => expect(onEvents).toHaveBeenCalled());
+    expect(onEvents.mock.calls[0]![0]).toEqual([
+      expect.objectContaining({ type: "counters_changed", to: expect.objectContaining({ agents_working: 4 }) }),
+    ]);
   });
 });

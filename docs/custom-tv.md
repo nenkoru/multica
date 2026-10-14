@@ -1,27 +1,47 @@
 # TV screen (`/tv`)
 
-A custom, read-only, single-screen view of a workspace for a wall monitor or
-TV: the current sprint, three large counters, epics with work in flight, a
-"needs you" column and the last day's events. No scrolling, dark theme, Moscow
-time everywhere.
+A custom, read-only status view of a workspace, phone first, with the same
+picture in landscape for a monitor or TV: the current sprint, three large
+counters, epics with work in flight, a "needs you" column and the last day's
+events. Dark theme, Moscow time everywhere; no scrolling in landscape.
 
-## Pairing a screen
+## Pairing a phone or screen
 
 The screen does not log in. It uses a kiosk token bound to one workspace.
 
 ```bash
-# Owners and admins only. The token is printed once.
-multica kiosk-token create --name "Living room TV" --owner-label "Нужен Руслан"
-multica kiosk-token list
-multica kiosk-token revoke <id>          # open screens drop off within a minute
+# Owners and admins only. The token is printed once; keep it for pairing.
+multica kiosk-token create --name "Phone" --owner-label "Нужен Руслан"
+multica kiosk-token pair <id>            # one-time link + QR code, valid 15 min
+multica kiosk-token list                 # paired devices show their parent_id
+multica kiosk-token revoke <id>          # revoking the parent signs out all its devices
 ```
 
-Open `<web origin>/tv#token=<token>` on the TV, or open `/tv` and paste the
-token. The page sends the token once in a POST body to `/api/tv/session`,
-which answers with an HttpOnly cookie (`multica_tv`, SameSite=Strict, one
-year); the fragment is removed from the address. Fragments never reach the
-server, so the token is not in access logs or in browser history. `?lang=en`
-switches the copy to English; Russian is the default.
+Scan the QR code with the phone (or open the link on the TV). The link carries a
+single-use code in the fragment (`/tv#pair=…`); the page sends it once in a POST
+body to `/api/tv/session`, which mints a device token under the parent token
+and answers with an HttpOnly cookie (`multica_tv`, SameSite=Strict, one year).
+The fragment is removed from the address, fragments never reach the server,
+and the code is dead after first use — so no working key lives in a URL. A
+kiosk token or a code can also be pasted on `/tv`. `?lang=en` switches the copy
+to English; Russian is the default.
+
+## Phone first
+
+- **Portrait** is the main mode: sprint and clock, the three numbers, "needs
+  you", epics, feed — one column, scrolling if it does not fit.
+- **Landscape** is the 16:9 wall picture: the same layout a monitor gets when
+  the phone is connected to it, sized from whichever of width and height binds.
+- **Installable** (`/tv/manifest.webmanifest`, `display: fullscreen`): "Add to
+  home screen" opens `/tv` without the address bar.
+- **Screen stays on** while the page is visible (Screen Wake Lock); the lock is
+  taken again after the page returns or on a tap.
+- **Battery:** no polling and no socket while the page is hidden; on return it
+  reconnects and refetches. The clock ticks every 10 s only while visible.
+- **Layer slot:** `TvScreen` takes `layer` (a band of ~38 % of the landscape
+  height, the top of the portrait screen) and `onEvents`, one stream of changes
+  between snapshots (done issues, failed runs, "needs you" added/cleared,
+  counter changes), for the game layer and sounds of RUSL-1786.
 
 ## What a kiosk token can do
 
@@ -32,7 +52,8 @@ switches the copy to English; Russian is the default.
 | any other `/api/*` (issues, comments, chat, …) with the token as bearer or as the only cookie | 403 |
 | after `revoke` | 401 on the aggregate; the socket is closed within a minute |
 
-Only a SHA-256 hash of the token is stored (`kiosk_token`, migrations 573–574).
+Only SHA-256 hashes of tokens and pairing codes are stored (`kiosk_token`,
+`kiosk_pairing`, migrations 573–576).
 
 The aggregate carries titles, identifiers, assignee names, counts and times. It
 never carries descriptions, comments, run output or run error text — a failed

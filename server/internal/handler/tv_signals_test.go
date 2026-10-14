@@ -101,11 +101,20 @@ func TestTvWorkAndAutopilotSignals(t *testing.T) {
 		t.Fatalf("stall: %+v", signals[0])
 	}
 
-	// Two runs on one top-level issue (one through a sub-issue): no stall,
-	// a duplicate run instead.
+	// A run on the issue and one on its sub-issue (work and its review) are
+	// normal; a second run on the same issue is a duplicate.
 	child := dbfx.Issue(t, "tv signals child", testutil.Cols{"parent_issue_id": issue})
 	dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
 	dbfx.Task(t, agent, testutil.Cols{"issue_id": child, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
+	signals, err = testHandler.tvWorkSignals(ctx, ws, time.Now(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signals[2].Key != tvHealthKeyDuplicateRun || signals[2].Status != tvHealthOK {
+		t.Fatalf("parent and sub-issue runs are not a duplicate: %+v", signals[2])
+	}
+	other := dbfx.Agent(t, "tv signals second agent", runtime)
+	dbfx.Task(t, other, testutil.Cols{"issue_id": issue, "status": "running", "runtime_id": runtime, "started_at": time.Now()})
 	for _, n := range []int{1, 2} {
 		dbfx.Task(t, agent, testutil.Cols{"issue_id": issue, "status": "failed", "error": "boom " + strings.Repeat("x", n), "completed_at": time.Now().Add(-time.Minute)})
 	}

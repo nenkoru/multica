@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TvOverview } from "@multica/core/tv";
 import type { TvLang } from "../tv/copy";
+import { useWakeLock } from "../tv/use-device";
 import { DEMO_LOOP_PAUSE_MS, DEMO_STEPS, DemoClock, demoContext, mskNoon } from "./demo";
 import type { SoundPlayer } from "./sound";
 import { TvOrbit, useTvGameController } from "./tv-orbit";
@@ -22,6 +23,7 @@ export function TvOrbitDemo({ lang = "ru", apiBaseUrl, player, onStep }: TvOrbit
   const controller = useTvGameController({ now: clock.now, apiBaseUrl, player });
   const [overview, setOverview] = useState<TvOverview | null>(null);
   const [now, setNow] = useState(() => new Date(clock.now()));
+  useWakeLock(true);
   const onStepRef = useRef(onStep);
   onStepRef.current = onStep;
 
@@ -52,5 +54,9 @@ export function TvOrbitDemo({ lang = "ru", apiBaseUrl, player, onStep }: TvOrbit
     };
   }, [controller, clock]);
 
-  return <TvOrbit controller={controller} overview={overview} lang={lang} now={now} onOrbTap={() => controller.setTalking(!controller.getView().talking)} />;
+  return (
+    <div className="dark fixed inset-0 bg-background">
+      <TvOrbit controller={controller} overview={overview} lang={lang} now={now} onOrbTap={() => controller.setTalking(!controller.getView().talking)} />
+    </div>
+  );
 }

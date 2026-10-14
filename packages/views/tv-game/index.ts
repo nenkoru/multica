@@ -6,4 +6,4 @@ export { deriveEvents, emptySnapshot, type TvGameEvent, type TvGameSnapshot, typ
 export { SOUND_FILES, SOUND_TABLE, type SignalId, type SoundEntry } from "./sound-table";
 export { createFilePlayer, tvSoundUrl, type SoundPlayer } from "./sound";
 export { TvOrbitDemo } from "./tv-orbit-demo";
-export { TvOrbit, TvOrbitLive, useTvGameController, useWakeLock } from "./tv-orbit";
+export { TvOrbit, TvOrbitLive, TvOrbitPage, useTvGameController } from "./tv-orbit";

@@ -228,3 +228,58 @@ func TestTVOverviewWithoutOwnerLabel(t *testing.T) {
 		t.Fatalf("empty workspace overview must be zeroes and empty arrays: %+v", got)
 	}
 }
+
+func TestKioskPairingCodeIsSingleUseAndFollowsItsToken(t *testing.T) {
+	var created CreateKioskTokenResponse
+	testutil.Call(t, testHandler.CreateKioskToken, newRequest("POST", "/api/kiosk-tokens", map[string]string{
+		"name": "Phone", "owner_label": "Needs owner",
+	})).Want(http.StatusCreated).JSON(&created)
+	dbfx.Cleanup(t, `DELETE FROM kiosk_token WHERE id = $1 OR parent_id = $1`, created.ID)
+	dbfx.Cleanup(t, `DELETE FROM kiosk_pairing WHERE token_id = $1`, created.ID)
+
+	var pairing KioskPairingResponse
+	testutil.Call(t, testHandler.CreateKioskPairing, withURLParam(newRequest("POST", "/api/kiosk-tokens/"+created.ID+"/pairing", nil), "id", created.ID)).
+		Want(http.StatusCreated).JSON(&pairing)
+	if len(pairing.Code) != 32 || pairing.Path != "/tv#pair="+pairing.Code {
+		t.Fatalf("pairing = %+v", pairing)
+	}
+	if n := dbfx.Count(t, `SELECT count(*) FROM kiosk_pairing WHERE code_hash = $1`, auth.HashToken(pairing.Code)); n != 1 {
+		t.Fatal("only the code hash is stored")
+	}
+
+	rec := httptest.NewRecorder()
+	testHandler.CreateTVSession(rec, tvRequest("POST", "/api/tv/session", "", map[string]string{"code": pairing.Code}))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("redeem = %d %s", rec.Code, rec.Body.String())
+	}
+	var device string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.KioskCookieName {
+			device = c.Value
+		}
+	}
+	if !strings.HasPrefix(device, auth.KioskTokenPrefix) || device == created.Token {
+		t.Fatalf("the code must mint a separate device token, got %q", device)
+	}
+	var overview TVOverviewResponse
+	testutil.Call(t, testHandler.GetTVOverview, tvRequest("GET", "/api/tv/overview", device, nil)).Want(http.StatusOK).JSON(&overview)
+	if overview.OwnerLabel != "Needs owner" {
+		t.Fatalf("device token must inherit the owner label, got %q", overview.OwnerLabel)
+	}
+
+	// A second use of the same code is rejected.
+	testutil.Call(t, testHandler.CreateTVSession, tvRequest("POST", "/api/tv/session", "", map[string]string{"code": pairing.Code})).Want(http.StatusUnauthorized)
+
+	// An expired code is rejected too.
+	var late KioskPairingResponse
+	testutil.Call(t, testHandler.CreateKioskPairing, withURLParam(newRequest("POST", "/api/kiosk-tokens/"+created.ID+"/pairing", nil), "id", created.ID)).
+		Want(http.StatusCreated).JSON(&late)
+	dbfx.Exec(t, `UPDATE kiosk_pairing SET expires_at = now() - interval '1 second' WHERE code_hash = $1`, auth.HashToken(late.Code))
+	testutil.Call(t, testHandler.CreateTVSession, tvRequest("POST", "/api/tv/session", "", map[string]string{"code": late.Code})).Want(http.StatusUnauthorized)
+
+	// Revoking the parent token signs the paired device out.
+	testutil.Call(t, testHandler.RevokeKioskToken, withURLParam(newRequest("DELETE", "/api/kiosk-tokens/"+created.ID, nil), "id", created.ID)).Want(http.StatusNoContent)
+	testutil.Call(t, testHandler.GetTVOverview, tvRequest("GET", "/api/tv/overview", device, nil)).Want(http.StatusUnauthorized)
+	// And no new codes can be issued for it.
+	testutil.Call(t, testHandler.CreateKioskPairing, withURLParam(newRequest("POST", "/api/kiosk-tokens/"+created.ID+"/pairing", nil), "id", created.ID)).Want(http.StatusNotFound)
+}

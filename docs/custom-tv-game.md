@@ -2,7 +2,9 @@
 
 The main view of `/tv` (RUSL-1786), built for a phone in portrait first; a
 monitor connected to the phone shows the same page in landscape. The board
-from RUSL-1784 stays at `/tv?view=board`. Code: `packages/views/tv-game/`,
+from RUSL-1784 stays at `/tv?view=board`. The page renders `TvOrbitPage`,
+which is the base `TvScreen` (pairing, realtime, wake lock) with the Orbit
+passed through its `screen` slot in place of the dashboard. Code: `packages/views/tv-game/`,
 feeds in `packages/core/tv/game.ts`, server in
 `server/internal/handler/tv_{game,health,config,sounds}.go`.
 
@@ -23,8 +25,8 @@ feeds in `packages/core/tv/game.ts`, server in
 - **Focus**: one tap hides everything but the orb, the line and "needs you".
 - **Landscape** (≥ 768 px wide): a right column with "needs you" and the
   last 24 hours.
-- **PWA**: `/tv/manifest.webmanifest`, full screen, home-screen icons; the
-  Screen Wake Lock keeps the screen on while the page is visible. Feeds poll
+- **PWA and wake lock** come from the base screen (`app/tv/tv-manifest.ts`,
+  `views/tv/use-device.ts`); the Orbit adds none of its own. Feeds poll
   only in the foreground (`/api/tv/game` 60 s, `/api/tv/health` 30 s), plus
   the kiosk WebSocket change signal.
 - **Load**: canvas capped at 24 fps, paused with the tab;
@@ -98,7 +100,7 @@ reason codes only — never URLs, hostnames, runtime names or error text.
 | `oom` | a run failed with an out-of-memory kill (`oom_kill`, "out of memory", exit status 137) within `oom_window_minutes`; runs killed by their own timeout or idle watchdog do not count |
 | `autopilot` | an active autopilot's run failed within `autopilot_window_minutes` |
 | `failed_burst` | `failed_burst` runs failed within `failed_burst_window_minutes` |
-| `duplicate_run` | two active runs on one top-level issue |
+| `duplicate_run` | two active runs on the same issue (a parent and its sub-issue are not a duplicate) |
 | `minimums` | the active sprint ends within `minimums_hours` with less than `minimums_percent` done |
 
 ### Configuration

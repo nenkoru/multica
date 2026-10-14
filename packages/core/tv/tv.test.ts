@@ -5,7 +5,9 @@ import {
   TvOverviewSchema,
   TvUnauthorizedError,
   createTvSession,
+  diffTvOverview,
   fetchTvOverview,
+  tvCredential,
   tvWsUrl,
 } from ".";
 
@@ -93,14 +95,39 @@ describe("kiosk requests", () => {
     );
   });
 
-  it("exchanges a token in the request body", async () => {
+  it("exchanges a token or a pairing code in the request body", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(createTvSession("", "mkt_abc")).resolves.toBe(true);
+    await expect(createTvSession("", tvCredential("mkt_abc"))).resolves.toBe(true);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/tv/session");
     expect(init.body).toBe(JSON.stringify({ token: "mkt_abc" }));
+    await createTvSession("", tvCredential(" 0f1e2d "));
+    expect((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body).toBe(JSON.stringify({ code: "0f1e2d" }));
     fetchMock.mockResolvedValueOnce(new Response("{}", { status: 401 }));
-    await expect(createTvSession("", "mkt_bad")).resolves.toBe(false);
+    await expect(createTvSession("", { code: "used" })).resolves.toBe(false);
+  });
+});
+
+describe("diffTvOverview", () => {
+  const base = { ...EMPTY_TV_OVERVIEW, agents_working: 1, needs_owner_total: 1, needs_owner: [issue] };
+  const done = { kind: "done" as const, at: "2026-10-14T11:00:00Z", issue_identifier: "RUSL-2", issue_title: "Done", actor_name: "Dev", failure_reason: null };
+  const failed = { kind: "run_failed" as const, at: "2026-10-14T11:05:00Z", issue_identifier: "RUSL-3", issue_title: "Run", actor_name: "Dev", failure_reason: "timeout" };
+
+  it("treats the first snapshot as a baseline", () => {
+    expect(diffTvOverview(null, base)).toEqual([]);
+  });
+
+  it("emits new feed events oldest first, needs-you changes and counter changes", () => {
+    const next = { ...base, agents_working: 2, needs_owner_total: 0, needs_owner: [], feed: [failed, done] };
+    const events = diffTvOverview(base, next);
+    expect(events.map((e) => e.type)).toEqual(["issue_done", "run_failed", "needs_owner_cleared", "counters_changed"]);
+  });
+
+  it("does not repeat events already seen", () => {
+    const a = { ...base, feed: [done] };
+    const b = { ...base, feed: [failed, done] };
+    expect(diffTvOverview(a, b).map((e) => e.type)).toEqual(["run_failed"]);
+    expect(diffTvOverview(b, b)).toEqual([]);
   });
 });

@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { sprintTimeline } from "@multica/core/planning";
 import { tvGameOptions, tvHealthOptions, type TvOverview } from "@multica/core/tv";
 import { TV_COPY, type TvLang } from "../tv/copy";
+import { TvScreen } from "../tv/tv-screen";
 import { tvDate, tvTime } from "../tv/model";
 import { FailedRunTracker, toTvGameSnapshot } from "./adapter";
 import type { AlertPlate } from "./alerts";
@@ -34,37 +35,6 @@ export function useTvGameController(options: Partial<TvGameControllerOptions> & 
     return () => clearInterval(timer);
   }, [controller]);
   return controller;
-}
-
-/** Keeps a phone screen on while the page is visible (Screen Wake Lock API). */
-export function useWakeLock(enabled = true): void {
-  useEffect(() => {
-    if (!enabled || typeof navigator === "undefined") return;
-    const api = (navigator as unknown as { wakeLock?: { request(type: "screen"): Promise<{ release(): Promise<void> }> } }).wakeLock;
-    if (!api) return;
-    let sentinel: { release(): Promise<void> } | null = null;
-    let disposed = false;
-    const acquire = () => {
-      if (document.visibilityState !== "visible") return;
-      api
-        .request("screen")
-        .then((s) => {
-          if (disposed) void s.release();
-          else sentinel = s;
-        })
-        .catch(() => {
-          // Denied (battery saver, iframe): the screen may dim, nothing else.
-        });
-    };
-    acquire();
-    // The browser drops the lock when the tab hides; take it again on return.
-    document.addEventListener("visibilitychange", acquire);
-    return () => {
-      disposed = true;
-      document.removeEventListener("visibilitychange", acquire);
-      void sentinel?.release();
-    };
-  }, [enabled]);
 }
 
 function Plate({ plate, text, level }: { plate: AlertPlate; text: string; level: string }) {
@@ -106,7 +76,6 @@ export function TvOrbit({ controller, overview, lang = "ru", labels = DEFAULT_OR
   const tvCopy = TV_COPY[lang];
   const view = useSyncExternalStore(controller.subscribe, controller.getView, controller.getView);
   const [focus, setFocus] = useState(false);
-  useWakeLock();
 
   const needsYou = overview?.needs_owner ?? [];
   const needsYouTotal = overview?.needs_owner_total ?? 0;
@@ -308,6 +277,36 @@ export function TvOrbitLive({ apiBaseUrl, overview, lang, labels, now, offline }
       labels={labels}
       now={now}
       offline={offline || game.isError || health.isError}
+    />
+  );
+}
+
+export interface TvOrbitPageProps {
+  apiBaseUrl: string;
+  wsUrl?: string;
+  lang?: TvLang;
+  labels?: OrbitLabels;
+  /** "board" keeps the RUSL-1784 dashboard. */
+  view?: "orbit" | "board";
+}
+
+/**
+ * The /tv page: the base screen's pairing, realtime and wake lock, with the
+ * Orbit in place of the dashboard unless the board was asked for.
+ */
+export function TvOrbitPage({ apiBaseUrl, wsUrl, lang = "ru", labels, view = "orbit" }: TvOrbitPageProps) {
+  return (
+    <TvScreen
+      apiBaseUrl={apiBaseUrl}
+      wsUrl={wsUrl}
+      lang={lang}
+      screen={
+        view === "orbit"
+          ? (overview, state) => (
+              <TvOrbitLive apiBaseUrl={apiBaseUrl} overview={overview} lang={lang} labels={labels} now={state.now} offline={state.offline} />
+            )
+          : undefined
+      }
     />
   );
 }
