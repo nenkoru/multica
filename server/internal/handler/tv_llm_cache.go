@@ -23,7 +23,7 @@ const (
 	// long, then the block hides rather than show old numbers as current.
 	tvLLMCacheStale = 30 * time.Minute
 	// The goal for the reusable-token measure, drawn as the target line.
-	tvLLMCacheTarget = 99.5
+	tvLLMCacheTarget  = 99.5
 	tvLLMCacheMaxBody = 1 << 20
 )
 
