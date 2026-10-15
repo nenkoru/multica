@@ -125,7 +125,8 @@ Every threshold and probe is one JSON in `MULTICA_TV_CONFIG`, read at start
     "site": { "url": "https://…/" },
     "budget": { "url": "https://…/budget-ok" },
     "llm_slow": { "url": "https://…/speed-ok" }
-  }
+  },
+  "llm_cache": { "url": "http://litellm-cache-report.litellm.svc:8080/report.json?hours=24" }
 }
 ```
 
@@ -136,6 +137,15 @@ one. An unset probe reports `unknown` (`not_configured`) and never sounds.
 `budget` and `llm_slow` need an endpoint that answers 2xx while all is well
 and non-2xx past the limit; until one exists they stay `unknown`. An invalid
 JSON is logged and the defaults apply.
+
+`llm_cache` (RUSL-1860) adds the "27B cache" block under "needs you" on the
+board (`?view=board`): the share of reusable prompt tokens taken from the
+prefix cache against the 99.5 % goal, the share of all prompt tokens beside it,
+the last 24 hours as bars and "saved / spent" against the cloud price. The URL
+is the JSON of `cache_stats.py serve` (`infra/litellm-rusl1860` in
+`vergel-brain`). The server asks it at most once a minute, forwards only these
+numbers to the kiosk, keeps the last answer for 30 minutes while the source is
+down and then hides the block. Without the key there is no block.
 
 ## Demo
 

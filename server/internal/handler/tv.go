@@ -107,6 +107,8 @@ type TVOverviewResponse struct {
 	EpicsHidden     int64     `json:"epics_hidden"`
 	NeedsOwner      []TVIssue `json:"needs_owner"`
 	Feed            []TVEvent `json:"feed"`
+	// Prompt-cache summary of the local model (RUSL-1860); null when off.
+	LLMCache *TVLLMCache `json:"llm_cache"`
 }
 
 // KioskSession is what a valid kiosk token resolves to.
@@ -518,6 +520,7 @@ func (h *Handler) loadTVOverview(ctx context.Context, s KioskSession, now time.T
 	if resp.Feed, err = h.loadTVFeed(ctx, s.WorkspaceID, prefix, now); err != nil {
 		return resp, fmt.Errorf("feed: %w", err)
 	}
+	resp.LLMCache = h.tvLLMCache(ctx, now)
 	return resp, nil
 }
 

@@ -25,7 +25,8 @@ func TestParseTVConfig(t *testing.T) {
 	cfg, err = ParseTVConfig(`{
 		"host_ceiling": 8, "stall_minutes": 15, "failed_burst": 3, "duplicate_run_minutes": 5, "minimums_percent": 60,
 		"watched_daemons": [" srv-a ", "", "srv-b"],
-		"probes": {"llm": {"url": " http://llm.test/health ", "bearer_env": "TV_LLM_TOKEN"}, "site": {"url": ""}}
+		"probes": {"llm": {"url": " http://llm.test/health ", "bearer_env": "TV_LLM_TOKEN"}, "site": {"url": ""}},
+		"llm_cache": {"url": " http://cache.test/report.json?hours=24 "}
 	}`, getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -42,12 +43,16 @@ func TestParseTVConfig(t *testing.T) {
 	if _, ok := cfg.Probes["site"]; ok {
 		t.Fatal("an empty URL leaves the probe unconfigured")
 	}
+	if cfg.LLMCacheURL != "http://cache.test/report.json?hours=24" {
+		t.Fatalf("llm cache url: %q", cfg.LLMCacheURL)
+	}
 
 	for _, bad := range []string{
 		`{"stall_minutes": 0}`,
 		`{"minimums_percent": 120}`,
 		`{"probes": {"gpu": {"url": "http://x"}}}`,
 		`{"unknown_field": 1}`,
+		`{"llm_cache": {"url": "http://x", "bearer_env": "T"}}`,
 		`not json`,
 	} {
 		cfg, err := ParseTVConfig(bad, getenv)

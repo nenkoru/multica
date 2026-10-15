@@ -38,6 +38,9 @@ type TVConfig struct {
 	WatchedDaemons []string
 	// Directory with the alarm sound files, from MULTICA_TV_SOUNDS_DIR.
 	SoundsDir string
+	// JSON summary of the local model's prompt cache (RUSL-1860), shown on
+	// the board; empty hides the block.
+	LLMCacheURL string
 }
 
 type TVProbe struct {
@@ -75,6 +78,11 @@ type tvConfigJSON struct {
 	MinimumsPercent          *int                         `json:"minimums_percent"`
 	Probes                   map[string]tvProbeConfigJSON `json:"probes"`
 	WatchedDaemons           []string                     `json:"watched_daemons"`
+	LLMCache                 *tvURLConfigJSON             `json:"llm_cache"`
+}
+
+type tvURLConfigJSON struct {
+	URL string `json:"url"`
 }
 
 type tvProbeConfigJSON struct {
@@ -148,6 +156,9 @@ func ParseTVConfig(raw string, getenv func(string) string) (TVConfig, error) {
 			p.Bearer = strings.TrimSpace(getenv(probe.BearerEnv))
 		}
 		cfg.Probes[key] = p
+	}
+	if in.LLMCache != nil {
+		cfg.LLMCacheURL = strings.TrimSpace(in.LLMCache.URL)
 	}
 	return cfg, nil
 }

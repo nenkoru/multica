@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { TV_COPY, tvLang } from "./copy";
-import { elapsedMs, epicSegments, percent, truncateTitle, tvDate, tvTime } from "./model";
+import { cacheBar, cacheSlots, cacheTone, elapsedMs, epicSegments, percent, truncateTitle, tvDate, tvTime } from "./model";
 
 describe("TV time is Moscow time", () => {
   it("formats the clock and the date in Europe/Moscow", () => {
@@ -61,5 +61,33 @@ describe("copy", () => {
     expect(ru.duration(2 * 3_600_000 + 15 * 60_000)).toBe("2 ч 15 мин");
     expect(ru.duration(26 * 3_600_000)).toBe("1 д 2 ч");
     expect(TV_COPY.en.duration(5 * 60_000)).toBe("5m");
+  });
+});
+
+describe("27B cache helpers", () => {
+  it("rates a hit rate against its goal", () => {
+    expect(cacheTone(99.6, 99.5)).toBe("good");
+    expect(cacheTone(97.1, 99.5)).toBe("warning");
+    expect(cacheTone(90, 99.5)).toBe("serious");
+    expect(cacheTone(null, 99.5)).toBe("neutral");
+  });
+
+  it("lays the last 24 hours out by the hour, idle hours empty", () => {
+    const slots = cacheSlots(
+      [{ at: "2026-10-16T07:00:00Z", requests: 3, hit_reusable: 98, hit_all: 95 }],
+      new Date("2026-10-16T09:20:00Z"),
+    );
+    expect(slots).toHaveLength(24);
+    expect(slots[23]?.at.toISOString()).toBe("2026-10-16T09:00:00.000Z");
+    expect(slots[0]?.at.toISOString()).toBe("2026-10-15T10:00:00.000Z");
+    expect(slots[21]?.hour?.requests).toBe(3);
+    expect(slots[22]?.hour).toBeNull();
+  });
+
+  it("draws bars on the 90–100 % band and never hides a measured hour", () => {
+    expect(cacheBar(100)).toBe(100);
+    expect(cacheBar(95)).toBe(50);
+    expect(cacheBar(50)).toBe(4);
+    expect(cacheBar(null)).toBe(0);
   });
 });

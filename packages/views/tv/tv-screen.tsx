@@ -10,6 +10,7 @@ import {
   CircleX,
   Clock3,
   Eye,
+  Gauge,
   Hand,
   OctagonPause,
   WifiOff,
@@ -27,6 +28,7 @@ import {
   type TvEpic,
   type TvEvent,
   type TvIssue,
+  type TvLlmCache,
   type TvOverview,
   type TvSprint,
   type TvStreamEvent,
@@ -35,7 +37,19 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { cn } from "@multica/ui/lib/utils";
 import { TV_COPY, type TvCopy, type TvLang } from "./copy";
-import { elapsedMs, epicSegments, percent, truncateTitle, tvDate, tvTime, type TvSegmentKey, type TvTone } from "./model";
+import {
+  cacheBar,
+  cacheSlots,
+  cacheTone,
+  elapsedMs,
+  epicSegments,
+  percent,
+  truncateTitle,
+  tvDate,
+  tvTime,
+  type TvSegmentKey,
+  type TvTone,
+} from "./model";
 import { usePageVisible, useWakeLock } from "./use-device";
 import { useTvRealtime } from "./use-tv-realtime";
 
@@ -298,7 +312,10 @@ export function TvDashboard({
           {layer}
         </div>
       )}
-      <NeedsYou data={data} copy={copy} now={now} />
+      <div className="flex flex-col gap-5 landscape:col-start-2 landscape:row-start-[-3] landscape:min-h-0 landscape:gap-[1vw]">
+        <NeedsYou data={data} copy={copy} now={now} />
+        {data.llm_cache && <LlmCacheBlock cache={data.llm_cache} copy={copy} now={now} />}
+      </div>
       <EpicRows data={data} copy={copy} now={now} />
       <Feed events={data.feed} copy={copy} />
     </div>
@@ -501,7 +518,7 @@ function NeedsYou({ data, copy, now }: { data: TvOverview; copy: TvCopy; now: Da
   const active = data.needs_owner_total > 0;
   return (
     <aside
-      className="flex flex-col gap-3 rounded-xl border-2 p-4 landscape:col-start-2 landscape:row-start-[-3] landscape:min-h-0 landscape:gap-[1vw] landscape:overflow-hidden landscape:p-[1.2vw]"
+      className="flex flex-col gap-3 rounded-xl border-2 p-4 landscape:min-h-0 landscape:flex-1 landscape:gap-[1vw] landscape:overflow-hidden landscape:p-[1.2vw]"
       style={{ borderColor: active ? TONE_VAR.critical : "var(--border)" }}
       aria-label={copy.needsYou}
     >
@@ -542,6 +559,79 @@ function NeedsYou({ data, copy, now }: { data: TvOverview; copy: TvCopy; now: Da
         </ul>
       )}
     </aside>
+  );
+}
+
+// The local model's prompt cache (RUSL-1860): both measures side by side,
+// the reusable one against its goal, the last 24 hours as bars on the 90–100 %
+// band, and what the same requests would have cost in the cloud.
+function LlmCacheBlock({ cache, copy, now }: { cache: TvLlmCache; copy: TvCopy; now: Date }) {
+  const slots = cacheSlots(cache.hourly, now);
+  const first = slots[0];
+  const last = slots[slots.length - 1];
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-xl border border-border p-4 landscape:shrink-0 landscape:gap-[0.6vw] landscape:p-[1.2vw]"
+      aria-label={copy.llmCache}
+      data-testid="tv-llm-cache"
+    >
+      <h2 className="flex items-baseline gap-3 font-bold" style={fs("title")}>
+        <Gauge className="size-[1em] shrink-0 self-center" aria-hidden />
+        {copy.llmCache}
+        <span className="ml-auto font-normal text-muted-foreground" style={fs("small")}>
+          {copy.llmCacheWindow(cache.hours, cache.requests)}
+        </span>
+      </h2>
+      <div className="grid grid-cols-2 gap-3">
+        <CacheMeasure
+          value={copy.pct(cache.hit_reusable)}
+          label={`${copy.llmCacheReusable} · ${copy.llmCacheTarget(cache.target)}`}
+          tone={cacheTone(cache.hit_reusable, cache.target)}
+        />
+        <CacheMeasure value={copy.pct(cache.hit_all)} label={copy.llmCacheAll} tone="neutral" />
+      </div>
+      <div className="flex h-12 items-end gap-[2px] landscape:h-[3.2vw]" role="img" aria-label={copy.llmCacheHourly}>
+        {slots.map((slot) => {
+          const rate = slot.hour?.hit_reusable ?? null;
+          return (
+            <div
+              key={slot.at.getTime()}
+              className="flex-1 rounded-sm transition-[height] duration-700"
+              title={`${tvTime(slot.at)} · ${copy.pct(rate)}`}
+              style={{
+                height: rate === null ? "4%" : `${cacheBar(rate)}%`,
+                background: rate === null ? "var(--muted)" : TONE_VAR[cacheTone(rate, cache.target)],
+              }}
+            />
+          );
+        })}
+      </div>
+      {first && last && (
+        <div className="flex justify-between tabular-nums text-muted-foreground" style={fs("small")}>
+          <span>{tvTime(first.at)}</span>
+          <span>{copy.llmCacheHourly}</span>
+          <span>{tvTime(last.at)}</span>
+        </div>
+      )}
+      {cache.saved_rub !== null && cache.spent_rub !== null && (
+        <p className="tabular-nums" style={fs("body")}>
+          {copy.llmCacheMoney(cache.saved_rub, cache.spent_rub)}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function CacheMeasure({ value, label, tone }: { value: string; label: string; tone: TvTone }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1" aria-label={`${label}: ${value}`}>
+      <span className="font-bold tabular-nums" style={{ ...fs("num"), color: TONE_VAR[tone] }}>
+        {value}
+      </span>
+      <span className="text-muted-foreground" style={fs("small")}>
+        {label}
+      </span>
+    </div>
   );
 }
 

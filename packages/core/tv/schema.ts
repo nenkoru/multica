@@ -44,6 +44,28 @@ export interface TvEvent {
   failure_reason: string | null;
 }
 
+/** One hour of the prompt-cache summary; a hit rate is null with nothing to measure. */
+export interface TvLlmCacheHour {
+  at: string;
+  requests: number;
+  hit_reusable: number | null;
+  hit_all: number | null;
+}
+
+/** Prompt cache of the local model over the last `hours` (RUSL-1860). */
+export interface TvLlmCache {
+  hours: number;
+  requests: number;
+  hit_reusable: number | null;
+  hit_all: number | null;
+  target: number;
+  cloud_rub: number | null;
+  spent_rub: number | null;
+  saved_rub: number | null;
+  hourly: TvLlmCacheHour[];
+  computed_at: string;
+}
+
 export interface TvOverview {
   generated_at: string;
   workspace_name: string;
@@ -58,6 +80,7 @@ export interface TvOverview {
   epics_hidden: number;
   needs_owner: TvIssue[];
   feed: TvEvent[];
+  llm_cache: TvLlmCache | null;
 }
 
 const count = z.number().catch(0).default(0);
@@ -98,6 +121,31 @@ const TvEventSchema = z.object({
   failure_reason: nullableText,
 });
 
+const nullableNumber = z.number().nullable().catch(null).default(null);
+
+const TvLlmCacheSchema = z.object({
+  hours: count,
+  requests: count,
+  hit_reusable: nullableNumber,
+  hit_all: nullableNumber,
+  target: z.number().catch(99.5).default(99.5),
+  cloud_rub: nullableNumber,
+  spent_rub: nullableNumber,
+  saved_rub: nullableNumber,
+  hourly: z
+    .array(
+      z.object({
+        at: z.string(),
+        requests: count,
+        hit_reusable: nullableNumber,
+        hit_all: nullableNumber,
+      }),
+    )
+    .catch([])
+    .default([]),
+  computed_at: text,
+});
+
 const TvSprintSchema = z.object({
   id: z.string(),
   name: text,
@@ -132,6 +180,8 @@ export const TvOverviewSchema = z.object({
         return parsed.success ? [parsed.data] : [];
       }),
     ),
+  // A server without the block, or a malformed one, hides it.
+  llm_cache: TvLlmCacheSchema.nullable().catch(null).default(null),
 });
 
 export const EMPTY_TV_OVERVIEW: TvOverview = {
@@ -148,4 +198,5 @@ export const EMPTY_TV_OVERVIEW: TvOverview = {
   epics_hidden: 0,
   needs_owner: [],
   feed: [],
+  llm_cache: null,
 };

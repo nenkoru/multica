@@ -33,6 +33,14 @@ export interface TvCopy {
   feedTitle: string;
   feedEmpty: string;
   feedDone: string;
+  llmCache: string;
+  llmCacheReusable: string;
+  llmCacheAll: string;
+  llmCacheTarget: (target: number) => string;
+  llmCacheWindow: (hours: number, requests: number) => string;
+  llmCacheMoney: (saved: number, spent: number) => string;
+  llmCacheHourly: string;
+  pct: (value: number | null) => string;
   feedRunFailed: string;
   unassigned: string;
   offline: string;
@@ -63,7 +71,22 @@ function splitDuration(ms: number): { d: number; h: number; m: number } {
   return { d: Math.floor(safe / DAY), h: Math.floor((safe % DAY) / HOUR), m: Math.floor((safe % HOUR) / MINUTE) };
 }
 
+function rub(n: number): string {
+  return Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u202f");
+}
+
 const ru: TvCopy = {
+  llmCache: "Кэш 27B",
+  llmCacheReusable: "переиспользуемое из кэша",
+  llmCacheAll: "всех токенов",
+  llmCacheTarget: (target) => `цель ${String(target).replace(".", ",")}%`,
+  llmCacheWindow: (hours, requests) => `за ${hours} ч · ${requests} ${plural(requests, "запрос", "запроса", "запросов")}`,
+  llmCacheMoney: (saved, spent) =>
+    saved >= 0
+      ? `сэкономлено ${rub(saved)} ₽ · потрачено ${rub(spent)} ₽`
+      : `своё дороже облака на ${rub(-saved)} ₽ · потрачено ${rub(spent)} ₽`,
+  llmCacheHourly: "по часам, МСК",
+  pct: (value) => (value === null ? "—" : `${value.toFixed(1).replace(".", ",")}%`),
   agentsWorking: "Агенты работают",
   waitingOwner: "Ждут Руслана",
   stale: "Застряли > 24 ч",
@@ -110,6 +133,17 @@ const ru: TvCopy = {
 };
 
 const en: TvCopy = {
+  llmCache: "27B cache",
+  llmCacheReusable: "reusable from cache",
+  llmCacheAll: "all prompt tokens",
+  llmCacheTarget: (target) => `goal ${target}%`,
+  llmCacheWindow: (hours, requests) => `last ${hours} h · ${requests} ${requests === 1 ? "request" : "requests"}`,
+  llmCacheMoney: (saved, spent) =>
+    saved >= 0
+      ? `saved ${Math.round(saved)} ₽ · spent ${Math.round(spent)} ₽`
+      : `own costs ${Math.round(-saved)} ₽ more than cloud · spent ${Math.round(spent)} ₽`,
+  llmCacheHourly: "hourly, MSK",
+  pct: (value) => (value === null ? "—" : `${value.toFixed(1)}%`),
   agentsWorking: "Agents working",
   waitingOwner: "Waiting for owner",
   stale: "Stuck > 24 h",

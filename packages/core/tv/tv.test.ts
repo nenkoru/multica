@@ -47,6 +47,27 @@ describe("TvOverviewSchema", () => {
     expect(parsed.needs_owner).toEqual([]);
   });
 
+  it("parses the prompt-cache block and hides a malformed one", () => {
+    const parsed = TvOverviewSchema.parse({
+      llm_cache: {
+        hours: 24,
+        requests: 713,
+        hit_reusable: 97.08,
+        hit_all: 94.92,
+        target: 99.5,
+        cloud_rub: 245,
+        spent_rub: 233,
+        saved_rub: 11,
+        hourly: [{ at: "2026-10-15T12:00:00Z", requests: 6, hit_reusable: null, hit_all: 97.9 }],
+        computed_at: "2026-10-15T12:47:48Z",
+      },
+    });
+    expect(parsed.llm_cache?.hit_reusable).toBe(97.08);
+    expect(parsed.llm_cache?.hourly[0]?.hit_reusable).toBeNull();
+    expect(TvOverviewSchema.parse({}).llm_cache).toBeNull();
+    expect(TvOverviewSchema.parse({ llm_cache: "broken" }).llm_cache).toBeNull();
+  });
+
   it("drops feed events of an unknown kind and keeps the rest", () => {
     const parsed = TvOverviewSchema.parse({
       feed: [

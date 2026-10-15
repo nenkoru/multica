@@ -1,4 +1,4 @@
-import type { TvEpic } from "@multica/core/tv";
+import type { TvEpic, TvLlmCacheHour } from "@multica/core/tv";
 
 // Every time on the TV screen is Moscow time, whatever the TV's own clock
 // zone is set to.
@@ -64,4 +64,35 @@ export function epicSegments(epic: TvEpic): TvSegment[] {
 
 export function percent(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+const HOUR_MS = 3_600_000;
+
+/** Tone of a cache hit rate against its goal: at it, within 3 points, or further. */
+export function cacheTone(rate: number | null, target: number): TvTone {
+  if (rate === null) return "neutral";
+  if (rate >= target) return "good";
+  if (rate >= target - 3) return "warning";
+  return "serious";
+}
+
+export interface TvCacheSlot {
+  at: Date;
+  hour: TvLlmCacheHour | null;
+}
+
+/** The last `count` whole hours up to the current one, each with its numbers or null when idle. */
+export function cacheSlots(hourly: TvLlmCacheHour[], now: Date, count = 24): TvCacheSlot[] {
+  const end = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
+  const byHour = new Map(hourly.map((h) => [Math.floor(Date.parse(h.at) / HOUR_MS) * HOUR_MS, h]));
+  return Array.from({ length: count }, (_, n) => {
+    const at = end - (count - 1 - n) * HOUR_MS;
+    return { at: new Date(at), hour: byHour.get(at) ?? null };
+  });
+}
+
+/** Bar height in % on the band from `floor` to 100 %, where a working cache lives; never invisible. */
+export function cacheBar(rate: number | null, floor = 90): number {
+  if (rate === null) return 0;
+  return Math.max(4, Math.min(100, ((rate - floor) / (100 - floor)) * 100));
 }

@@ -93,6 +93,35 @@ describe("TvDashboard", () => {
     expect(screen.getByText(TV_COPY.ru.needsYouNoLabel)).toBeTruthy();
   });
 
+  it("shows the 27B cache block with both measures, money and 24 hourly bars", () => {
+    const llm_cache = {
+      hours: 24,
+      requests: 713,
+      hit_reusable: 97.08,
+      hit_all: 94.92,
+      target: 99.5,
+      cloud_rub: 245,
+      spent_rub: 233,
+      saved_rub: 11,
+      hourly: [{ at: "2026-10-16T08:00:00Z", requests: 6, hit_reusable: 99.7, hit_all: 97.9 }],
+      computed_at: "2026-10-16T08:55:00Z",
+    };
+    render(<TvDashboard data={{ ...overview, llm_cache }} copy={TV_COPY.ru} now={now} offline={false} />);
+    const block = screen.getByRole("region", { name: "Кэш 27B" });
+    expect(within(block).getByLabelText("переиспользуемое из кэша · цель 99,5%: 97,1%")).toBeTruthy();
+    expect(within(block).getByLabelText("всех токенов: 94,9%")).toBeTruthy();
+    expect(within(block).getByText("за 24 ч · 713 запросов")).toBeTruthy();
+    expect(within(block).getByText("сэкономлено 11 ₽ · потрачено 233 ₽")).toBeTruthy();
+    const bars = within(block).getByRole("img", { name: "по часам, МСК" }).children;
+    expect(bars).toHaveLength(24);
+    expect((bars[bars.length - 2] as HTMLElement).title).toBe("11:00 · 99,7%");
+  });
+
+  it("has no cache block when the server sends none", () => {
+    render(<TvDashboard data={overview} copy={TV_COPY.ru} now={now} offline={false} />);
+    expect(screen.queryByTestId("tv-llm-cache")).toBeNull();
+  });
+
   it("shows the feed with labelled icons", () => {
     render(<TvDashboard data={overview} copy={TV_COPY.ru} now={now} offline={false} />);
     expect(screen.getByLabelText("запуск упал")).toBeTruthy();
