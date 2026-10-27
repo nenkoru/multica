@@ -6,12 +6,21 @@ package redact
 // (sk-, ghp_, Bearer, KEY=value, ...). A bare value without a recognisable
 // prefix — a hex bearer token echoed by a tool, a password printed by a
 // script — passes straight through. This file adds a second, complementary
-// layer: the daemon knows which secret values exist on its machine (the
-// *.env files under ~/.config and its own secret-named environment), so it
-// can replace every literal occurrence of those values before a transcript
-// leaves the process.
+// layer: the daemon knows which secret values exist on its machine, so it can
+// replace every literal occurrence of those values before a transcript leaves
+// the process. The known set is the union of:
 //
-// The values themselves are never logged; only counts are.
+//   - values of secret-named keys (see IsSecretEnvName) in env files under
+//     ~/.config (depth <= 3): *.env, .env and backups such as *.env.bak-x;
+//   - values of secret-named variables in the process environment;
+//   - in both, the password of any URL with userinfo, whatever the key;
+//   - values registered at run time with RegisterValues / SetNamedValues
+//     (the daemon's own auth token, each running task's MULTICA_TOKEN and
+//     secret-named custom_env values) — these skip the key filter.
+//
+// Values shorter than 8 characters, numeric, paths, plain URLs, host names and
+// obvious non-secrets are never masked. The values themselves are never
+// logged; only counts are.
 
 import (
 	"io/fs"
@@ -35,7 +44,7 @@ const SecretValuePlaceholder = "[REDACTED SECRET]"
 const SecretValuesEnv = "MULTICA_REDACT_SECRET_VALUES"
 
 const (
-	minSecretValueLen   = 12
+	minSecretValueLen   = 8
 	maxEnvFileBytes     = 1 << 20
 	maxConfigScanDepth  = 3
 	secretValuesRefresh = time.Minute
@@ -43,7 +52,32 @@ const (
 
 // secretNameMarkers mark an environment variable name as secret-bearing when
 // any of them occurs in the name (case-insensitive substring).
-var secretNameMarkers = []string{"TOKEN", "KEY", "SECRET", "PASSWORD", "PASS", "API", "AUTH", "CREDENTIAL"}
+var secretNameMarkers = []string{
+	"TOKEN", "KEY", "SECRET", "PASSWORD", "PASSWD", "PASS", "PWD", "CREDENTIAL",
+	"AUTH", "BEARER", "DSN", "COOKIE", "SESSION", "PRIVATE", "API",
+}
+
+// strongSecretNameMarkers override the non-secret suffixes below: a name such
+// as YANDEX_CLIENT_SECRET or TOKEN_ID stays secret, YANDEX_CLIENT_ID does not.
+var strongSecretNameMarkers = []string{"SECRET", "TOKEN", "KEY", "PASSWORD", "PASSWD", "PRIVATE"}
+
+// nonSecretNameSuffixes mark configuration that merely shares a marker with a
+// secret (API_HOST, SESSION_ID, AUTH_USER, ...). URLs are not listed: a URL
+// value is masked only when it carries userinfo (see secretCandidates).
+var nonSecretNameSuffixes = []string{"_MODEL", "_USER", "_USERNAME", "_EMAIL", "_PATH", "_DIR", "_HOST", "_ID", "_NAME"}
+
+// nonSecretNames / nonSecretNamePrefixes are well-known process variables whose
+// names contain a marker (PWD, SESSION, AUTH) but whose values are not secret.
+var nonSecretNames = map[string]bool{
+	"PWD": true, "OLDPWD": true, "SSH_AUTH_SOCK": true, "XAUTHORITY": true,
+	"DESKTOP_SESSION": true, "SESSION_MANAGER": true, "GPG_AGENT_INFO": true,
+}
+var nonSecretNamePrefixes = []string{"XDG_", "DBUS_"}
+
+// markerLookalikes are words that contain a marker without meaning a secret
+// (GIT_AUTHOR_NAME, HOTKEY_TOGGLE, KEYBOARD_LAYOUT); they are removed from the
+// name before the marker check.
+var markerLookalikes = []string{"AUTHOR", "HOTKEY", "KEYBOARD", "KEYMAP", "KEYBIND"}
 
 // nonSecretValues are values that appear in env files often enough and are
 // harmless enough that masking them would only damage transcripts.
@@ -100,16 +134,82 @@ func ParseEnvFile(data []byte) map[string]string {
 	return out
 }
 
-// IsSecretEnvName reports whether an environment variable name looks like it
-// carries a secret.
+// IsSecretEnvName reports whether an environment variable / env-file key
+// looks like it carries a secret: it contains a secret marker (TOKEN, KEY,
+// SECRET, PASSWORD, PASS, PWD, CREDENTIAL, AUTH, BEARER, DSN, COOKIE, SESSION,
+// PRIVATE, API; case-insensitive) and does not end in a configuration suffix
+// (_MODEL, _USER, _EMAIL, _PATH, _HOST, _ID, ...) unless it also contains a
+// strong marker (SECRET, TOKEN, KEY, PASSWORD, PASSWD, PRIVATE). Look-alike
+// words (AUTHOR, HOTKEY, KEYBOARD, ...) do not count as markers.
 func IsSecretEnvName(name string) bool {
-	up := strings.ToUpper(name)
-	for _, m := range secretNameMarkers {
-		if strings.Contains(up, m) {
+	up := strings.ToUpper(strings.TrimSpace(name))
+	if up == "" || nonSecretNames[up] {
+		return false
+	}
+	for _, p := range nonSecretNamePrefixes {
+		if strings.HasPrefix(up, p) {
+			return false
+		}
+	}
+	probe := up
+	for _, w := range markerLookalikes {
+		probe = strings.ReplaceAll(probe, w, "")
+	}
+	if !containsAny(probe, secretNameMarkers) {
+		return false
+	}
+	if containsAny(probe, strongSecretNameMarkers) {
+		return true
+	}
+	for _, suf := range nonSecretNameSuffixes {
+		if strings.HasSuffix(up, suf) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsAny(s string, subs []string) bool {
+	for _, m := range subs {
+		if strings.Contains(s, m) {
 			return true
 		}
 	}
 	return false
+}
+
+// urlPassword returns the password of a URL with userinfo, if any.
+func urlPassword(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if !strings.Contains(v, "://") {
+		return "", false
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.User == nil {
+		return "", false
+	}
+	pw, ok := u.User.Password()
+	if !ok || pw == "" {
+		return "", false
+	}
+	return pw, true
+}
+
+// SecretValuesFromPairs selects the maskable raw values of a key/value set
+// (an env file, custom_env, the process environment): the value of every
+// secret-named key, and the URL password of every other key whose value is a
+// URL with userinfo (DATABASE_URL=postgres://u:pw@...). Candidate filtering
+// (length, paths, ...) happens later in NewValueRedactor.
+func SecretValuesFromPairs(kv map[string]string) []string {
+	var out []string
+	for k, v := range kv {
+		if IsSecretEnvName(k) {
+			out = append(out, v)
+		} else if pw, ok := urlPassword(v); ok {
+			out = append(out, pw)
+		}
+	}
+	return out
 }
 
 // secretCandidates returns the maskable values derived from one raw value:
@@ -220,9 +320,10 @@ func (r *ValueRedactor) Replace(s string) string {
 	return r.replacer.Replace(s)
 }
 
-// LoadSecretValues collects raw values from *.env files under configDir
-// (depth <= 3) and from secret-named entries in environ ("K=V" form). It
-// returns the values and the number of env files read.
+// LoadSecretValues collects raw values from env files under configDir (depth
+// <= 3; see isEnvFileName) and from environ ("K=V" form), keeping only what
+// SecretValuesFromPairs selects. It returns the values and the number of env
+// files read.
 func LoadSecretValues(configDir string, environ []string) ([]string, int) {
 	var values []string
 	files := 0
@@ -233,21 +334,23 @@ func LoadSecretValues(configDir string, environ []string) ([]string, int) {
 				continue
 			}
 			files++
-			for _, v := range ParseEnvFile(data) {
-				values = append(values, v)
-			}
+			values = append(values, SecretValuesFromPairs(ParseEnvFile(data))...)
 		}
 	}
+	env := make(map[string]string, len(environ))
 	for _, kv := range environ {
-		eq := strings.IndexByte(kv, '=')
-		if eq <= 0 {
-			continue
-		}
-		if IsSecretEnvName(kv[:eq]) {
-			values = append(values, kv[eq+1:])
+		if eq := strings.IndexByte(kv, '='); eq > 0 {
+			env[kv[:eq]] = kv[eq+1:]
 		}
 	}
+	values = append(values, SecretValuesFromPairs(env)...)
 	return values, files
+}
+
+// isEnvFileName matches env files and their backups: "*.env" (including a bare
+// ".env") and "*.env.*" (".env.local", "x.env.bak-rusl2266").
+func isEnvFileName(name string) bool {
+	return strings.HasSuffix(name, ".env") || strings.Contains(name, ".env.")
 }
 
 type envFileStat struct {
@@ -282,7 +385,7 @@ func listEnvFiles(root string) []envFileStat {
 			}
 			return nil
 		}
-		if ok, _ := filepath.Match("*.env", d.Name()); !ok {
+		if !isEnvFileName(d.Name()) {
 			return nil
 		}
 		info, ierr := os.Stat(path) // follows a symlinked file
@@ -309,19 +412,89 @@ func envFilesSignature(files []envFileStat) string {
 	return b.String()
 }
 
+// valueRegistry holds values registered at run time (the daemon's own auth
+// token, a running task's MULTICA_TOKEN and custom_env). Each entry is keyed by
+// name; re-registering a name replaces its values. gen changes on every edit
+// so valueSource rebuilds its replacer only when needed.
+type valueRegistry struct {
+	mu      sync.Mutex
+	entries map[string][]string
+	gen     uint64
+	anon    uint64
+}
+
+var registry = &valueRegistry{entries: map[string][]string{}}
+
+func (r *valueRegistry) set(name string, values []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(values) == 0 {
+		if _, ok := r.entries[name]; !ok {
+			return
+		}
+		delete(r.entries, name)
+	} else {
+		r.entries[name] = append([]string(nil), values...)
+	}
+	r.gen++
+}
+
+func (r *valueRegistry) snapshot() ([]string, uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, vs := range r.entries {
+		out = append(out, vs...)
+	}
+	return out, r.gen
+}
+
+func (r *valueRegistry) generation() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.gen
+}
+
+// SetNamedValues registers values under name, replacing whatever that name
+// held before; an empty list removes the entry. Registered values skip the
+// key-name filter (the caller asserts they are secret) but still pass the
+// candidate filter (>= 8 chars, not numeric/path/plain URL/host name). Use it
+// for long-lived values that can change, e.g. the daemon's auth token.
+func SetNamedValues(name string, values []string) {
+	registry.set(name, values)
+}
+
+// RegisterValues adds values to the known set until the returned function is
+// called (idempotent). Use it for values scoped to one task: register when the
+// task starts, unregister after its last report has been sent. While
+// registered, the values are masked by Values in every report, not only the
+// owning task's.
+func RegisterValues(values []string) (unregister func()) {
+	registry.mu.Lock()
+	registry.anon++
+	name := "\x00anon:" + strconv.FormatUint(registry.anon, 10)
+	registry.mu.Unlock()
+	registry.set(name, values)
+	var once sync.Once
+	return func() { once.Do(func() { registry.set(name, nil) }) }
+}
+
 // valueSource is the process-wide known-value set. It re-stats the env files
-// at most once per refresh interval and rebuilds the replacer only when the
-// set of files or their mtime/size changed.
+// at most once per refresh interval and re-reads them only when the set of
+// files or their mtime/size changed; the replacer is rebuilt when the file
+// values or the run-time registry changed.
 type valueSource struct {
-	mu        sync.Mutex
-	configDir func() string
-	environ   func() []string
-	now       func() time.Time
-	refresh   time.Duration
-	checkedAt time.Time
-	signature string
-	loaded    bool
-	redactor  *ValueRedactor
+	mu         sync.Mutex
+	configDir  func() string
+	environ    func() []string
+	now        func() time.Time
+	refresh    time.Duration
+	checkedAt  time.Time
+	signature  string
+	loaded     bool
+	fileValues []string
+	builtGen   uint64
+	redactor   *ValueRedactor
 }
 
 func newValueSource() *valueSource {
@@ -343,24 +516,36 @@ func (s *valueSource) current() *ValueRedactor {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	if s.loaded && now.Sub(s.checkedAt) < s.refresh {
+	if s.loaded && now.Sub(s.checkedAt) < s.refresh && registry.generation() == s.builtGen {
 		return s.redactor
 	}
-	s.checkedAt = now
-	dir := s.configDir()
-	var files []envFileStat
-	if dir != "" {
-		files = listEnvFiles(dir)
+	fileChanged := false
+	if !s.loaded || now.Sub(s.checkedAt) >= s.refresh {
+		s.checkedAt = now
+		dir := s.configDir()
+		var files []envFileStat
+		if dir != "" {
+			files = listEnvFiles(dir)
+		}
+		sig := envFilesSignature(files)
+		if !s.loaded || sig != s.signature {
+			values, n := LoadSecretValues(dir, s.environ())
+			s.fileValues = values
+			s.signature = sig
+			fileChanged = true
+			slog.Info("redact: known secret values loaded from env files", "raw_values", len(values), "env_files", n)
+		}
 	}
-	sig := envFilesSignature(files)
-	if s.loaded && sig == s.signature {
-		return s.redactor
+	extra, gen := registry.snapshot()
+	if !s.loaded || fileChanged || gen != s.builtGen {
+		all := make([]string, 0, len(s.fileValues)+len(extra))
+		all = append(all, s.fileValues...)
+		all = append(all, extra...)
+		s.redactor = NewValueRedactor(all)
+		s.builtGen = gen
+		s.loaded = true
+		slog.Debug("redact: known secret value set rebuilt", "values", s.redactor.Len())
 	}
-	values, n := LoadSecretValues(dir, s.environ())
-	s.redactor = NewValueRedactor(values)
-	s.signature = sig
-	s.loaded = true
-	slog.Info("redact: known secret values loaded", "values", s.redactor.Len(), "env_files", n)
 	return s.redactor
 }
 
@@ -374,8 +559,9 @@ func SecretValuesEnabled() bool {
 	return strings.TrimSpace(os.Getenv(SecretValuesEnv)) != "0"
 }
 
-// Values masks every known secret value (from ~/.config/**/*.env and the
-// process's secret-named environment variables) in s. It is a no-op when
+// Values masks every known secret value (secret-named keys of env files under
+// ~/.config and of the process environment, plus RegisterValues /
+// SetNamedValues entries) in s. It is a no-op when
 // disabled via MULTICA_REDACT_SECRET_VALUES=0. It is independent of Text: Text
 // keeps its pattern-only behaviour.
 func Values(s string) string {
