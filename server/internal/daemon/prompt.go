@@ -67,9 +67,38 @@ func perTurnContextBlocks(task Task, opts promptOpts) string {
 	if task.PriorSessionResumeUnavailable {
 		b.WriteString(sessionContinuityNoticeFor(task))
 	}
+	b.WriteString(buildInterruptedRetryBlock(task))
 	b.WriteString(execenv.BuildOnBehalfOfBlock(task.InitiatorName, task.InitiatorEmail))
 	b.WriteString(execenv.BuildConnectedAppsBlock(task.ConnectedApps))
 	b.WriteString(buildJoinedWakeupsBlock(task.WakeupJoined))
+	return b.String()
+}
+
+// interruptedRetryReasons are the parent failure reasons that mean "the
+// previous attempt of THIS task was cut off by the daemon going away", as
+// opposed to any problem in the work itself: daemon_shutdown is a graceful stop
+// (SIGTERM, deploy) and runtime_recovery is the orphan sweep after a hard
+// death. Both retry on the same session when they can, so the agent may or may
+// not remember the interrupted turn — either way the platform cannot tell it
+// which external side effects already happened (RUSL-2266).
+var interruptedRetryReasons = map[string]bool{
+	"daemon_shutdown":  true,
+	"runtime_recovery": true,
+}
+
+// buildInterruptedRetryBlock tells an automatic retry that the run it replaces
+// was interrupted by a daemon stop/restart, and that comments, branches, pushes
+// and created issues from that run may already exist. Rendered only for
+// attempt > 1 whose parent failed with one of interruptedRetryReasons; an old
+// server never sends retry_of_failure_reason, which keeps it off.
+func buildInterruptedRetryBlock(task Task) string {
+	if task.Attempt <= 1 || !interruptedRetryReasons[task.RetryOfFailureReason] {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("[CONTINUATION AFTER INTERRUPTION]\n")
+	fmt.Fprintf(&b, "This is attempt %d of this task. The previous attempt was interrupted by a stop or restart of the Multica daemon (failure_reason: %s), not by anything in the work itself, and the platform retried it automatically.\n", task.Attempt, task.RetryOfFailureReason)
+	b.WriteString("Before acting, check what that attempt already did: its comments on the issue (or messages in this chat), the branch and any commits or pushes in your working directory, pull requests, and issues it created. Do not repeat external actions that already took effect — no duplicate comments, issues, pushes or messages; continue from where it stopped and deliver only what is still missing.\n\n")
 	return b.String()
 }
 

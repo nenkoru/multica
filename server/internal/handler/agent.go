@@ -431,6 +431,17 @@ type AgentTaskResponse struct {
 	// (no-gap) case and for old daemons.
 	PriorSessionResumeUnavailable bool   `json:"prior_session_resume_unavailable,omitempty"`
 	WorkDir                       string `json:"work_dir,omitempty"` // local working directory pinned for this task; populated once the daemon reports it
+
+	// RetryOfFailureReason is the failure_reason of the attempt this automatic
+	// retry replaces (RUSL-2266). Claim-only: set by buildClaimedTaskResponse
+	// when the task carries retry lineage, so the daemon can tell the agent
+	// that the previous attempt was cut off by a daemon stop/restart
+	// (daemon_shutdown / runtime_recovery) and must check what was already
+	// done. omitempty keeps it off the wire for first attempts and for every
+	// non-claim task read; old daemons ignore it. Mirror field:
+	// internal/daemon/types.go Task.RetryOfFailureReason, same JSON name.
+	RetryOfFailureReason string `json:"retry_of_failure_reason,omitempty"`
+
 	// RelativeWorkDir is a privacy-safe display form of WorkDir intended for
 	// the UI. For standard tasks it strips the daemon's workspaces root while
 	// preserving either the legacy or readable workspace/task segments; for local_directory

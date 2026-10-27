@@ -2328,6 +2328,33 @@ func applyFreshSessionRetryWorkdir(task db.AgentTaskQueue, resp *AgentTaskRespon
 	resp.PriorSessionResumeUnavailable = true
 }
 
+// retryOfFailureReason returns the failure_reason of the attempt an automatic
+// retry replaces, or "" for a first attempt (RUSL-2266). The lineage is
+// retry_of_task_id, which CreateRetryTask writes for system retries only; a
+// manual rerun carries rerun_of_task_id instead and reports "".
+//
+// Best-effort and claim-only: a read failure degrades to "" (the daemon then
+// renders no interruption notice, i.e. today's behaviour) and never fails the
+// claim.
+func (h *Handler) retryOfFailureReason(ctx context.Context, task *db.AgentTaskQueue) string {
+	lineage := task.RetryOfTaskID
+	if !lineage.Valid || h.Queries == nil {
+		return ""
+	}
+	parent, err := h.Queries.GetAgentTask(ctx, lineage)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("daemon claim: load retry parent failure reason failed",
+				"task_id", uuidToString(task.ID), "parent_task_id", uuidToString(lineage), "error", err)
+		}
+		return ""
+	}
+	if parent.AgentID != task.AgentID || !parent.FailureReason.Valid {
+		return ""
+	}
+	return parent.FailureReason.String
+}
+
 func claimResponseAgentIdentityMatches(resp AgentTaskResponse) bool {
 	return resp.AgentID != "" && resp.Agent != nil && resp.Agent.ID == resp.AgentID
 }
@@ -2343,6 +2370,7 @@ func claimResponseAgentIdentityMatches(resp AgentTaskResponse) bool {
 func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQueue, runtime db.AgentRuntime, runtimeID, runtimeWorkspaceID string) (resp AgentTaskResponse, deliveredCommentIDs []pgtype.UUID, issueSnapshot []byte, agentSkillCount, builtinSkillCount int, failure *claimBuildFailure) {
 	// Build response with fresh agent data (name + skills + custom_env + custom_args).
 	resp = taskToResponse(*task, runtimeWorkspaceID)
+	resp.RetryOfFailureReason = h.retryOfFailureReason(r.Context(), task)
 	if err := (&service.IssueWakeupService{Tasks: h.TaskService}).CheckClaim(r.Context(), *task); err != nil {
 		if !errors.Is(err, service.ErrWakeupForbidden) {
 			return resp, nil, nil, 0, 0, h.rejectClaimSourceLoad(r.Context(), task, err, "wakeup", resp.WakeupID)

@@ -200,6 +200,7 @@ export type TaskFailureReason =
   | "runtime_offline"
   | "runtime_reconnect_timeout"
   | "runtime_recovery"
+  | "daemon_shutdown"
   | "manual";
 
 // One daily bucket for the Agents-list ACTIVITY sparkline. The back-end

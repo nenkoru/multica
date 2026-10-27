@@ -12,6 +12,7 @@ export const FAILURE_REASON_I18N_KEYS = {
   runtime_offline: "runtime_offline",
   runtime_reconnect_timeout: "runtime_reconnect_timeout",
   runtime_recovery: "runtime_recovery",
+  daemon_shutdown: "daemon_shutdown",
   timeout: "timeout",
   iteration_limit: "iteration_limit",
   agent_blocked: "agent_blocked",

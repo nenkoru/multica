@@ -24,7 +24,7 @@
 //     anything the agent process did:
 //
 //     queued_expired, runtime_offline, runtime_reconnect_timeout,
-//     runtime_recovery, timeout, iteration_limit, agent_blocked,
+//     runtime_recovery, daemon_shutdown, timeout, iteration_limit, agent_blocked,
 //     api_invalid_request, skill_bundle_unavailable,
 //     runtime_cli_timeout, environment_prepare_failed,
 //     invalid_task_identity, runtime_access_denied
@@ -79,10 +79,31 @@ const (
 	// FailExpiredRuntimeReconnectRetries.
 	ReasonRuntimeReconnectTimeout Reason = "runtime_reconnect_timeout"
 
-	// ReasonRuntimeRecovery: the daemon restarted while the task was
-	// in flight; the prior session is unrecoverable. Written by
-	// RecoverOrphanedTasksForRuntime at daemon startup.
+	// ReasonRuntimeRecovery: the daemon died or restarted while the task was
+	// in flight and found the row still dispatched/running when it
+	// re-registered. Written by RecoverOrphanedTasksForRuntime at daemon
+	// startup. Retryable and resume-safe: the session the provider already
+	// emitted was pinned mid-run (PinTaskSession), so the retry child
+	// inherits session_id/work_dir through CreateRetryTask and resumes the
+	// interrupted conversation in the same workdir when the claim lands on
+	// the same runtime and the backend can still read the session back.
 	ReasonRuntimeRecovery Reason = "runtime_recovery"
+
+	// ReasonDaemonShutdown: the daemon was stopped gracefully (SIGTERM from
+	// systemctl stop/restart, a deploy, `multica daemon stop`) while the task
+	// was running, so the agent was interrupted by the daemon's own root
+	// context rather than by any server-side cancel (RUSL-2266). Before this
+	// reason existed that path reported the coarse "cancelled", which is not
+	// retryable, and RecoverOrphanedTasksForRuntime never saw the row again
+	// because it was already terminal — the run was simply lost.
+	//
+	// Platform-side, retryable (up to daemonShutdownMaxAttempts in
+	// internal/service/task.go) and resume-safe: nothing about the
+	// conversation is poisoned, so the retry resumes the same session in the
+	// same workdir. The retry's prompt is told the previous attempt was cut
+	// off so it checks what was already done before repeating external
+	// actions. Written by handleTask in internal/daemon/daemon.go.
+	ReasonDaemonShutdown Reason = "daemon_shutdown"
 
 	// ReasonTimeout: server-side or runtime-side hard timeout.
 	// Written by FailStaleTasks (server) and the daemon's per-task
@@ -267,7 +288,7 @@ const (
 	ReasonAgentUnknown Reason = "agent_error.unknown"
 )
 
-// allReasons is the canonical ordered list of the 27 reasons. Order is
+// allReasons is the canonical ordered list of the 28 reasons. Order is
 // stable so callers (e.g. Prometheus collectors that pre-warm series via
 // AllReasons) can build deterministic label sets across restarts.
 //
@@ -282,6 +303,7 @@ var allReasons = []Reason{
 	ReasonRuntimeOffline,
 	ReasonRuntimeReconnectTimeout,
 	ReasonRuntimeRecovery,
+	ReasonDaemonShutdown,
 	ReasonTimeout,
 	ReasonIterationLimit,
 	ReasonAgentBlocked,

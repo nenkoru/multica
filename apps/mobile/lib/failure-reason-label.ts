@@ -28,6 +28,7 @@ export const REASONS = new Set([
   "runtime_offline",
   "runtime_reconnect_timeout",
   "runtime_recovery",
+  "daemon_shutdown",
   "timeout",
   "iteration_limit",
   "agent_blocked",

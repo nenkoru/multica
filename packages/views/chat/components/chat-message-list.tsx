@@ -1033,6 +1033,7 @@ function FailureBubble({
     runtime_offline: t(($) => $.message_list.failure.runtime_offline),
     runtime_access_denied: t(($) => $.message_list.failure.runtime_access_denied),
     runtime_recovery: t(($) => $.message_list.failure.runtime_recovery),
+    daemon_shutdown: t(($) => $.message_list.failure.daemon_shutdown),
     manual: t(($) => $.message_list.failure.manual),
     cancelled: t(($) => $.message_list.failure.manual),
     skill_bundle_unavailable: t(($) => $.message_list.failure.skill_bundle_unavailable),

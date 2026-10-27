@@ -1105,7 +1105,7 @@ func taskFailureReason(task db.AgentTaskQueue) string {
 
 func taskErrorType(reason string) string {
 	switch reason {
-	case "runtime_offline", "runtime_recovery":
+	case "runtime_offline", "runtime_recovery", "daemon_shutdown":
 		return "runtime"
 	case "timeout", "codex_semantic_inactivity":
 		return "timeout"
@@ -5258,9 +5258,15 @@ func (s *TaskService) FailTaskWithTransition(ctx context.Context, taskID pgtype.
 // never started, so there is nothing to be idempotent about, and every bundle
 // that did download is already cached on disk — a retry resumes from there
 // instead of re-fetching the whole set (MUL-5370).
+// daemon_shutdown is the graceful-stop twin of runtime_recovery (RUSL-2266):
+// the daemon's own root context interrupted the run (SIGTERM, deploy), not a
+// server cancel. It is resume-safe, so the retry continues the same session
+// in the same workdir, and it gets daemonShutdownMaxAttempts so a rolling
+// deploy that restarts the daemon twice does not drop the run.
 var retryableReasons = map[string]bool{
 	string(taskfailure.ReasonRuntimeOffline):         true,
 	string(taskfailure.ReasonRuntimeRecovery):        true,
+	string(taskfailure.ReasonDaemonShutdown):         true,
 	string(taskfailure.ReasonTimeout):                true,
 	"codex_semantic_inactivity":                      true,
 	string(taskfailure.ReasonAgentProviderNetwork):   true,
@@ -5279,10 +5285,17 @@ var retryableReasons = map[string]bool{
 // A blip that survives the immediate retry gets a short cooldown before the
 // final attempt instead of firing back-to-back. Every other retryable reason
 // keeps the task's generic max_attempts ceiling and retries immediately.
+//
+// daemon_shutdown (RUSL-2266) widens the ceiling the same way: first run plus
+// up to two retries, each immediate. The child is created 'queued' while the
+// stopping daemon no longer claims, so in practice it is picked up by the next
+// daemon start; a second restart during that retry (a deploy followed by a
+// quick fix-up restart) still leaves one more attempt.
 const (
 	runtimeOfflineRetryDeferral   = time.Second
 	providerNetworkMaxAttempts    = 3
 	providerNetworkFinalRetryWait = 5 * time.Second
+	daemonShutdownMaxAttempts     = 3
 )
 
 // retryAttemptCeiling reports how many attempts the auto-retry path allows for
@@ -5302,6 +5315,9 @@ func retryAttemptCeiling(reason string, taskMaxAttempts int32) int32 {
 	}
 	if reason == string(taskfailure.ReasonAgentProviderNetwork) && taskMaxAttempts < providerNetworkMaxAttempts {
 		return providerNetworkMaxAttempts
+	}
+	if reason == string(taskfailure.ReasonDaemonShutdown) && taskMaxAttempts < daemonShutdownMaxAttempts {
+		return daemonShutdownMaxAttempts
 	}
 	return taskMaxAttempts
 }
@@ -5336,6 +5352,9 @@ func resumeUnsafeFailureReason(reason string) bool {
 	// overflowed the reader will overflow on every future attempt too.
 	case "iteration_limit", "agent_fallback_message", "api_invalid_request", "codex_semantic_inactivity", "agent_error.context_overflow", "codex_resume_oversized":
 		return true
+	// runtime_recovery and daemon_shutdown are deliberately absent: the daemon
+	// went away underneath a healthy conversation, so the retry must resume
+	// the same session in the same workdir (RUSL-2266).
 	default:
 		return false
 	}
@@ -5394,6 +5413,12 @@ func ResumeUnsafeFailure(failureReason, errorText string) bool {
 // it has its own recovery. Re-triaging reads the entry as it stands now, which
 // a human may have edited in the meantime, so replaying the failed attempt is
 // never what the workspace wants.
+//
+// Known limitation (RUSL-2266): these exclusions also apply to
+// daemon_shutdown and runtime_recovery. An autopilot run or a Triage run
+// interrupted by a daemon stop/restart is NOT retried automatically — the
+// autopilot's next scheduled fire (or a manual rerun) and Triage's own
+// re-triage are the recovery for those, by design.
 func retryEligible(failureReason string, t db.AgentTaskQueue) bool {
 	return retryableReasons[failureReason] &&
 		t.Attempt < retryAttemptCeiling(failureReason, t.MaxAttempts) &&

@@ -195,6 +195,10 @@ func TestProviderNetworkRetrySchedule(t *testing.T) {
 		{provNet, 5, 5},                          // higher configured budget → kept (widen-only)
 		{"timeout", 2, 2},                        // unrelated reason → column value untouched
 		{"timeout", 1, 1},                        // unrelated + disabled → untouched
+		// RUSL-2266: a graceful daemon stop gets the same widened budget.
+		{"daemon_shutdown", 2, daemonShutdownMaxAttempts}, // default budget → raised to 3
+		{"daemon_shutdown", 1, 1},                         // disabled → stays disabled
+		{"daemon_shutdown", 5, 5},                         // higher configured budget → kept
 	}
 	for _, tc := range ceilingCases {
 		if got := retryAttemptCeiling(tc.reason, tc.max); got != tc.want {
@@ -212,7 +216,9 @@ func TestProviderNetworkRetrySchedule(t *testing.T) {
 		{provNet, 1, 0}, // first failure → immediate retry
 		{provNet, 2, providerNetworkFinalRetryWait}, // second failure → 5s-deferred retry
 		{"runtime_offline", 1, runtimeOfflineRetryDeferral},
-		{"timeout", 2, 0}, // unrelated reason → never deferred
+		{"timeout", 2, 0},         // unrelated reason → never deferred
+		{"daemon_shutdown", 1, 0}, // claimed by the next daemon start, no backoff
+		{"daemon_shutdown", 2, 0},
 	}
 	for _, tc := range delayCases {
 		if got := retryDelayForAttempt(tc.reason, tc.failedAttempt); got != tc.want {
@@ -243,6 +249,11 @@ func TestProviderNetworkRetrySchedule(t *testing.T) {
 		{"timeout keeps single immediate retry", "timeout", 1, 2, true},
 		{"timeout exhausts at attempt 2", "timeout", 2, 2, false},
 		{"non-retryable reason never retries", "agent_error.unknown", 1, 2, false},
+		{"daemon_shutdown first run retries", "daemon_shutdown", 1, 2, true},
+		{"daemon_shutdown second run still retries", "daemon_shutdown", 2, 2, true},
+		{"daemon_shutdown third run is the ceiling", "daemon_shutdown", 3, 2, false},
+		{"daemon_shutdown with retry disabled never retries", "daemon_shutdown", 1, 1, false},
+		{"cancelled stays non-retryable", "cancelled", 1, 2, false},
 	}
 	for _, tc := range eligCases {
 		if got := retryEligible(tc.reason, mkTask(tc.attempt, tc.max)); got != tc.want {
@@ -267,6 +278,9 @@ func TestTaskFailureClassifiers(t *testing.T) {
 		// Correcting a misleading auth label must not enable an automatic resend.
 		{reason: "agent_error.provider_capacity_or_rate_limit", wantType: "agent_error", wantResumeOK: true, wantRetry: false},
 		{reason: "runtime_recovery", wantType: "runtime", wantResumeOK: true, wantRetry: true},
+		// RUSL-2266: graceful daemon stop — retried on the same session.
+		{reason: "daemon_shutdown", wantType: "runtime", wantResumeOK: true, wantRetry: true},
+		{reason: "cancelled", wantType: "cancelled", wantResumeOK: true, wantRetry: false},
 		{reason: "iteration_limit", wantType: "agent_output", wantResumeOK: false, wantRetry: false},
 		{reason: "api_invalid_request", wantType: "agent_error", wantResumeOK: false, wantRetry: false},
 		{reason: "agent_error.context_overflow", wantType: "agent_error", wantResumeOK: false, wantRetry: false},
@@ -512,5 +526,27 @@ func TestContextOverflowFromLegacyDaemonRetiresSession(t *testing.T) {
 	current := taskfailure.NormalizeDaemonReason(taskfailure.ReasonAgentContextOverflow.String(), overflowErr).String()
 	if !ResumeUnsafeFailure(current, overflowErr) {
 		t.Errorf("an overflow reported by a current daemon must retire the session; got reason %q", current)
+	}
+}
+
+// TestDaemonShutdownRetryExclusions pins the documented RUSL-2266 limitation:
+// daemon_shutdown is retryable, but the retryEligible exclusions still apply —
+// an interrupted autopilot run is not auto-retried.
+func TestDaemonShutdownRetryExclusions(t *testing.T) {
+	issueTask := db.AgentTaskQueue{
+		Attempt:     1,
+		MaxAttempts: 2,
+		IssueID:     pgtype.UUID{Bytes: [16]byte{1}, Valid: true},
+	}
+	if !retryEligible("daemon_shutdown", issueTask) {
+		t.Fatal("an interrupted issue run must be retried")
+	}
+	autopilotTask := issueTask
+	autopilotTask.AutopilotRunID = pgtype.UUID{Bytes: [16]byte{2}, Valid: true}
+	if retryEligible("daemon_shutdown", autopilotTask) {
+		t.Fatal("autopilot runs keep their own recovery and are not auto-retried")
+	}
+	if resumeUnsafeFailureReason("daemon_shutdown") {
+		t.Fatal("daemon_shutdown must be resume-safe: the retry continues the same session")
 	}
 }
