@@ -457,7 +457,7 @@ func (c *Client) ClaimTaskSupplement(ctx context.Context, taskID string) (*TaskS
 func (c *Client) AckTaskSupplement(ctx context.Context, taskID, commentID string, delivered bool, errText string) error {
 	return c.postJSONWithRetry(ctx,
 		fmt.Sprintf("/api/daemon/tasks/%s/supplements/%s/ack", taskID, commentID),
-		map[string]any{"delivered": delivered, "error": errText}, nil,
+		map[string]any{"delivered": delivered, "error": scrubSecretValues(errText)}, nil,
 		[]time.Duration{0, 100 * time.Millisecond, 300 * time.Millisecond})
 }
 
@@ -534,7 +534,7 @@ func (c *Client) StartTask(ctx context.Context, task Task, capabilities ...strin
 // 400 the daemon swallows and proceeds to wait).
 func (c *Client) MarkTaskWaitingLocalDirectory(ctx context.Context, taskID, reason string) error {
 	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/tasks/%s/wait-local-directory", taskID), map[string]any{
-		"reason": reason,
+		"reason": scrubSecretValues(reason),
 	}, nil)
 }
 
@@ -576,7 +576,7 @@ func (c *Client) AckTaskCancelled(ctx context.Context, taskID string, ack TaskCa
 		body["durable_work_dir"] = ack.DurableWorkDir
 	}
 	if ack.ErrorMessage != "" {
-		body["error_message"] = ack.ErrorMessage
+		body["error_message"] = scrubSecretValues(ack.ErrorMessage)
 	}
 	if ack.FailureReason != "" {
 		body["failure_reason"] = ack.FailureReason
@@ -586,7 +586,7 @@ func (c *Client) AckTaskCancelled(ctx context.Context, taskID string, ack TaskCa
 
 func (c *Client) ReportProgress(ctx context.Context, taskID, summary string, step, total int) error {
 	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/tasks/%s/progress", taskID), map[string]any{
-		"summary": summary,
+		"summary": scrubSecretValues(summary),
 		"step":    step,
 		"total":   total,
 	}, nil)
@@ -614,7 +614,7 @@ type TaskMessageData struct {
 
 func (c *Client) ReportTaskMessages(ctx context.Context, taskID string, messages []TaskMessageData) error {
 	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/tasks/%s/messages", taskID), map[string]any{
-		"messages": messages,
+		"messages": scrubTaskMessagesSecretValues(messages),
 	}, nil)
 }
 
@@ -623,7 +623,7 @@ func (c *Client) CompleteTask(ctx context.Context, taskID, output, branchName, s
 }
 
 func (c *Client) completeTaskWithRetrySchedule(ctx context.Context, taskID, output, branchName, sessionID, workDir string, sessionRolloutMissing bool, retiredSessionID, durableWorkDir string, schedule []time.Duration) error {
-	body := map[string]any{"output": output}
+	body := map[string]any{"output": scrubSecretValues(output)}
 	if branchName != "" {
 		body["branch_name"] = branchName
 	}
@@ -659,7 +659,7 @@ func (c *Client) FailTask(ctx context.Context, taskID, errMsg, sessionID, workDi
 }
 
 func (c *Client) failTaskWithRetrySchedule(ctx context.Context, taskID, errMsg, sessionID, workDir, branchName, failureReason string, sessionRolloutMissing bool, retiredSessionID, durableWorkDir string, schedule []time.Duration) error {
-	body := map[string]any{"error": errMsg}
+	body := map[string]any{"error": scrubSecretValues(errMsg)}
 	if sessionID != "" {
 		body["session_id"] = sessionID
 	}

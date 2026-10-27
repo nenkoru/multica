@@ -9668,7 +9668,9 @@ func (d *Daemon) executeAndDrain(ctx context.Context, backend agent.Backend, pro
 							break
 						}
 					}
-					output, outputTruncated := toolOutputPreview(msg.Output)
+					// Mask known secret values before the preview cut, so a
+					// value straddling the budget boundary cannot leak a prefix.
+					output, outputTruncated := toolOutputPreview(scrubSecretValues(msg.Output))
 					mu.Lock()
 					sealPendingLocked()
 					toolName := msg.Tool
