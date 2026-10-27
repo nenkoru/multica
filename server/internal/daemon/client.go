@@ -217,9 +217,12 @@ func daemonCommonCapabilities() []string {
 	}
 }
 
-// SetToken sets the auth token for authenticated requests.
+// SetToken sets the auth token for authenticated requests. The token is also
+// registered as a known secret value (RUSL-2266), so it is masked in every
+// task report this process sends; a later SetToken replaces it.
 func (c *Client) SetToken(token string) {
 	c.token = token
+	registerClientTokenSecretValue(c, token)
 }
 
 // Token returns the current auth token.
