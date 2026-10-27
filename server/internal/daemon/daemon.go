@@ -5900,14 +5900,29 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 		// classifier so the failure_reason column reflects the actual
 		// shape of the failure (provider 5xx, network, process crash,
 		// …) rather than the coarse legacy "agent_error" bucket.
+		failureReason := taskRunFailureReason(err)
+		errorMessage := err.Error()
+		// RUSL-2266: under systemd's KillMode=control-group the agent receives
+		// the same SIGTERM as the daemon and can die (and surface as an error)
+		// before the root context is observed as cancelled — but by the time
+		// runner.run has returned, a graceful stop has cancelled it. Check
+		// that BEFORE trusting the classifier, which would otherwise file the
+		// killed process under agent_error.* and drop the run.
+		if reason, ok := daemonShutdownFailureReason(ctx, "", failureReason); ok {
+			taskLog.Info("task interrupted by daemon shutdown, reporting retryable failure",
+				"classified_as", failureReason, "failure_reason", reason)
+			failureReason = reason
+			errorMessage = daemonShutdownErrorMessage(errorMessage)
+		}
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
 			kind:           terminalTaskReportFail,
 			taskID:         task.ID,
-			errorMessage:   err.Error(),
+			errorMessage:   errorMessage,
+			sessionID:      result.SessionID,
 			branchName:     result.BranchName,
 			workDir:        result.WorkDir,
 			durableWorkDir: result.DurableWorkDir,
-			failureReason:  taskRunFailureReason(err),
+			failureReason:  failureReason,
 		}); failErr != nil {
 			taskLog.Error("fail task callback failed", "error", failErr)
 		}
@@ -5937,6 +5952,25 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 			taskLog.Warn("cancel ack failed; server sweeper will finalize", "error", ackErr)
 		}
 		return
+	}
+
+	// RUSL-2266: a graceful daemon stop (SIGTERM, deploy) cancels the root
+	// context, which reaches the agent as an upstream cancel and comes back
+	// here as status "cancelled" — indistinguishable, by status alone, from a
+	// user cancel. A server-side cancel was already ruled out above
+	// (cancelledByPoll and the terminal-status check both return early), so a
+	// cancelled root context at this point means the daemon itself stopped
+	// the run. Report it as the retryable, resume-safe daemon_shutdown.
+	if reason, ok := daemonShutdownFailureReason(ctx, result.Status, result.FailureReason); ok {
+		taskLog.Info("task interrupted by daemon shutdown, reporting retryable failure",
+			"status", result.Status, "classified_as", result.FailureReason, "failure_reason", reason)
+		if result.Status == "cancelled" {
+			// runTask's "task cancelled by server" is wrong on this path.
+			result.Comment = ""
+		}
+		result.Comment = daemonShutdownErrorMessage(result.Comment)
+		result.Status = "blocked"
+		result.FailureReason = reason
 	}
 
 	d.reportTaskResult(ctx, task.ID, result, taskLog)
@@ -6006,6 +6040,61 @@ func (e *environmentSetupError) Unwrap() error { return e.err }
 // failure. The message is untouched, so the wrapper is invisible to everything
 // except taskRunFailureReason.
 func asEnvironmentSetupFailure(err error) error { return &environmentSetupError{err: err} }
+
+// daemonShutdownPreservedReasons are failure reasons a daemon shutdown must
+// NOT overwrite even when the root context is cancelled. Each one says
+// something about the session or the task that a retry has to honour:
+// poisoned conversations must not be resumed (keep in sync with
+// service.resumeUnsafeFailureReason), an intentional agent block is not a
+// failure, and identity/authorization refusals are deterministic.
+var daemonShutdownPreservedReasons = map[string]bool{
+	"iteration_limit":                               true,
+	"agent_fallback_message":                        true,
+	"api_invalid_request":                           true,
+	"codex_semantic_inactivity":                     true,
+	"codex_resume_oversized":                        true,
+	taskfailure.ReasonAgentContextOverflow.String(): true,
+	taskfailure.ReasonAgentBlocked.String():         true,
+	taskfailure.ReasonInvalidTaskIdentity.String():  true,
+	taskfailure.ReasonRuntimeAccessDenied.String():  true,
+}
+
+// daemonShutdownFailureReason decides whether a run that did not complete was
+// interrupted by a graceful daemon stop rather than failing on its own
+// (RUSL-2266). rootCtx is the daemon's root context (the ctx handleTask
+// receives, NOT runCtx: runCtx is also cancelled by a server-side cancel).
+// Callers must have already ruled out a server-side cancel — handleTask
+// returns early on cancelledByPoll and on a terminal server status before
+// either call site.
+//
+// status is the TaskResult status ("" for the error path); a completed run is
+// never rewritten. reason is what the daemon classified so far; reasons in
+// daemonShutdownPreservedReasons win over the shutdown because they carry
+// resume-safety or determinism the retry must respect.
+func daemonShutdownFailureReason(rootCtx context.Context, status, reason string) (string, bool) {
+	if rootCtx == nil || rootCtx.Err() == nil {
+		return "", false
+	}
+	if status == "completed" {
+		return "", false
+	}
+	if daemonShutdownPreservedReasons[reason] {
+		return "", false
+	}
+	return taskfailure.ReasonDaemonShutdown.String(), true
+}
+
+// daemonShutdownErrorMessage prefixes the run's own error text (kept verbatim
+// so the server's error-text resume guards still read it) with the reason the
+// run actually ended.
+func daemonShutdownErrorMessage(original string) string {
+	const prefix = "agent run interrupted by daemon shutdown (graceful stop or restart)"
+	original = strings.TrimSpace(original)
+	if original == "" {
+		return prefix
+	}
+	return prefix + ": " + original
+}
 
 func taskRunFailureReason(err error) string {
 	if errors.Is(err, errInvalidTaskIdentity) {
@@ -6230,6 +6319,12 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 		failureReason := "local_directory_error"
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			failureReason = "cancelled"
+			// RUSL-2266: the server-side cancel returned above, so a cancelled
+			// root context here is a graceful daemon stop. The agent never
+			// started; let the server retry the task once the daemon is back.
+			if reason, ok := daemonShutdownFailureReason(ctx, "", failureReason); ok {
+				failureReason = reason
+			}
 		}
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
 			kind:          terminalTaskReportFail,

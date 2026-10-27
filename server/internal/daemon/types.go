@@ -178,6 +178,17 @@ type Task struct {
 	// Empty or non-task-scoped values are fatal for writable agent tasks; the
 	// daemon must not fall back to its own token. See MUL-3292.
 	AuthToken string `json:"auth_token,omitempty"`
+
+	// Attempt / ParentTaskID / RetryOfFailureReason describe the automatic
+	// retry lineage (RUSL-2266). The server has always sent attempt and
+	// parent_task_id; retry_of_failure_reason is a newer claim-only field and
+	// is absent on old servers, which keeps the interruption notice off (see
+	// buildInterruptedRetryBlock). Attempt is 1-based; 0 means an old server or
+	// a test fixture and is treated as a first attempt. Mirror fields:
+	// internal/handler/agent.go AgentTaskResponse, same JSON names.
+	Attempt              int32  `json:"attempt,omitempty"`
+	ParentTaskID         string `json:"parent_task_id,omitempty"`
+	RetryOfFailureReason string `json:"retry_of_failure_reason,omitempty"`
 }
 
 // ChatAttachmentMeta is the structured attachment metadata the daemon

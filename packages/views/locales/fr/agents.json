@@ -922,6 +922,7 @@
       "runtime_offline": "Daemon hors ligne",
       "runtime_reconnect_timeout": "Le démon ne s'est pas reconnecté à temps",
       "runtime_recovery": "Daemon redémarré",
+      "daemon_shutdown": "Daemon arrêté",
       "timeout": "Délai d'exécution dépassé",
       "iteration_limit": "Limite d'itérations atteinte",
       "agent_blocked": "En attente d'une réponse humaine",
