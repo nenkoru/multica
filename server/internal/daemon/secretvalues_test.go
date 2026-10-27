@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/multica-ai/multica/server/pkg/redact"
 )
@@ -114,6 +117,122 @@ func TestClientRedactsSecretValuesOnTheWire(t *testing.T) {
 		if !strings.Contains(b, redact.SecretValuePlaceholder) {
 			t.Fatalf("placeholder missing: %s", b)
 		}
+	}
+}
+
+// TestTaskSecretValuesRegistration: a task's MULTICA_TOKEN and secret-named
+// custom_env values are masked while it is registered and not after; a
+// custom_env model name is never masked.
+func TestTaskSecretValuesRegistration(t *testing.T) {
+	useSecretValuesFixture(t)
+	const taskTok = "mat_synthetic_task_token_abcdef"
+	const ghTok = "gh-custom-env-synthetic-01"
+	const model = "custom-env-synthetic-model"
+	task := Task{ID: "task-sv", AuthToken: taskTok, Agent: &AgentData{CustomEnv: map[string]string{
+		"GH_TOKEN":        ghTok,
+		"ANTHROPIC_MODEL": model,
+	}}}
+	in := "tok=" + taskTok + " gh=" + ghTok + " model=" + model
+	if got := scrubSecretValues(in); got != in {
+		t.Fatalf("masked before registration: %q", got)
+	}
+	unregister := registerTaskSecretValues(task)
+	want := "tok=" + redact.SecretValuePlaceholder + " gh=" + redact.SecretValuePlaceholder + " model=" + model
+	if got := scrubSecretValues(in); got != want {
+		t.Fatalf("registered task values:\n got %q\nwant %q", got, want)
+	}
+	unregister()
+	if got := scrubSecretValues(in); got != in {
+		t.Fatalf("still masked after unregister: %q", got)
+	}
+	if registerTaskSecretValues(Task{ID: "empty"}) == nil {
+		t.Fatal("unregister func must never be nil")
+	}
+}
+
+// TestClientSetTokenMasksDaemonToken: the daemon's own token (set from the
+// profile config via SetToken) is masked on the wire; a new token replaces it.
+func TestClientSetTokenMasksDaemonToken(t *testing.T) {
+	useSecretValuesFixture(t)
+	const tok1 = "mul_synthetic_daemon_token_1"
+	const tok2 = "mul_synthetic_daemon_token_2"
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	t.Cleanup(func() { c.SetToken("") })
+	c.SetToken(tok1)
+	if err := c.ReportProgress(context.Background(), "t1", "a "+tok1, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	c.SetToken(tok2)
+	if err := c.ReportProgress(context.Background(), "t1", "b "+tok1+" "+tok2, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 2 {
+		t.Fatalf("requests = %d", len(bodies))
+	}
+	if strings.Contains(bodies[0], tok1) {
+		t.Fatalf("daemon token on the wire: %s", bodies[0])
+	}
+	if strings.Contains(bodies[1], tok2) || !strings.Contains(bodies[1], tok1) {
+		t.Fatalf("token replacement not applied: %s", bodies[1])
+	}
+	if c.Token() != tok2 {
+		t.Fatal("SetToken must still set the token")
+	}
+}
+
+// TestTerminalReportMaskedBeforePersist: a terminal report that fails to
+// send is persisted already masked, so its replay after the task's values
+// were unregistered still carries no secret.
+func TestTerminalReportMaskedBeforePersist(t *testing.T) {
+	useSecretValuesFixture(t)
+	const taskTok = "mat_synthetic_terminal_token_1"
+	cfg := Config{
+		ServerBaseURL:  "https://api.example.test",
+		WorkspacesRoot: t.TempDir(),
+		Profile:        "secret-values",
+		DaemonID:       "daemon-secret-values",
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	unregister := registerTaskSecretValues(Task{ID: "task-sv-term", AuthToken: taskTok})
+	d := New(cfg, logger)
+	d.terminalReportSend = func(context.Context, terminalTaskReport, []time.Duration) error {
+		return errors.New("network unavailable")
+	}
+	report := terminalTaskReport{
+		kind:          terminalTaskReportFail,
+		taskID:        "task-sv-term",
+		errorMessage:  "failed: " + taskTok,
+		failureReason: "agent_error.process_failure",
+	}
+	if err := d.reportTerminalTask(context.Background(), report); err == nil {
+		t.Fatal("report unexpectedly succeeded")
+	}
+	unregister()
+
+	after := New(cfg, logger)
+	var replayed terminalTaskReport
+	after.terminalReportSend = func(_ context.Context, got terminalTaskReport, _ []time.Duration) error {
+		replayed = got
+		return nil
+	}
+	if _, delivered := after.replayPendingTerminalReports(context.Background()); delivered != 1 {
+		t.Fatalf("delivered = %d, want 1", delivered)
+	}
+	if strings.Contains(replayed.errorMessage, taskTok) || !strings.Contains(replayed.errorMessage, redact.SecretValuePlaceholder) {
+		t.Fatalf("replayed report not masked: %q", replayed.errorMessage)
 	}
 }
 
