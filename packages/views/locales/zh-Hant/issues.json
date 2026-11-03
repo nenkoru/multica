@@ -194,7 +194,13 @@
     "active_count_other": "{{count}} 個篩選",
     "in_view": "已包含在檢視中",
     "chip_edit": "編輯",
-    "chip_save_as": "另存"
+    "chip_save_as": "另存",
+    "section_epic": "Epic",
+    "section_sprint": "Sprint",
+    "epic": "Epic",
+    "no_epic": "無 Epic",
+    "sprint": "Sprint",
+    "no_sprint": "無 Sprint"
   },
   "display": {
     "tooltip": "顯示設定",
@@ -236,7 +242,8 @@
     "card_project": "專案",
     "card_labels": "標籤",
     "card_child_progress": "子任務進度",
-    "show_sub_issues": "顯示子任務"
+    "show_sub_issues": "顯示子任務",
+    "group_epic": "Epic"
   },
   "view": {
     "tooltip_board": "看板檢視",
@@ -493,7 +500,10 @@
     "workdir_path_unavailable": "暫無本地 workdir — 這個任務還沒被本地智慧體執行過",
     "unsubscribe_subtree_succeeded": "已取消訂閱此任務及其子任務。",
     "subscription_update_failed": "無法更新訂閱狀態，請重試。",
-    "pull_requests_empty_title": "暫無關聯 PR。"
+    "pull_requests_empty_title": "暫無關聯 PR。",
+    "planning": "規劃",
+    "prop_epic": "史詩",
+    "prop_sprint": "迭代"
   },
   "timeline": {
     "loading": "載入中…",
@@ -1708,5 +1718,20 @@
   },
   "hover_card": {
     "created_updated": "建立於 {{created}} · 更新於 {{updated}}"
+  },
+  "epic_picker": {
+    "none": "無 Epic",
+    "remove": "移除 Epic",
+    "empty": "該工作區暫無 Epic"
+  },
+  "sprint_picker": {
+    "none": "無 Sprint",
+    "remove": "移除 Sprint",
+    "empty": "該工作區暫無 Sprint"
+  },
+  "sections": {
+    "properties": "屬性",
+    "planning": "規劃",
+    "dates": "日期"
   }
 }

@@ -80,6 +80,9 @@ import zhHantUsage from "./zh-Hant/usage.json";
 import zhHantUi from "./zh-Hant/ui.json";
 import zhHantSquads from "./zh-Hant/squads.json";
 import zhHantBilling from "./zh-Hant/billing.json";
+import zhHantEpics from "./zh-Hant/epics.json";
+import zhHantSprints from "./zh-Hant/sprints.json";
+import zhHantPlanning from "./zh-Hant/planning.json";
 import zhHansEpics from "./zh-Hans/epics.json";
 import zhHansSprints from "./zh-Hans/sprints.json";
 import zhHansPlanning from "./zh-Hans/planning.json";
@@ -255,6 +258,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHantUi,
     squads: zhHantSquads,
     billing: zhHantBilling,
+    epics: zhHantEpics,
+    sprints: zhHantSprints,
+    planning: zhHantPlanning,
   },
   ko: {
     common: koCommon,
