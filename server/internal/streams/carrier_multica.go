@@ -61,3 +61,23 @@ func (m *MulticaCarrier) Close(ctx context.Context, issueID pgtype.UUID, done bo
 	_, err = m.Queries.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: issueID, Status: status, WorkspaceID: issue.WorkspaceID})
 	return err
 }
+
+func (m *MulticaCarrier) TaskComments(ctx context.Context, issueID, taskID pgtype.UUID) ([]string, error) {
+	issue, err := m.Queries.GetIssue(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := m.Queries.ListCommentsSinceForIssue(ctx, db.ListCommentsSinceForIssueParams{
+		IssueID: issueID, WorkspaceID: issue.WorkspaceID, CreatedAt: pgtype.Timestamptz{Valid: true}, Limit: 200,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].SourceTaskID == taskID {
+			out = append(out, rows[i].Content)
+		}
+	}
+	return out, nil
+}

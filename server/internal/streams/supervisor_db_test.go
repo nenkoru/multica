@@ -70,6 +70,7 @@ type fakeCarrier struct {
 	cancelled  []string
 	closed     map[string]bool
 	notReady   map[string]bool
+	comments   map[string][]string // task id → bodies, newest first
 }
 
 func (c *fakeCarrier) Dispatch(ctx context.Context, req DispatchRequest) (DispatchResult, error) {
@@ -102,6 +103,12 @@ func (c *fakeCarrier) Close(ctx context.Context, issueID pgtype.UUID, done bool)
 	return nil
 }
 
+func (c *fakeCarrier) TaskComments(ctx context.Context, issueID, taskID pgtype.UUID) ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.comments[uuidString(taskID)], nil
+}
+
 type harness struct {
 	t       *testing.T
 	f       *testutil.Fixture
@@ -122,7 +129,7 @@ func newHarness(t *testing.T, slug string) *harness {
 	for _, name := range []string{"manager", "qwen", "claude", "api"} {
 		agents[name] = f.Agent(t, slug+"-"+name, rt)
 	}
-	carrier := &fakeCarrier{t: t, f: f, rt: rt, closed: map[string]bool{}, notReady: map[string]bool{}}
+	carrier := &fakeCarrier{t: t, f: f, rt: rt, closed: map[string]bool{}, notReady: map[string]bool{}, comments: map[string][]string{}}
 	sup := NewSupervisor(testPool, carrier)
 	charter := Charter{
 		Goal: "форк не стоит", Metric: "зелёные выкатки в неделю", Done: "тесты зелёные, verify ОК",
@@ -542,5 +549,27 @@ func TestSupervisorMissingChainBreaksInsteadOfBudget(t *testing.T) {
 	}
 	if h.journalCount("no_chain") != 1 {
 		t.Fatalf("no_chain journaled %d times", h.journalCount("no_chain"))
+	}
+}
+
+// Multica agents deliver their result as a comment; the final output may be
+// a short recap without the contract block.
+func TestSupervisorContractFromCarrierComment(t *testing.T) {
+	h := newHarness(t, "comment")
+	h.tick()
+	mg := h.only(KindManage, StepRunning)
+	h.carrier.comments[uuidString(mg.TaskID)] = []string{
+		"Уточнение без контракта.",
+		contract(map[string]any{
+			"result": "план",
+			"next":   []map[string]any{{"brief": "Собрать ветку", "kind": "work", "cost_class": "M", "moves": "зелёные выкатки"}},
+		}),
+	}
+	h.carrier.comments["00000000-0000-0000-0000-000000000000"] = []string{contract(map[string]any{"result": "чужой"})}
+	h.finish(mg, "Сделано. План опубликован комментарием.")
+	h.tick()
+	h.only(KindWork, StepRunning)
+	if n := h.journalCount("step_retry") + h.journalCount("step_failed"); n != 0 {
+		t.Fatalf("step retried or failed %d times", n)
 	}
 }

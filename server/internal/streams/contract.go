@@ -105,7 +105,7 @@ func decodeContract(s string) (StepOutput, bool) {
 	return out, true
 }
 
-var validWaitKinds = map[string]bool{"ci": true, "git-tag": true, "http": true, "process": true, "time": true, "gpu-window": true}
+var validWaitKinds = map[string]bool{"ci": true, "git-tag": true, "http": true, "process": true, "time": true, "gpu-window": true, "issue": true}
 var validOnDeadline = map[string]bool{"replan": true, "retry": true, "ask": true}
 var validKinds = map[string]bool{KindManage: true, KindWork: true, KindVerify: true, KindSummarize: true}
 var validCost = map[string]bool{"S": true, "M": true, "L": true}
