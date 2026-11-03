@@ -6,7 +6,7 @@ set -euo pipefail
 
 export POSTGRES_DB=multica POSTGRES_USER=multica POSTGRES_PASSWORD=multica
 export DATABASE_URL="postgres://multica:multica@localhost:5432/multica?sslmode=disable"
-export GOFLAGS=-count=1 GOTOOLCHAIN=auto
+export GOFLAGS=-count=1 GOTOOLCHAIN=auto DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq >/dev/null && apt-get install -y -qq curl ca-certificates git gcc >/dev/null
 docker-entrypoint.sh postgres >/tmp/pg.log 2>&1 &
