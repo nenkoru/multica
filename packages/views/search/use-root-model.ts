@@ -38,6 +38,7 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   chat: ["chat", "messages", "conversation", "聊天", "消息", "对话"],
   myIssues: ["my", "issues", "assigned", "mine", "我的", "任务"],
   issues: ["issues", "tasks", "bugs", "任务"],
+  streams: ["streams", "stream", "потоки", "поток", "fabrika"],
   epics: ["epic", "epics"],
   sprints: ["sprint", "sprints"],
   projects: ["projects", "kanban", "项目"],
