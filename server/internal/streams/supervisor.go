@@ -167,8 +167,14 @@ func (s *Supervisor) reconcile(ctx context.Context, st sdb.Stream) error {
 	if err != nil {
 		return err
 	}
+	if steps, err = s.closeLostVerifications(ctx, st, steps); err != nil {
+		return err
+	}
 
 	budgetUntil, err := s.dispatchQueued(ctx, st, charter, steps, execStates, now)
+	if errors.Is(err, errStreamBroken) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -227,13 +233,43 @@ func (s *Supervisor) reconcile(ctx context.Context, st sdb.Stream) error {
 	if steps, err = s.Q.ListOpenSteps(ctx, st.ID); err != nil {
 		return err
 	}
-	if budgetUntil, err = s.dispatchQueued(ctx, st, charter, steps, execStates, now); err != nil {
+	budgetUntil, err = s.dispatchQueued(ctx, st, charter, steps, execStates, now)
+	if errors.Is(err, errStreamBroken) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	if !budgetUntil.IsZero() {
 		return s.setState(ctx, st, StateBudget, "цепочка управляющего исчерпана", budgetUntil)
 	}
 	return s.setState(ctx, st, StateRunning, "ход управляющего", time.Time{})
+}
+
+// closeLostVerifications fails a work step left in "verifying" with no open
+// verify step behind it (the verify step failed for good, or its origin was
+// unreadable). Otherwise the stream would count it as running forever. The
+// failure is not added to fail_streak: the verify step's own failure already
+// was.
+func (s *Supervisor) closeLostVerifications(ctx context.Context, st sdb.Stream, steps []sdb.StreamStep) ([]sdb.StreamStep, error) {
+	open := map[string]bool{}
+	for _, step := range steps {
+		if step.Kind == KindVerify {
+			open[step.Origin] = true
+		}
+	}
+	kept := steps[:0:0]
+	for _, step := range steps {
+		if step.Status != StepVerifying || open["verify:"+uuidString(step.ID)] {
+			kept = append(kept, step)
+			continue
+		}
+		if err := s.Q.FinishStep(ctx, sdb.FinishStepParams{ID: step.ID, Status: StepFailed, Output: step.Output, LastError: "verification did not complete"}); err != nil {
+			return nil, err
+		}
+		s.journal(ctx, st.ID, step.ID, "step_failed", map[string]any{"seq": step.Seq, "kind": step.Kind, "why": "проверка не завершилась"})
+	}
+	return kept, nil
 }
 
 func (s *Supervisor) setState(ctx context.Context, st sdb.Stream, state, reason string, until time.Time) error {
@@ -355,6 +391,9 @@ func chainFor(st sdb.Stream, c Charter, step sdb.StreamStep) []Executor {
 	return c.Chain(step.CostClass)
 }
 
+// errStreamBroken tells reconcile that dispatch moved the stream to broken.
+var errStreamBroken = errors.New("stream broken")
+
 // dispatchQueued starts queued steps within the parallelism limits. It
 // returns a non-zero time when some queued step found its chain exhausted.
 func (s *Supervisor) dispatchQueued(ctx context.Context, st sdb.Stream, c Charter, steps []sdb.StreamStep, states map[string]ExecutorState, now time.Time) (time.Time, error) {
@@ -387,9 +426,14 @@ func (s *Supervisor) dispatchQueued(ctx context.Context, st sdb.Stream, c Charte
 		ex, until, ok := PickExecutor(chainFor(st, c, step), states, avoid, now)
 		if !ok {
 			if until.IsZero() {
-				// No chain at all is a charter defect, not a budget state.
+				// No chain at all is a charter defect, not a budget state:
+				// waiting would never end, so the stream goes to "авария".
 				s.journal(ctx, st.ID, step.ID, "no_chain", map[string]any{"cost_class": step.CostClass, "kind": step.Kind})
-				until = now.Add(OfflineReroute)
+				why := fmt.Sprintf("в уставе нет исполнителей для шага %s класса %s", step.Kind, step.CostClass)
+				if err := s.breakStream(ctx, st, step, why, now); err != nil {
+					return time.Time{}, err
+				}
+				return time.Time{}, errStreamBroken
 			}
 			if budgetUntil.IsZero() || until.Before(budgetUntil) {
 				budgetUntil = until
@@ -674,7 +718,7 @@ func (s *Supervisor) failStep(ctx context.Context, st sdb.Stream, step sdb.Strea
 		return err
 	}
 	if streak >= BrokenAfterFailures {
-		return s.breakStream(ctx, st, step, why, now)
+		return s.breakStream(ctx, st, step, fmt.Sprintf("%d провала подряд, последний: %s", streak, why), now)
 	}
 	// Orphaned now; the reconcile below queues the manager with the log.
 	return nil
@@ -683,7 +727,7 @@ func (s *Supervisor) failStep(ctx context.Context, st sdb.Stream, step sdb.Strea
 // breakStream puts the stream into "авария" and opens the red crash question
 // (§5.1): the only state Ruslan learns about by question.
 func (s *Supervisor) breakStream(ctx context.Context, st sdb.Stream, step sdb.StreamStep, why string, now time.Time) error {
-	text := firstLine(fmt.Sprintf("%s: %d провала подряд, последний на шаге #%d: %s", st.Title, BrokenAfterFailures, step.Seq, why), 200)
+	text := firstLine(fmt.Sprintf("%s: авария на шаге #%d: %s", st.Title, step.Seq, why), 200)
 	opts, _ := json.Marshal([]string{"повторить с ходом управляющего", "пауза потока", "дам доступ или подскажу (ответь текстом)"})
 	if _, err := s.Q.InsertAsk(ctx, sdb.InsertAskParams{
 		StreamID: st.ID, OriginStepID: step.ID, Kind: "choice", Text: text, Options: opts, Items: []byte("[]"),
@@ -754,6 +798,9 @@ func (s *Supervisor) applyManage(ctx context.Context, st sdb.Stream, step sdb.St
 				return err
 			}
 			if err := q.TouchStreamMilestone(ctx, st.ID); err != nil {
+				return err
+			}
+			if err := q.SetStreamFailStreak(ctx, sdb.SetStreamFailStreakParams{ID: st.ID, FailStreak: 0}); err != nil {
 				return err
 			}
 			if err := appendJournal(ctx, q, st.ID, step.ID, "milestone", map[string]any{"text": out.Milestone.Text}); err != nil {
@@ -830,7 +877,11 @@ func (s *Supervisor) applyWork(ctx context.Context, st sdb.Stream, c Charter, st
 		}
 		if out.Wait != nil {
 			// The result is not final until the wait resolves; the manager
-			// decides after it fires whether to verify.
+			// decides after it fires whether to verify. A finished step with
+			// a wait is still progress.
+			if err := q.SetStreamFailStreak(ctx, sdb.SetStreamFailStreakParams{ID: st.ID, FailStreak: 0}); err != nil {
+				return err
+			}
 			return q.FinishStep(ctx, sdb.FinishStepParams{ID: step.ID, Status: StepDone, Output: raw})
 		}
 		if err := q.SetStepVerifying(ctx, sdb.SetStepVerifyingParams{ID: step.ID, Output: raw}); err != nil {
@@ -863,7 +914,12 @@ func (s *Supervisor) applyVerify(ctx context.Context, st sdb.Stream, step sdb.St
 			return err
 		}
 		if out.Verdict == "accept" {
-			// The manager's next turn turns it into a milestone (§8 p.3).
+			// Accepted work is progress: fail_streak counts failures in a
+			// row, not over the stream's life. The manager's next turn turns
+			// it into a milestone (§8 p.3).
+			if err := q.SetStreamFailStreak(ctx, sdb.SetStreamFailStreakParams{ID: st.ID, FailStreak: 0}); err != nil {
+				return err
+			}
 			return q.FinishStep(ctx, sdb.FinishStepParams{ID: work.ID, Status: StepDone, Output: work.Output})
 		}
 		rej := work.Rejections + 1

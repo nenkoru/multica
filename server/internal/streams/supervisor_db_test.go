@@ -484,3 +484,63 @@ func TestHealthReflectsTicks(t *testing.T) {
 		t.Fatalf("state %+v %v", st, err)
 	}
 }
+
+// planAndRunWork drives orphan → manager → one work step of the given class.
+func (h *harness) planAndRunWork(cost string) {
+	h.t.Helper()
+	h.tick()
+	h.finish(h.only(KindManage, StepRunning), contract(map[string]any{
+		"result": "план", "next": []map[string]any{{"brief": "Собрать ветку", "kind": "work", "cost_class": cost, "moves": "зелёные выкатки"}},
+	}))
+	h.tick()
+}
+
+func TestSupervisorFailedVerifyDoesNotStrandWork(t *testing.T) {
+	h := newHarness(t, "lostverify")
+	h.planAndRunWork("M")
+	h.finish(h.only(KindWork, StepRunning), contract(map[string]any{"result": "ветка собрана", "evidence": []string{"ci:run/1"}}))
+	h.tick()
+	for i := 0; i < MaxStepAttempts; i++ {
+		h.finish(h.only(KindVerify, StepRunning), "проверка без контракта")
+		h.tick()
+	}
+	// The verify step failed for good: the work must not stay "verifying",
+	// and the stream must go back to its manager instead of hanging.
+	for _, s := range h.open() {
+		if s.Status == StepVerifying {
+			t.Fatalf("work stranded in verifying: %+v", s)
+		}
+	}
+	h.only(KindManage, StepRunning)
+	if st := h.reload(); st.State != StateRunning || st.FailStreak != 1 {
+		t.Fatalf("state %s streak %d", st.State, st.FailStreak)
+	}
+}
+
+func TestSupervisorProgressResetsFailStreak(t *testing.T) {
+	h := newHarness(t, "streak")
+	h.f.Exec(t, `UPDATE stream SET fail_streak = 2 WHERE id = $1`, uuidString(h.stream.ID))
+	h.planAndRunWork("M")
+	if st := h.reload(); st.FailStreak != 2 {
+		t.Fatalf("a manager turn alone is not progress: streak %d", st.FailStreak)
+	}
+	h.finish(h.only(KindWork, StepRunning), contract(map[string]any{"result": "ветка собрана", "evidence": []string{"ci:run/1"}}))
+	h.tick()
+	h.finish(h.only(KindVerify, StepRunning), contract(map[string]any{"result": "ок", "verdict": "accept"}))
+	h.tick()
+	if st := h.reload(); st.FailStreak != 0 {
+		t.Fatalf("accepted work must reset the streak, got %d", st.FailStreak)
+	}
+}
+
+func TestSupervisorMissingChainBreaksInsteadOfBudget(t *testing.T) {
+	h := newHarness(t, "nochain")
+	h.planAndRunWork("L") // the test charter has no L and no "*" chain
+	st := h.reload()
+	if st.State != StateBroken || !strings.Contains(st.Reason, "нет исполнителей") {
+		t.Fatalf("want broken on a charter defect, got %s (%s)", st.State, st.Reason)
+	}
+	if h.journalCount("no_chain") != 1 {
+		t.Fatalf("no_chain journaled %d times", h.journalCount("no_chain"))
+	}
+}

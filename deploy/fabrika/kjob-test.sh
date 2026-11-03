@@ -25,4 +25,4 @@ echo "== migrate up"; go run ./cmd/migrate up 2>&1 | tail -3
 echo "== migrate down/up 9000"; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migrations/9000_fabrika_streams.down.sql && psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migrations/9000_fabrika_streams.up.sql && echo ok
 echo "== vet"; go vet ./internal/streams/... ./cmd/server/
 echo "== build"; go build -o /tmp/server ./cmd/server && echo ok
-echo "== test"; set +e; go test ./internal/streams/... ./internal/migrations/... "$@" > /tmp/test.log 2>&1; rc=$?; tail -15 /tmp/test.log; echo "== failures"; grep -n "_test.go:[0-9]*:" /tmp/test.log | head -40; exit $rc
+echo "== test"; set +e; go test ./internal/streams/... ./internal/migrations/... "$@" > /tmp/test.log 2>&1; rc=$?; grep -E "^(--- |ok |FAIL)" /tmp/test.log | tail -60; echo "== failures"; grep -n "_test.go:[0-9]*:" /tmp/test.log | head -40; exit $rc
