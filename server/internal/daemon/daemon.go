@@ -5860,6 +5860,7 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 		// …) rather than the coarse legacy "agent_error" bucket.
 		failureReason := taskRunFailureReason(err)
 		errorMessage := err.Error()
+		shutdownSessionID := ""
 		// RUSL-2266: under systemd's KillMode=control-group the agent receives
 		// the same SIGTERM as the daemon and can die (and surface as an error)
 		// before the root context is observed as cancelled — but by the time
@@ -5871,12 +5872,15 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 				"classified_as", failureReason, "failure_reason", reason)
 			failureReason = reason
 			errorMessage = daemonShutdownErrorMessage(errorMessage)
+			// Only a shutdown interruption pins the session for the retry;
+			// other errors keep the v0.7.2 behaviour (no session on fail).
+			shutdownSessionID = result.SessionID
 		}
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
 			kind:             terminalTaskReportFail,
 			taskID:           task.ID,
 			errorMessage:     errorMessage,
-			sessionID:        result.SessionID,
+			sessionID:        shutdownSessionID,
 			branchName:       result.BranchName,
 			workDir:          result.WorkDir,
 			durableWorkDir:   result.DurableWorkDir,
