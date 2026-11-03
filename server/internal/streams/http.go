@@ -1,0 +1,354 @@
+package streams
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/multica-ai/multica/server/internal/streams/sdb"
+)
+
+// HTTP serves /api/streams. Routes are registered individually by the fork's
+// router (cmd/server/router.go) so the public health probe and the
+// member-only routes can live in different middleware groups.
+type HTTP struct {
+	Sup *Supervisor
+	// WorkspaceID returns the workspace resolved by upstream middleware.
+	WorkspaceID func(r *http.Request) string
+}
+
+// HealthStaleAfter is how old the last tick may be before /health says 503.
+const HealthStaleAfter = 2 * time.Minute
+
+// Health is unauthenticated and returns only timestamps: the external
+// watchdog polls it every minute (§6.6).
+func (h *HTTP) Health(w http.ResponseWriter, r *http.Request) {
+	now := h.Sup.now()
+	out := map[string]any{"ok": false}
+	st, err := h.Sup.Q.GetSupervisorState(r.Context())
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		out["error"] = "supervisor has not ticked yet"
+	case err != nil:
+		out["error"] = "state unavailable"
+	default:
+		age := now.Sub(st.LastTickAt.Time)
+		out["last_tick_at"] = st.LastTickAt.Time.UTC()
+		out["tick_age_seconds"] = int(age.Seconds())
+		out["ticks"] = st.Ticks
+		out["ok"] = age < HealthStaleAfter
+	}
+	if hb, err := h.Sup.Q.LastStepHeartbeat(r.Context()); err == nil && hb.Valid {
+		out["last_step_heartbeat_at"] = hb.Time.UTC()
+	}
+	status := http.StatusOK
+	if out["ok"] != true {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, out)
+}
+
+type streamView struct {
+	ID            string     `json:"id"`
+	Slug          string     `json:"slug"`
+	Title         string     `json:"title"`
+	State         string     `json:"state"`
+	StateLabel    string     `json:"state_label"`
+	Reason        string     `json:"reason"`
+	Until         *time.Time `json:"until,omitempty"`
+	Summary       string     `json:"summary"`
+	MaxParallel   int32      `json:"max_parallel"`
+	Active        bool       `json:"active"`
+	LastMilestone *time.Time `json:"last_milestone_at,omitempty"`
+	Charter       Charter    `json:"charter"`
+}
+
+func view(st sdb.Stream) streamView {
+	c, _ := ParseCharter(st.Charter)
+	v := streamView{ID: uuidString(st.ID), Slug: st.Slug, Title: st.Title, State: st.State, StateLabel: stateWords[st.State], Reason: st.Reason, Summary: st.Summary, MaxParallel: st.MaxParallel, Active: st.Active, Charter: c}
+	if st.Until.Valid {
+		t := st.Until.Time
+		v.Until = &t
+	}
+	if st.LastMilestoneAt.Valid {
+		t := st.LastMilestoneAt.Time
+		v.LastMilestone = &t
+	}
+	return v
+}
+
+func (h *HTTP) workspace(w http.ResponseWriter, r *http.Request) (pgtype.UUID, bool) {
+	id, err := parseUUID(h.WorkspaceID(r))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "workspace required")
+		return pgtype.UUID{}, false
+	}
+	return id, true
+}
+
+func (h *HTTP) stream(w http.ResponseWriter, r *http.Request) (sdb.Stream, bool) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return sdb.Stream{}, false
+	}
+	st, err := h.Sup.Q.GetStreamBySlug(r.Context(), sdb.GetStreamBySlugParams{WorkspaceID: ws, Slug: chi.URLParam(r, "slug")})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "stream not found")
+		return sdb.Stream{}, false
+	}
+	return st, true
+}
+
+// List: GET /api/streams
+func (h *HTTP) List(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	rows, err := h.Sup.Q.ListStreams(r.Context(), ws)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := make([]streamView, 0, len(rows))
+	for _, st := range rows {
+		out = append(out, view(st))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"streams": out})
+}
+
+// Get: GET /api/streams/{slug} — stream, open steps, recent journal.
+func (h *HTTP) Get(w http.ResponseWriter, r *http.Request) {
+	st, ok := h.stream(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	steps, _ := h.Sup.Q.ListRecentSteps(ctx, sdb.ListRecentStepsParams{StreamID: st.ID, Limit: 20})
+	journal, _ := h.Sup.Q.ListJournal(ctx, sdb.ListJournalParams{StreamID: st.ID, Limit: 50})
+	ms, _ := h.Sup.Q.ListRecentMilestones(ctx, sdb.ListRecentMilestonesParams{StreamID: st.ID, Limit: 10})
+	asks, _ := h.Sup.Q.ListOpenAsks(ctx, st.ID)
+	waits, _ := h.Sup.Q.ListOpenWaits(ctx, st.ID)
+	writeJSON(w, http.StatusOK, map[string]any{"stream": view(st), "steps": steps, "journal": journal, "milestones": ms, "asks": asks, "waits": waits})
+}
+
+type upsertRequest struct {
+	Title            string  `json:"title"`
+	Charter          Charter `json:"charter"`
+	Summary          string  `json:"summary"`
+	Weight           int32   `json:"weight"`
+	MaxParallel      int32   `json:"max_parallel"`
+	ManagerAgentID   string  `json:"manager_agent_id"`
+	CarrierProjectID string  `json:"carrier_project_id"`
+}
+
+// reservedSlugs are fixed routes under /api/streams that a stream slug
+// would shadow.
+var reservedSlugs = map[string]bool{"health": true, "digest": true, "answer": true, "waits": true}
+
+var streamSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// Upsert: PUT /api/streams/{slug} — charter written by hand in week 1,
+// by the interview from week 2. Summary is only seeded on create.
+func (h *HTTP) Upsert(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	if !streamSlug.MatchString(chi.URLParam(r, "slug")) || reservedSlugs[chi.URLParam(r, "slug")] {
+		writeError(w, http.StatusBadRequest, "slug must be lowercase latin, digits and dashes, and not a reserved route")
+		return
+	}
+	var req upsertRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Title) == "" || req.Charter.Goal == "" || req.Charter.Metric == "" || req.Charter.Done == "" {
+		// A stream without "done" is not started (§3 p.2).
+		writeError(w, http.StatusBadRequest, "title, charter.goal, charter.metric and charter.done are required")
+		return
+	}
+	charter, _ := json.Marshal(req.Charter)
+	if req.Weight <= 0 {
+		req.Weight = 1
+	}
+	if req.MaxParallel <= 0 {
+		req.MaxParallel = 1
+	}
+	mgr, _ := parseUUID(req.ManagerAgentID)
+	proj, _ := parseUUID(req.CarrierProjectID)
+	var share pgtype.Numeric
+	_ = share.Scan("0")
+	st, err := h.Sup.Q.UpsertStream(r.Context(), sdb.UpsertStreamParams{
+		WorkspaceID: ws, Slug: chi.URLParam(r, "slug"), Title: req.Title, Charter: charter, Summary: req.Summary,
+		Weight: req.Weight, MinShare: share, MaxParallel: req.MaxParallel, ManagerAgentID: mgr, CarrierProjectID: proj,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.Sup.journal(r.Context(), st.ID, pgtype.UUID{}, "charter", map[string]any{"title": st.Title})
+	h.Sup.Kick()
+	writeJSON(w, http.StatusOK, view(st))
+}
+
+// Pause / Resume: POST /api/streams/{slug}/pause|resume — human only (§5.1).
+func (h *HTTP) Pause(w http.ResponseWriter, r *http.Request) {
+	st, ok := h.stream(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := h.Sup.Pause(r.Context(), st, req.Reason); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"state": StatePaused})
+}
+
+func (h *HTTP) Resume(w http.ResponseWriter, r *http.Request) {
+	st, ok := h.stream(w, r)
+	if !ok {
+		return
+	}
+	if err := h.Sup.Resume(r.Context(), st); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"state": StateRunning})
+}
+
+// SetActive: POST /api/streams/{slug}/activate|deactivate — the migration
+// switch (§12): a stream is supervised only once active.
+func (h *HTTP) SetActive(active bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, ok := h.stream(w, r)
+		if !ok {
+			return
+		}
+		if err := h.Sup.Q.SetStreamActive(r.Context(), sdb.SetStreamActiveParams{ID: st.ID, Active: active}); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		h.Sup.journal(r.Context(), st.ID, pgtype.UUID{}, "active", map[string]any{"active": active})
+		h.Sup.Kick()
+		writeJSON(w, http.StatusOK, map[string]any{"active": active})
+	}
+}
+
+// Digest: POST /api/streams/digest {"slot": "morning"|"evening"|"preview"}.
+// Text is empty when there is nothing to send (evening without questions).
+func (h *HTTP) Digest(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Slot string `json:"slot"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	slot := DigestSlot(req.Slot)
+	switch slot {
+	case SlotMorning, SlotEvening, SlotPreview:
+	default:
+		slot = SlotPreview
+	}
+	text, err := h.Sup.Digest(r.Context(), ws, slot)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"slot": slot, "text": text})
+}
+
+// Answer: POST /api/streams/answer {"line": "1 а, 2 да", "channel": "telegram"}.
+func (h *HTTP) Answer(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Line    string `json:"line"`
+		Channel string `json:"channel"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Line) == "" {
+		writeError(w, http.StatusBadRequest, "line is required")
+		return
+	}
+	res, err := h.Sup.Answer(r.Context(), ws, req.Line, firstNonEmpty(req.Channel, "web"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// FireWait: POST /api/streams/waits/{id}/fire — an observed condition.
+func (h *HTTP) FireWait(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad wait id")
+		return
+	}
+	wt, err := h.Sup.Q.GetWait(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "wait not found")
+		return
+	}
+	if st, err := h.Sup.Q.GetStream(r.Context(), wt.StreamID); err != nil || st.WorkspaceID != ws {
+		writeError(w, http.StatusNotFound, "wait not found")
+		return
+	}
+	if err := h.Sup.FireWait(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fired": true})
+}
+
+// Manage: POST /api/streams/{slug}/manage {"text": "..."} — Ruslan's message
+// to the stream in focus: a manager turn in the reserved slot (§6.1).
+func (h *HTTP) Manage(w http.ResponseWriter, r *http.Request) {
+	st, ok := h.stream(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Text) == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	step, err := h.Sup.EnqueueManage(r.Context(), st.ID, "Сообщение Руслана: "+req.Text, true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"step_id": uuidString(step.ID), "seq": step.Seq})
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
