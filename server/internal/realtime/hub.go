@@ -241,6 +241,10 @@ type Client struct {
 	sendMu     sync.Mutex
 	sendClosed bool
 
+	// kiosk marks a read-only TV dashboard connection: it receives only a
+	// content-free change signal (see kioskProjection) and may not subscribe.
+	kiosk bool
+
 	// subscriptions is guarded by hub.mu. Tracks the scopes this client is
 	// currently in. Used to clean up rooms on disconnect.
 	subscriptions map[scopeKey]bool
@@ -966,6 +970,9 @@ func (c *Client) handleFrame(raw []byte) {
 	var f inboundFrame
 	if err := json.Unmarshal(raw, &f); err != nil {
 		slog.Debug("ws inbound: invalid json", "error", err, "user_id", c.userID)
+		return
+	}
+	if c.kiosk && f.Type != "ping" {
 		return
 	}
 	switch f.Type {

@@ -64,6 +64,8 @@ export type WSEventType =
   | "chat:session_read"
   | "chat:session_deleted"
   | "chat:session_updated"
+  | "epic:created" | "epic:updated" | "epic:deleted"
+  | "sprint:created" | "sprint:updated" | "sprint:deleted"
   | "project:created"
   | "project:updated"
   | "project:deleted"
@@ -423,6 +425,9 @@ export interface ChatMessageEventPayload {
   content: string;
   task_id?: string;
   created_at: string;
+  /** Set when an agent run wrote the row itself; see ChatMessage.author_type. */
+  author_type?: string;
+  author_id?: string;
 }
 
 export interface ChatDonePayload {
@@ -629,6 +634,8 @@ export interface WSEventPayloadMap {
   "chat:session_read": ChatSessionReadPayload;
   "chat:session_deleted": ChatSessionDeletedPayload;
   "chat:session_updated": unknown;
+  "epic:created": unknown; "epic:updated": unknown; "epic:deleted": unknown;
+  "sprint:created": unknown; "sprint:updated": unknown; "sprint:deleted": unknown;
   "project:created": ProjectCreatedPayload;
   "project:updated": ProjectUpdatedPayload;
   "project:deleted": ProjectDeletedPayload;

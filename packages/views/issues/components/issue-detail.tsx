@@ -1,5 +1,7 @@
 "use client";
 
+import { usePlanningEnabled } from "@multica/core/epics/config";
+
 import {
   issueBehavesAs,
   issueBehavesAsAny,
@@ -104,6 +106,9 @@ import { EMPTY_COMMENT_RUNS, buildCommentRunView, orderTimelineWithRuns, type Co
 import { issueTasksOptions } from "@multica/core/issues/queries";
 import { SourceContextBadge } from "./source-context-viewer";
 import { RevisionConflictCompare } from "./revision-conflict-compare";
+import { SidebarSection } from "./sidebar-section";
+import { EpicPicker } from "./epic-picker";
+import { SprintPicker } from "./sprint-picker";
 import { CommentInput } from "./comment-input";
 import { useCommentAnnotations } from "./use-comment-annotations";
 import { CurrentIssueRenderContextProvider } from "../current-issue-render-context";
@@ -1314,6 +1319,7 @@ export function IssueDetailSkeleton({
 // IssueDetail
 
 export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId, highlightRequestToken, leadingAction, variant = "page", trailingActions }: IssueDetailProps) {
+  const planningEnabled = usePlanningEnabled();
   const isPeek = variant === "peek";
   const { t } = useT("issues");
   const { t: tCommon } = useT("common");
@@ -2989,6 +2995,17 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
           {addPropertyRow}
         </IssueSidebarPropertyGrid>}
+
+        {planningEnabled && <SidebarSection title={t(($) => $.detail.planning)}>
+          <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 pl-2">
+            <PropRow label={t(($) => $.detail.prop_epic)}>
+              <EpicPicker epicId={issue.epic_id ?? null} onUpdate={handleUpdateField} />
+            </PropRow>
+            <PropRow label={t(($) => $.detail.prop_sprint)}>
+              <SprintPicker sprintId={issue.sprint_id ?? null} onUpdate={handleUpdateField} />
+            </PropRow>
+          </div>
+        </SidebarSection>}
       </div>
 
       <QuickActionsSection issueId={issue.id} />

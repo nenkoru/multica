@@ -432,6 +432,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmailDomains:            splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation:       os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 		WorkspaceCreationAllowedEmails: splitAndTrim(os.Getenv("WORKSPACE_CREATION_ALLOWED_EMAILS")),
+		PlanningEnabled:                os.Getenv("MULTICA_PLANNING_ENABLED") == "true",
+		TV:                             tvConfigFromEnv(),
 		VCSIntegrationEnabled:          os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                      strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		AppURL:                         appURLFromEnv(),
@@ -536,6 +538,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// connection of its own outside the per-installation supervisor. The Router
 	// is the single shared inbound handler injected into every Channel.
 	channelRegistry := channel.NewRegistry()
+	h.ChannelRegistry = channelRegistry
 	channelRouter := engine.NewRouter(h.IssueService, h.TaskService, queries, engine.RouterConfig{
 		Logger: slog.Default(), Lifecycle: h,
 	})
@@ -1523,6 +1526,30 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Post("/auth/google", h.GoogleLogin)
 	r.Post("/auth/logout", h.Logout)
 
+	// TV dashboard (kiosk). Public by design: a read-only kiosk token bound
+	// to one workspace is the credential, exchanged once for an HttpOnly
+	// cookie. The token reaches only the aggregates (overview, game, health)
+	// and a content-free change signal; middleware.Auth rejects it everywhere else with 403.
+	r.With(authVerifyRL).Post("/api/tv/session", h.CreateTVSession)
+	r.Delete("/api/tv/session", h.DeleteTVSession)
+	r.Get("/api/tv/overview", h.GetTVOverview)
+	r.Get("/api/tv/health", h.GetTVHealth)
+	r.Get("/api/tv/game", h.GetTVGame)
+	r.Get("/api/tv/sounds/{file}", h.GetTVSound)
+	kioskResolver := func(ctx context.Context, token string) (string, error) {
+		session, err := h.ResolveKioskToken(ctx, token)
+		if errors.Is(err, handler.ErrKioskTokenInvalid) {
+			return "", realtime.KioskRejectedError{}
+		}
+		if err != nil {
+			return "", err
+		}
+		return util.UUIDToString(session.WorkspaceID), nil
+	}
+	r.Get("/api/tv/ws", func(w http.ResponseWriter, r *http.Request) {
+		realtime.HandleKioskWebSocket(hub, handler.KioskTokenFromRequest(r), kioskResolver, w, r)
+	})
+
 	// Public API
 	r.Get("/api/config", h.GetConfig)
 	r.With(contactSalesRL).Post("/api/contact-sales", h.CreateContactSales)
@@ -2181,6 +2208,39 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				})
 			})
 
+			// Kiosk tokens for the TV dashboard (owners and admins).
+			r.Route("/api/kiosk-tokens", func(r chi.Router) {
+				r.Get("/", h.ListKioskTokens)
+				r.Post("/", h.CreateKioskToken)
+				r.Delete("/{id}", h.RevokeKioskToken)
+				r.Post("/{id}/pairing", h.CreateKioskPairing)
+			})
+
+			// Epics
+			r.Route("/api/epics", func(r chi.Router) {
+				r.Get("/", h.ListEpics)
+				r.Post("/", h.CreateEpic)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetEpic)
+					r.Get("/overview", h.GetEpicOverview)
+					r.Put("/", h.UpdateEpic)
+					r.Delete("/", h.DeleteEpic)
+				})
+			})
+
+			// Sprints
+			r.Route("/api/sprints", func(r chi.Router) {
+				r.Get("/", h.ListSprints)
+				r.Post("/", h.CreateSprint)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetSprint)
+					r.Get("/overview", h.GetSprintOverview)
+					r.Post("/complete", h.CompleteSprint)
+					r.Put("/", h.UpdateSprint)
+					r.Delete("/", h.DeleteSprint)
+				})
+			})
+
 			// Squads
 			r.Route("/api/squads", func(r chi.Router) {
 				r.Get("/", h.ListSquads)
@@ -2454,6 +2514,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Patch("/archive", h.SetChatSessionArchived)
 					r.Delete("/", h.DeleteChatSession)
 					r.Post("/messages", h.SendChatMessage)
+					r.Post("/agent-messages", h.PostAgentChatMessage)
 					r.Post("/onboarding", h.StartMikaOnboarding)
 					// Explicit "refresh" of a turn's quick actions: re-runs the
 					// daemon suggestion pass for the latest assistant reply (MUL-5149).
@@ -2757,4 +2818,15 @@ func wecomMetricsOrNil(m *obsmetrics.WecomMetrics) wecom.Metrics {
 		return nil
 	}
 	return m
+}
+
+// tvConfigFromEnv reads MULTICA_TV_CONFIG; an invalid value is logged and
+// the defaults are used, so a typo never takes the server down.
+func tvConfigFromEnv() handler.TVConfig {
+	cfg, err := handler.ParseTVConfig(os.Getenv("MULTICA_TV_CONFIG"), os.Getenv)
+	if err != nil {
+		slog.Warn("invalid MULTICA_TV_CONFIG, using defaults", "error", err)
+	}
+	cfg.SoundsDir = strings.TrimSpace(os.Getenv("MULTICA_TV_SOUNDS_DIR"))
+	return cfg
 }

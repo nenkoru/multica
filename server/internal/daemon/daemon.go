@@ -2102,6 +2102,8 @@ func (d *Daemon) run(ctx context.Context, healthLn net.Listener) error {
 		// without it an operator cannot read the tool budget actually in effect.
 		"tool_watchdog", d.cfg.AgentToolWatchdog,
 		"opencode_idle_watchdog", d.cfg.OpenCodeIdleWatchdog,
+		"claude_resume_max_idle", d.cfg.ClaudeResumeMaxIdle,
+		"claude_resume_max_idle_chat", d.cfg.ClaudeResumeMaxIdleChat,
 		// Derived from the watchdog budget too (Codex's own timer is not
 		// tool-aware), so it needs the same treatment as tool_watchdog: without
 		// it the effective Codex budget is invisible until a timeout fires.
@@ -5849,14 +5851,28 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 		// classifier so the failure_reason column reflects the actual
 		// shape of the failure (provider 5xx, network, process crash,
 		// …) rather than the coarse legacy "agent_error" bucket.
+		failureReason := taskRunFailureReason(err)
+		errorMessage := err.Error()
+		// RUSL-2266: under systemd's KillMode=control-group the agent receives
+		// the same SIGTERM as the daemon and can die (and surface as an error)
+		// before the root context is observed as cancelled — but by the time
+		// runner.run has returned, a graceful stop has cancelled it. Check
+		// that BEFORE trusting the classifier, which would otherwise file the
+		// killed process under agent_error.* and drop the run.
+		if reason, ok := daemonShutdownFailureReason(ctx, "", failureReason); ok {
+			taskLog.Info("task interrupted by daemon shutdown, reporting retryable failure",
+				"classified_as", failureReason, "failure_reason", reason)
+			failureReason = reason
+			errorMessage = daemonShutdownErrorMessage(errorMessage)
+		}
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
 			kind:             terminalTaskReportFail,
 			taskID:           task.ID,
-			errorMessage:     err.Error(),
+			errorMessage:     errorMessage,
 			branchName:       result.BranchName,
 			workDir:          result.WorkDir,
 			durableWorkDir:   result.DurableWorkDir,
-			failureReason:    taskRunFailureReason(err),
+			failureReason:    failureReason,
 			retiredSessionID: result.RetiredSessionID,
 		}); failErr != nil {
 			taskLog.Error("fail task callback failed", "error", failErr)
@@ -5887,6 +5903,25 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 			taskLog.Warn("cancel ack failed; server sweeper will finalize", "error", ackErr)
 		}
 		return
+	}
+
+	// RUSL-2266: a graceful daemon stop (SIGTERM, deploy) cancels the root
+	// context, which reaches the agent as an upstream cancel and comes back
+	// here as status "cancelled" — indistinguishable, by status alone, from a
+	// user cancel. A server-side cancel was already ruled out above
+	// (cancelledByPoll and the terminal-status check both return early), so a
+	// cancelled root context at this point means the daemon itself stopped
+	// the run. Report it as the retryable, resume-safe daemon_shutdown.
+	if reason, ok := daemonShutdownFailureReason(ctx, result.Status, result.FailureReason); ok {
+		taskLog.Info("task interrupted by daemon shutdown, reporting retryable failure",
+			"status", result.Status, "classified_as", result.FailureReason, "failure_reason", reason)
+		if result.Status == "cancelled" {
+			// runTask's "task cancelled by server" is wrong on this path.
+			result.Comment = ""
+		}
+		result.Comment = daemonShutdownErrorMessage(result.Comment)
+		result.Status = "blocked"
+		result.FailureReason = reason
 	}
 
 	d.reportTaskResult(ctx, task.ID, result, taskLog)
@@ -5976,6 +6011,61 @@ func taskCancelAcknowledgement(result TaskResult, runErr error, provider string)
 		ack.FailureReason = result.FailureReason
 	}
 	return ack
+}
+
+// daemonShutdownPreservedReasons are failure reasons a daemon shutdown must
+// NOT overwrite even when the root context is cancelled. Each one says
+// something about the session or the task that a retry has to honour:
+// poisoned conversations must not be resumed (keep in sync with
+// service.resumeUnsafeFailureReason), an intentional agent block is not a
+// failure, and identity/authorization refusals are deterministic.
+var daemonShutdownPreservedReasons = map[string]bool{
+	"iteration_limit":                               true,
+	"agent_fallback_message":                        true,
+	"api_invalid_request":                           true,
+	"codex_semantic_inactivity":                     true,
+	"codex_resume_oversized":                        true,
+	taskfailure.ReasonAgentContextOverflow.String(): true,
+	taskfailure.ReasonAgentBlocked.String():         true,
+	taskfailure.ReasonInvalidTaskIdentity.String():  true,
+	taskfailure.ReasonRuntimeAccessDenied.String():  true,
+}
+
+// daemonShutdownFailureReason decides whether a run that did not complete was
+// interrupted by a graceful daemon stop rather than failing on its own
+// (RUSL-2266). rootCtx is the daemon's root context (the ctx handleTask
+// receives, NOT runCtx: runCtx is also cancelled by a server-side cancel).
+// Callers must have already ruled out a server-side cancel — handleTask
+// returns early on cancelledByPoll and on a terminal server status before
+// either call site.
+//
+// status is the TaskResult status ("" for the error path); a completed run is
+// never rewritten. reason is what the daemon classified so far; reasons in
+// daemonShutdownPreservedReasons win over the shutdown because they carry
+// resume-safety or determinism the retry must respect.
+func daemonShutdownFailureReason(rootCtx context.Context, status, reason string) (string, bool) {
+	if rootCtx == nil || rootCtx.Err() == nil {
+		return "", false
+	}
+	if status == "completed" {
+		return "", false
+	}
+	if daemonShutdownPreservedReasons[reason] {
+		return "", false
+	}
+	return taskfailure.ReasonDaemonShutdown.String(), true
+}
+
+// daemonShutdownErrorMessage prefixes the run's own error text (kept verbatim
+// so the server's error-text resume guards still read it) with the reason the
+// run actually ended.
+func daemonShutdownErrorMessage(original string) string {
+	const prefix = "agent run interrupted by daemon shutdown (graceful stop or restart)"
+	original = strings.TrimSpace(original)
+	if original == "" {
+		return prefix
+	}
+	return prefix + ": " + original
 }
 
 func taskRunFailureReason(err error) string {
@@ -6243,6 +6333,12 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 		failureReason := "local_directory_error"
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			failureReason = "cancelled"
+			// RUSL-2266: the server-side cancel returned above, so a cancelled
+			// root context here is a graceful daemon stop. The agent never
+			// started; let the server retry the task once the daemon is back.
+			if reason, ok := daemonShutdownFailureReason(ctx, "", failureReason); ok {
+				failureReason = reason
+			}
 		}
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
 			kind:          terminalTaskReportFail,
@@ -6923,6 +7019,49 @@ func gateCodexResumeToRolloutPresence(task *Task, taskCtx *execenv.TaskContextFo
 	// of the brief), while taskCtx still drives execenv.
 	taskCtx.PriorSessionResumeUnavailable = true
 	task.PriorSessionResumeUnavailable = true
+}
+
+// claudeResumeMaxIdleFor picks the idle bound for this task: chats and issue
+// runs are switched separately (RUSL-1741).
+func (d *Daemon) claudeResumeMaxIdleFor(task Task) time.Duration {
+	if task.ChatSessionID != "" {
+		return d.cfg.ClaudeResumeMaxIdleChat
+	}
+	return d.cfg.ClaudeResumeMaxIdle
+}
+
+// gateClaudeResumeToMaxIdle drops the prior Claude session when its transcript
+// was last written more than maxIdle ago (RUSL-1741). By then the provider's
+// prompt cache has expired, and the first request of a resumed run writes the
+// whole history into the cache again. The drop takes the same path as an
+// unreachable session store: the prompt is built cold and carries the
+// continuity notice. maxIdle <= 0 disables the gate. When the last activity
+// cannot be read (no transcript file), the resume is left alone — the backend
+// already falls back to a fresh session if Claude cannot find it.
+func gateClaudeResumeToMaxIdle(task *Task, taskCtx *execenv.TaskContextForEnv, maxIdle time.Duration, now time.Time, lastActivity func() (time.Time, error), taskLog *slog.Logger) bool {
+	if maxIdle <= 0 || task.PriorSessionID == "" {
+		return false
+	}
+	last, err := lastActivity()
+	if err != nil {
+		taskLog.Info("resume idle check skipped: last session activity unknown",
+			"session_id", task.PriorSessionID, "error", err)
+		return false
+	}
+	idle := now.Sub(last)
+	if idle <= maxIdle {
+		return false
+	}
+	taskLog.Info(fmt.Sprintf("resume skipped: idle %s > %s", idle.Round(time.Minute), maxIdle),
+		"session_id", task.PriorSessionID,
+		"idle", idle.Round(time.Second),
+		"max_idle", maxIdle,
+	)
+	task.PriorSessionID = ""
+	taskCtx.PriorSessionResumed = false
+	taskCtx.PriorSessionResumeUnavailable = true
+	task.PriorSessionResumeUnavailable = true
+	return true
 }
 
 const (
@@ -8523,6 +8662,19 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// conversation Codex will silently restart from scratch.
 	if resumeReachable {
 		gateCodexResumeToRolloutPresence(&task, &taskCtx, provider, env.CodexHome, taskLog)
+	}
+	// RUSL-1741: a Claude session idle past the prompt cache TTL costs more to
+	// resume than to restart. Dropped here, before the brief and prompt are
+	// built, so the fresh session gets the cold prompt with the full reads.
+	if resumeReachable && provider == "claude" && task.PriorSessionID != "" {
+		var customEnv map[string]string
+		if task.Agent != nil {
+			customEnv = sanitizeAgentEnv(task.Agent.CustomEnv)
+		}
+		gateClaudeResumeToMaxIdle(&task, &taskCtx, d.claudeResumeMaxIdleFor(task), time.Now(),
+			func() (time.Time, error) {
+				return agent.ClaudeSessionLastActivity(customEnv, env.WorkDir, task.PriorSessionID)
+			}, taskLog)
 	}
 
 	// Inject runtime-specific config (meta skill) so the agent discovers .agent_context/.

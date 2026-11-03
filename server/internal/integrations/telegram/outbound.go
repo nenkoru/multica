@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/integrations/channel"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -1556,6 +1557,19 @@ func telegramBindingFromTaskDelivery(delivery db.ChannelTaskDelivery) db.Channel
 		LastThreadID: delivery.ChannelThreadID, RouteRevision: delivery.RouteRevision,
 		Config: delivery.Config,
 	}
+}
+
+// SessionOutboundMessage addresses text to the Telegram conversation behind a
+// chat session binding: the same chat and forum topic a reply to that session
+// goes to, without quoting any message. It serves sends no task owns (a
+// proactive agent post), which have no delivery snapshot to resolve.
+func SessionOutboundMessage(b db.ChannelChatSessionBinding, text string) channel.OutboundMessage {
+	chatID, threadID, _ := outboundTarget(b)
+	out := channel.OutboundMessage{ChatID: strconv.FormatInt(chatID, 10), Text: text}
+	if threadID != 0 {
+		out.ThreadID = strconv.FormatInt(threadID, 10)
+	}
+	return out
 }
 
 // outboundTarget recovers the numeric chat id (from the binding config when

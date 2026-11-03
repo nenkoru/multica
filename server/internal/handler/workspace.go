@@ -1339,6 +1339,26 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		{
+			name: "delete planning records",
+			run: func() error {
+				if _, err := tx.Exec(ctx, "DELETE FROM epic WHERE workspace_id = $1", requester.WorkspaceID); err != nil {
+					return err
+				}
+				_, err := tx.Exec(ctx, "DELETE FROM sprint WHERE workspace_id = $1", requester.WorkspaceID)
+				return err
+			},
+		},
+		{
+			name: "delete kiosk tokens",
+			run: func() error {
+				if _, err := tx.Exec(ctx, "DELETE FROM kiosk_pairing WHERE workspace_id = $1", requester.WorkspaceID); err != nil {
+					return err
+				}
+				_, err := tx.Exec(ctx, "DELETE FROM kiosk_token WHERE workspace_id = $1", requester.WorkspaceID)
+				return err
+			},
+		},
+		{
 			name: "delete autopilot children",
 			run:  func() error { return qtx.DeleteWorkspaceAutopilotChildren(ctx, requester.WorkspaceID) },
 		},

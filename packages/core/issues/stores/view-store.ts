@@ -120,6 +120,7 @@ export interface ActorFilterValue {
 /** The ten query-defining filter fields as one value — what a saved view
  *  fixes, and what resets restore. */
 export interface FilterSnapshot {
+  epicFilters?: string[]; includeNoEpic?: boolean; sprintFilters?: string[]; includeNoSprint?: boolean;
   statusFilters: IssueStatus[];
   priorityFilters: IssuePriority[];
   assigneeFilters: ActorFilterValue[];
@@ -264,6 +265,10 @@ export interface IssueViewState {
    */
   propertyFilters: Record<string, PropertyFilterValue[]>;
   dateFilter: IssueDateFilter | null;
+  epicFilters: string[];
+  includeNoEpic: boolean;
+  sprintFilters: string[];
+  includeNoSprint: boolean;
   // When true, the list only shows issues that currently have at least one
   // agent task in `running` status. Drives the workspace "agents working"
   // quick filter chip in the issues header. Not persisted across reloads —
@@ -329,6 +334,10 @@ export interface IssueViewState {
    *  for text/number/date/url, which build the array including "__none__"). */
   setPropertyFilterValues: (propertyId: string, optionIds: PropertyFilterValue[]) => void;
   setDateFilter: (filter: IssueDateFilter | null) => void;
+  toggleEpicFilter: (epicId: string) => void;
+  toggleNoEpic: () => void;
+  toggleSprintFilter: (sprintId: string) => void;
+  toggleNoSprint: () => void;
   toggleAgentRunningFilter: () => void;
   hideStatus: (status: IssueStatus) => void;
   showStatus: (status: IssueStatus) => void;
@@ -375,6 +384,10 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   labelFilters: [],
   propertyFilters: {},
   dateFilter: null,
+  epicFilters: [],
+  includeNoEpic: false,
+  sprintFilters: [],
+  includeNoSprint: false,
   agentRunningFilter: false,
   sortBy: "created_at",
   sortDirection: "desc",
@@ -477,6 +490,22 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
         ? state.labelFilters.filter((id) => id !== labelId)
         : [...state.labelFilters, labelId],
     })),
+  toggleEpicFilter: (epicId) =>
+    set((state) => ({
+      epicFilters: state.epicFilters.includes(epicId)
+        ? state.epicFilters.filter((id) => id !== epicId)
+        : [...state.epicFilters, epicId],
+    })),
+  toggleNoEpic: () =>
+    set((state) => ({ includeNoEpic: !state.includeNoEpic })),
+  toggleSprintFilter: (sprintId) =>
+    set((state) => ({
+      sprintFilters: state.sprintFilters.includes(sprintId)
+        ? state.sprintFilters.filter((id) => id !== sprintId)
+        : [...state.sprintFilters, sprintId],
+    })),
+  toggleNoSprint: () =>
+    set((state) => ({ includeNoSprint: !state.includeNoSprint })),
   togglePropertyFilter: (propertyId, optionId) =>
     set((state) => {
       const current = state.propertyFilters[propertyId] ?? [];
@@ -521,9 +550,13 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
       labelFilters: [],
       propertyFilters: {},
       dateFilter: null,
+      epicFilters: [],
+      includeNoEpic: false,
+      sprintFilters: [],
+      includeNoSprint: false,
       agentRunningFilter: false,
     }),
-  resetFiltersTo: (snapshot) => set({ ...snapshot }),
+  resetFiltersTo: (snapshot) => set({ epicFilters: [], includeNoEpic: false, sprintFilters: [], includeNoSprint: false, ...snapshot }),
   clearFilterDimension: (dimension) =>
     set((state) => {
       switch (dimension) {
@@ -677,6 +710,10 @@ export const viewStorePersistOptions = (name: string) => ({
     projectStatusFilters: state.projectStatusFilters,
     labelFilters: state.labelFilters,
     propertyFilters: state.propertyFilters,
+    epicFilters: state.epicFilters,
+    includeNoEpic: state.includeNoEpic,
+    sprintFilters: state.sprintFilters,
+    includeNoSprint: state.includeNoSprint,
     sortBy: state.sortBy,
     sortDirection: state.sortDirection,
     sortDirections: state.sortDirections,

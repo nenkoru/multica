@@ -373,6 +373,39 @@ describe("useIssueSurfaceController", () => {
     );
   });
 
+  it("narrows a planning scope to its own epic or sprint", async () => {
+    const epic = renderHook(
+      () =>
+        useIssueSurfaceController({
+          scope: { type: "epic", epicId: "e1" },
+          modes: ["board"],
+        }),
+      { wrapper: makeWrapper(qc, "epic:e1") },
+    );
+    await waitFor(() => expect(listIssueTableRows).toHaveBeenCalled());
+    expect(epic.result.current.scopeKey).toBe("epic:e1");
+    expect(epic.result.current.tableQuerySpec.scope).toEqual({ kind: "workspace" });
+    expect(epic.result.current.tableQuerySpec.filters).toMatchObject({
+      epic_ids: ["e1"],
+      include_no_epic: false,
+    });
+    expect(epic.result.current.createDefaults).toMatchObject({ epic_id: "e1" });
+
+    const sprint = renderHook(
+      () =>
+        useIssueSurfaceController({
+          scope: { type: "sprint", sprintId: "s1" },
+          modes: ["board"],
+        }),
+      { wrapper: makeWrapper(qc, "sprint:s1") },
+    );
+    expect(sprint.result.current.tableQuerySpec.filters).toMatchObject({
+      sprint_ids: ["s1"],
+      include_no_sprint: false,
+    });
+    expect(sprint.result.current.createDefaults).toMatchObject({ sprint_id: "s1" });
+  });
+
   it("does not subscribe List to the legacy issue endpoint", async () => {
     const legacyListIssues = vi.fn(() => never<ListIssuesResponse>());
     const tableRows = vi.fn(async (request: any) => ({

@@ -1,0 +1,51 @@
+{
+  "page": {
+    "title": "Sprints",
+    "new_sprint": "Nouveau sprint",
+    "empty": "Aucun sprint",
+    "create_first": "Créez votre premier sprint",
+    "search_placeholder": "Rechercher des sprints...",
+    "no_search_results": "Aucun résultat ne correspond à votre recherche"
+  },
+  "table": {
+    "name": "Nom",
+    "status": "Statut",
+    "dates": "Dates",
+    "progress": "Progression",
+    "created": "Création",
+    "issues": "tâches"
+  },
+  "status": { "planned": "Planifié", "active": "Actif", "completed": "Terminé", "cancelled": "Annulé" },
+  "detail": {
+    "not_found": "Sprint introuvable",
+    "breadcrumb_fallback": "Sprints",
+    "title_placeholder": "Nom du sprint",
+    "copy_link": "Copier le lien",
+    "delete_action": "Supprimer le sprint",
+    "section_properties": "Propriétés",
+    "section_description": "Description",
+    "description_placeholder": "Ajouter un objectif au sprint...",
+    "no_issues_yet": "Aucune tâche",
+    "delete_confirm_title": "Supprimer le sprint",
+    "delete_confirm_description": "Voulez-vous supprimer ce sprint ? Les tâches associées seront conservées.",
+    "date_range": "{{start}} — {{end}}"
+  },
+  "picker": {
+    "no_sprint": "Aucun sprint",
+    "remove_sprint": "Retirer le sprint",
+    "no_sprints": "Aucun sprint dans cet espace de travail"
+  },
+  "create": {
+    "title": "Créer un sprint",
+    "label_name": "Nom",
+    "name_placeholder": "Nom du sprint",
+    "label_goal": "Objectif",
+    "goal_placeholder": "Ajouter un objectif au sprint...",
+    "start_date": "Date de début",
+    "end_date": "Date de fin",
+    "submit": "Créer un sprint",
+    "cancel": "Annuler",
+    "success": "Création réussie",
+    "error": "Échec de la création"
+  }
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePlanningEnabled } from "@multica/core/epics/config";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { hashKey, keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
@@ -202,6 +203,8 @@ function useStableByContent<T>(value: T): T {
   return useMemo(() => value, [contentKey]);
 }
 
+const EMPTY_PLANNING_FILTERS: string[] = [];
+
 export function useIssueSurfaceController({
   scope,
   modes,
@@ -209,6 +212,7 @@ export function useIssueSurfaceController({
   search = "",
 }: UseIssueSurfaceControllerInput): IssueSurfaceController {
   const wsId = useWorkspaceId();
+  const planningEnabled = usePlanningEnabled();
   const queryPlan = useMemo<IssueSurfaceQueryPlan>(
     () => buildIssueSurfaceQueryPlan(scope),
     [scope],
@@ -227,6 +231,10 @@ export function useIssueSurfaceController({
   const assigneeFilters = useViewStore((s) => s.assigneeFilters);
   const includeNoAssignee = useViewStore((s) => s.includeNoAssignee);
   const creatorFilters = useViewStore((s) => s.creatorFilters);
+  const epicFilters = useViewStore((s) => planningEnabled ? (s.epicFilters ?? EMPTY_PLANNING_FILTERS) : EMPTY_PLANNING_FILTERS);
+  const includeNoEpic = useViewStore((s) => planningEnabled && s.includeNoEpic);
+  const sprintFilters = useViewStore((s) => planningEnabled ? (s.sprintFilters ?? EMPTY_PLANNING_FILTERS) : EMPTY_PLANNING_FILTERS);
+  const includeNoSprint = useViewStore((s) => planningEnabled && s.includeNoSprint);
   const projectFilters = useViewStore((s) => s.projectFilters);
   const includeNoProject = useViewStore((s) => s.includeNoProject);
   const projectStatusFilters = useViewStore((s) => s.projectStatusFilters);
@@ -475,6 +483,12 @@ export function useIssueSurfaceController({
           actor: { type: scope.actorType, id: scope.actorId },
         };
         break;
+      case "epic":
+      case "sprint":
+        // A planning page is the workspace narrowed by one fixed planning
+        // filter, applied below in place of the user's own epic/sprint filter.
+        queryScope = { kind: "workspace" };
+        break;
       case "team":
         throw new Error("Team issue scope is not supported by the Table query");
     }
@@ -490,6 +504,12 @@ export function useIssueSurfaceController({
     return {
       scope: queryScope,
       filters: {
+        ...(scope.type === "epic"
+          ? { epic_ids: [scope.epicId], include_no_epic: false }
+          : { epic_ids: epicFilters, include_no_epic: includeNoEpic }),
+        ...(scope.type === "sprint"
+          ? { sprint_ids: [scope.sprintId], include_no_sprint: false }
+          : { sprint_ids: sprintFilters, include_no_sprint: includeNoSprint }),
         ...(statusFilters.length > 0 ? { statuses: statusFilters } : {}),
         ...(priorityFilters.length > 0 ? { priorities: priorityFilters } : {}),
         ...(assigneeFilters.length > 0 ? { assignees: assigneeFilters } : {}),
@@ -536,6 +556,7 @@ export function useIssueSurfaceController({
     sort.sort_by,
     sort.sort_direction,
     statusFilters,
+    epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
     viewIncludeNoProject,
     viewProjectFilters,
     workingFilterUnresolved,
@@ -710,7 +731,8 @@ export function useIssueSurfaceController({
         includeNoAssignee,
         creatorFilters,
         viewProjectFilters,
-        viewIncludeNoProject,
+        epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
+    viewIncludeNoProject,
         projectStatusFilters,
         labelFilters,
         effectivePropertyFilters,
@@ -732,7 +754,8 @@ export function useIssueSurfaceController({
       projectStatusFilters,
       showSubIssues,
       statusFilters,
-      viewIncludeNoProject,
+      epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
+    viewIncludeNoProject,
       viewProjectFilters,
     ],
   );
@@ -759,6 +782,7 @@ export function useIssueSurfaceController({
     includeNoAssignee,
     agentRunningFilter,
     creatorFilters,
+    epicFilters, includeNoEpic, sprintFilters, includeNoSprint,
     projectFilters: viewProjectFilters,
     includeNoProject: viewIncludeNoProject,
     projectStatusFilters,

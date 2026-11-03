@@ -1,0 +1,116 @@
+name: Planning custom candidate
+on:
+  pull_request:
+    branches: [custom/planning]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 1'
+permissions:
+  contents: read
+concurrency:
+  group: planning-candidate-${{ github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: false
+jobs:
+  sync:
+    # Enable explicitly in the authorized fork. The upstream repo never runs it.
+    if: github.event_name != 'pull_request' && github.repository != 'multica-ai/multica' && vars.PLANNING_CANDIDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+      branch: ${{ steps.candidate.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: custom/planning
+      - name: Prepare upstream merge candidate
+        id: candidate
+        shell: bash
+        run: |
+          git config user.name 'Planning candidate workflow'
+          git config user.email 'planning-candidate@users.noreply.github.com'
+          git remote add upstream https://github.com/multica-ai/multica.git
+          git fetch upstream main --no-tags
+          branch="candidate/planning-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          bash scripts/planning-upstream-candidate.sh
+          git push origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: sync
+    if: always() && github.repository != 'multica-ai/multica' && vars.PLANNING_CANDIDATES_ENABLED == 'true' && (needs.sync.result == 'success' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    # Existing authorized Proxmox runner, with Docker. No runner is provisioned here.
+    runs-on: [self-hosted, planning-build]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: planning_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/planning_test?sslmode=disable
+      GOMAXPROCS: '4'
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha || github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: python3 scripts/planning-upstream-candidate.test.py
+      - run: make sqlc && git diff --exit-code -- server/pkg/db/generated
+      - run: cd server && go run ./cmd/migrate up
+      - run: bash scripts/test-go.sh --race
+      - run: pnpm typecheck && pnpm lint && pnpm test
+      - run: pnpm --filter @multica/web build && pnpm --filter @multica/desktop build
+  images:
+    needs: [sync, verify]
+    if: always() && needs.verify.result == 'success'
+    runs-on: [self-hosted, planning-build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha || github.event.pull_request.head.sha }}
+      - name: Build versioned backend and web images without publishing
+        env:
+          SOURCE_SHA: ${{ needs.sync.outputs.sha || github.event.pull_request.head.sha }}
+        run: |
+          docker build --build-arg VERSION="planning-${SOURCE_SHA:0:12}" --build-arg COMMIT="$SOURCE_SHA" --build-arg DATE="$(git show -s --format=%cI)" --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "multica-planning-backend:$SOURCE_SHA" -f Dockerfile .
+          docker build --build-arg NEXT_PUBLIC_APP_VERSION="planning-${SOURCE_SHA:0:12}" --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "multica-planning-web:$SOURCE_SHA" -f Dockerfile.web .
+          docker save "multica-planning-backend:$SOURCE_SHA" "multica-planning-web:$SOURCE_SHA" | gzip > planning-images.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: planning-images-${{ needs.sync.outputs.sha || github.event.pull_request.head.sha }}
+          path: planning-images.tar.gz
+          retention-days: 7
+  review:
+    needs: [sync, verify, images]
+    if: always() && needs.sync.result == 'success' && needs.verify.result == 'success' && needs.images.result == 'success' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha || github.event.pull_request.head.sha }}
+      - name: Open candidate PR in this fork for independent review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_BRANCH: ${{ needs.sync.outputs.branch }}
+          SOURCE_SHA: ${{ needs.sync.outputs.sha || github.event.pull_request.head.sha }}
+        run: |
+          printf 'Upstream merge candidate %s. Tests and image builds passed in this workflow. Independent review and acceptance are required before merging. Deployment is a separate explicit action after backup; this workflow never deploys.\n' "$SOURCE_SHA" > candidate-pr.md
+          gh pr create --base custom/planning --head "$CANDIDATE_BRANCH" --title 'RUSL-1435: upstream planning candidate' --body-file candidate-pr.md
