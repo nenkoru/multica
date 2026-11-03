@@ -5876,6 +5876,7 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 			kind:             terminalTaskReportFail,
 			taskID:           task.ID,
 			errorMessage:     errorMessage,
+			sessionID:        result.SessionID,
 			branchName:       result.BranchName,
 			workDir:          result.WorkDir,
 			durableWorkDir:   result.DurableWorkDir,
