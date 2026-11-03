@@ -206,6 +206,9 @@ func (s *Supervisor) streamPulse(ctx context.Context, st sdb.Stream, since, now 
 		}
 		b.WriteString("\n")
 	}
+	if len(ms) == 0 {
+		b.WriteString("  " + s.lastMilestoneLine(ctx, st) + "\n")
+	}
 	journal, err := s.Q.ListJournalSince(ctx, sdb.ListJournalSinceParams{StreamID: st.ID, CreatedAt: ts(since)})
 	if err != nil {
 		return "", 0, err
@@ -352,4 +355,15 @@ func (s *Supervisor) Resume(ctx context.Context, st sdb.Stream) error {
 	err := s.setState(ctx, st, StateRunning, "продолжить (Руслан)", time.Time{})
 	s.Kick()
 	return err
+}
+
+// lastMilestoneLine names the latest milestone when none landed in the
+// digest window, so every stream line carries one (§7.4).
+func (s *Supervisor) lastMilestoneLine(ctx context.Context, st sdb.Stream) string {
+	all, err := s.Q.ListMilestonesSince(ctx, sdb.ListMilestonesSinceParams{StreamID: st.ID, CreatedAt: ts(time.Time{})})
+	if err != nil || len(all) == 0 {
+		return "последняя веха: пока нет"
+	}
+	m := all[len(all)-1]
+	return fmt.Sprintf("последняя веха: %s (%s)", firstLine(m.Text, 160), fmtMSK(m.CreatedAt.Time))
 }

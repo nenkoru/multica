@@ -573,3 +573,15 @@ func TestSupervisorContractFromCarrierComment(t *testing.T) {
 		t.Fatalf("step retried or failed %d times", n)
 	}
 }
+
+func TestDigestCarriesLastMilestone(t *testing.T) {
+	h := newHarness(t, "pulse")
+	h.tick()
+	text, err := h.sup.Digest(context.Background(), h.stream.WorkspaceID, SlotPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Поток pulse — идёт") || !strings.Contains(text, "последняя веха: пока нет") {
+		t.Fatalf("pulse line:\n%s", text)
+	}
+}
