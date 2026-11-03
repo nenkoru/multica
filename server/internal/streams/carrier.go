@@ -18,6 +18,10 @@ type Carrier interface {
 	Cancel(ctx context.Context, taskID pgtype.UUID, reason string) error
 	// Close moves the carrier issue to done or cancelled with its step.
 	Close(ctx context.Context, issueID pgtype.UUID, done bool) error
+	// TaskComments returns the bodies of comments the task posted on the
+	// carrier issue, newest first. Multica agents deliver their result as a
+	// comment, so the contract block may be there and not in the final output.
+	TaskComments(ctx context.Context, issueID, taskID pgtype.UUID) ([]string, error)
 }
 
 type DispatchRequest struct {

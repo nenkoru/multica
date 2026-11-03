@@ -739,12 +739,34 @@ func (s *Supervisor) breakStream(ctx context.Context, st sdb.Stream, step sdb.St
 	return s.setState(ctx, st, StateBroken, text, time.Time{})
 }
 
+// contractFromComments looks for the contract in the comments the step's
+// task left on its carrier issue, newest first; orig is returned when none
+// carries one.
+func (s *Supervisor) contractFromComments(ctx context.Context, step sdb.StreamStep, orig error) (StepOutput, error) {
+	if !step.CarrierIssueID.Valid || !step.TaskID.Valid {
+		return StepOutput{}, orig
+	}
+	bodies, err := s.Carrier.TaskComments(ctx, step.CarrierIssueID, step.TaskID)
+	if err != nil {
+		return StepOutput{}, fmt.Errorf("%w (comments: %v)", orig, err)
+	}
+	for _, b := range bodies {
+		if out, cerr := ExtractContract(b); cerr == nil {
+			return out, nil
+		}
+	}
+	return StepOutput{}, orig
+}
+
 func (s *Supervisor) handleCompleted(ctx context.Context, st sdb.Stream, c Charter, step sdb.StreamStep, result []byte, states map[string]ExecutorState, now time.Time) error {
 	var res struct {
 		Output string `json:"output"`
 	}
 	_ = json.Unmarshal(result, &res)
 	out, err := ExtractContract(res.Output)
+	if errors.Is(err, ErrNoContract) {
+		out, err = s.contractFromComments(ctx, step, err)
+	}
 	if err == nil {
 		err = ValidateContract(step.Kind, out, now)
 	}
