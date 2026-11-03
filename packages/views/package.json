@@ -21,6 +21,7 @@
     "./common/task-transcript": "./common/task-transcript/index.ts",
     "./projects/components": "./projects/components/index.ts",
     "./epics/components": "./epics/components/index.ts",
+    "./streams/streams-page": "./streams/streams-page.tsx",
     "./sprints/components": "./sprints/components/index.ts",
     "./tv": "./tv/index.ts",
     "./autopilots/components": "./autopilots/components/index.ts",

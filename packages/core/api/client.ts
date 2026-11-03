@@ -4585,6 +4585,15 @@ export class ApiClient {
     });
   }
 
+  // Streams (Fabrika)
+  async listStreams(): Promise<{ streams: unknown[] }> {
+    return this.fetch<{ streams: unknown[] }>("/api/streams");
+  }
+
+  async getStream(slug: string): Promise<unknown> {
+    return this.fetch<unknown>(`/api/streams/${encodeURIComponent(slug)}`);
+  }
+
   // Epics
   async listEpics(params?: { status?: string }, workspaceID?: string): Promise<{ epics: Epic[]; total: number }> {
     const search = new URLSearchParams();

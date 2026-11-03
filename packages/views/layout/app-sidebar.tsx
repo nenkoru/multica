@@ -120,6 +120,7 @@ type NavKey =
   | "myIssues"
   | "issues"
   | "projects"
+  | "streams"
   | "epics"
   | "sprints"
   | "autopilots"
@@ -138,6 +139,7 @@ type NavLabelKey =
   | "my_issues"
   | "issues"
   | "projects"
+  | "streams"
   | "epics"
   | "sprints"
   | "autopilots"
@@ -158,6 +160,7 @@ const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
 ];
 
 const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
+  { key: "streams", labelKey: "streams" },
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
   { key: "epics", labelKey: "epics" },
