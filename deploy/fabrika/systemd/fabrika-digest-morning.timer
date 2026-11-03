@@ -1,0 +1,10 @@
+[Unit]
+Description=Fabrika morning digest, 10:00 MSK
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 Europe/Moscow
+Persistent=true
+Unit=fabrika-digest@morning.service
+
+[Install]
+WantedBy=timers.target

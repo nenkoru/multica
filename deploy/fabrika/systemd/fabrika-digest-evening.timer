@@ -1,0 +1,10 @@
+[Unit]
+Description=Fabrika evening digest (only when asks are open), 19:00 MSK
+
+[Timer]
+OnCalendar=*-*-* 19:00:00 Europe/Moscow
+Persistent=true
+Unit=fabrika-digest@evening.service
+
+[Install]
+WantedBy=timers.target

@@ -31,6 +31,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/scheduler"
 	"github.com/multica-ai/multica/server/internal/selfhosttelemetry"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/streams"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/featureflag"
 	"github.com/multica-ai/multica/server/pkg/llm"
@@ -679,7 +680,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Fabrika (fork): the carrier is bound to upstream services once the
+	// router has built them.
+	streamsCarrier := &streams.MulticaCarrier{Queries: queries}
+	streamsSup := streams.NewSupervisor(pool, streamsCarrier)
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
+		Streams:             streamsSup,
 		HTTPMetrics:         httpMetrics,
 		BusinessMetrics:     businessMetrics,
 		ChannelLeaseMetrics: channelLeaseMetrics,
@@ -850,6 +856,13 @@ func main() {
 	if err := schedulerMgr.Register(scheduler.PluginHookScheduleDispatchJob(queries, h.PluginService)); err != nil {
 		slog.Warn("scheduler: failed to register plugin_hook_schedule_dispatch job", "error", err)
 	}
+	// Fabrika (fork): streams supervisor, harness-design.md §6.1.
+	streamsCarrier.Issues, streamsCarrier.Tasks = h.IssueService, taskSvc
+	if err := schedulerMgr.Register(streams.SupervisorJob(streamsSup)); err != nil {
+		slog.Error("scheduler: register fabrika streams supervisor", "error", err)
+	}
+	streams.Subscribe(bus, streamsSup)
+	go streamsSup.RunKicks(sweepCtx)
 	go func() {
 		_ = schedulerMgr.Run(sweepCtx)
 	}()
