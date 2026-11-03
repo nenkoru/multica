@@ -360,10 +360,10 @@ func (s *Supervisor) Resume(ctx context.Context, st sdb.Stream) error {
 // lastMilestoneLine names the latest milestone when none landed in the
 // digest window, so every stream line carries one (§7.4).
 func (s *Supervisor) lastMilestoneLine(ctx context.Context, st sdb.Stream) string {
-	all, err := s.Q.ListMilestonesSince(ctx, sdb.ListMilestonesSinceParams{StreamID: st.ID, CreatedAt: ts(time.Time{})})
-	if err != nil || len(all) == 0 {
+	recent, err := s.Q.ListRecentMilestones(ctx, sdb.ListRecentMilestonesParams{StreamID: st.ID, Limit: 1})
+	if err != nil || len(recent) == 0 {
 		return "последняя веха: пока нет"
 	}
-	m := all[len(all)-1]
+	m := recent[0]
 	return fmt.Sprintf("последняя веха: %s (%s)", firstLine(m.Text, 160), fmtMSK(m.CreatedAt.Time))
 }
