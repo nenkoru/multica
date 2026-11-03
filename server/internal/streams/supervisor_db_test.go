@@ -586,6 +586,24 @@ func TestDigestCarriesLastMilestone(t *testing.T) {
 	}
 }
 
+func TestDigestShowsMilestoneOlderThanWindow(t *testing.T) {
+	h := newHarness(t, "pulseold")
+	ctx := context.Background()
+	m, err := h.sup.Q.InsertMilestone(ctx, sdb.InsertMilestoneParams{StreamID: h.stream.ID, Text: "ветка собрана", Evidence: []byte(`["ci:run/1"]`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.f.Exec(t, `UPDATE milestone SET created_at = now() - interval '3 days' WHERE id = $1`, uuidString(m.ID))
+	h.tick()
+	text, err := h.sup.Digest(ctx, h.stream.WorkspaceID, SlotPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "последняя веха: ветка собрана") {
+		t.Fatalf("pulse line:\n%s", text)
+	}
+}
+
 // An online agent busy with other work never takes the task; after 10 min
 // the step leaves its queue for the next executor.
 func TestSupervisorQueuedTooLongMovesDownTheChain(t *testing.T) {
