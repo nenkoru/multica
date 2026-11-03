@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { CornerDownRight, Timer } from "lucide-react";
+import { CornerDownRight, Timer } from "@multica/ui/icons";
 import type { Epic, Issue, PlanningBucket, Sprint } from "@multica/core/types";
 import {
   PLANNING_NO_GROUP,

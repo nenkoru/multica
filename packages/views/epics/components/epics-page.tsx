@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Diamond, Search } from "lucide-react";
+import { Plus, Diamond, Search } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { epicListOptions } from "@multica/core/epics";
 import { useWorkspaceId } from "@multica/core/hooks";

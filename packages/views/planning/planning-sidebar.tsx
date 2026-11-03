@@ -1,6 +1,6 @@
 "use client";
 
-import { Timer } from "lucide-react";
+import { Timer } from "@multica/ui/icons";
 import type {
   PlanningActivityEntry,
   PlanningAssigneeBreakdown,

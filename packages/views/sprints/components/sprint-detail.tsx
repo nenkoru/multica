@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Link2, Play, Trash2 } from "lucide-react";
+import { CheckCircle2, Link2, Play, Trash2 } from "@multica/ui/icons";
 import {
   sprintDetailOptions,
   sprintOverviewOptions,

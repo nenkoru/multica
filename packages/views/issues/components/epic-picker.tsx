@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Diamond, X } from "lucide-react";
+import { Check, Diamond, X } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { epicListOptions } from "@multica/core/epics/queries";
 import { useWorkspaceId } from "@multica/core/hooks";

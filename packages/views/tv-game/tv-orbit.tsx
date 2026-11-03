@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Focus, Moon, OctagonAlert, TriangleAlert, Volume2, VolumeX } from "lucide-react";
+import { Focus, Moon, OctagonAlert, TriangleAlert, Volume2, VolumeX } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { sprintTimeline } from "@multica/core/planning";
 import { tvGameOptions, tvHealthOptions, type TvOverview } from "@multica/core/tv";

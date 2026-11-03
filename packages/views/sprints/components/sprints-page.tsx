@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Timer, Search } from "lucide-react";
+import { Plus, Timer, Search } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { sprintListOptions } from "@multica/core/sprints";
 import { SPRINT_STATUS_CONFIG } from "@multica/core/sprints/config";

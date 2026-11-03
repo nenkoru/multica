@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Timer, X } from "lucide-react";
+import { Check, Timer, X } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { sprintListOptions } from "@multica/core/sprints/queries";
 import { useWorkspaceId } from "@multica/core/hooks";

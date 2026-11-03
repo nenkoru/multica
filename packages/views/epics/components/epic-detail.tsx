@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link2, Trash2 } from "lucide-react";
+import { Link2, Trash2 } from "@multica/ui/icons";
 import { epicDetailOptions, epicOverviewOptions, useUpdateEpic, useDeleteEpic } from "@multica/core/epics";
 import { EPIC_STATUS_CONFIG, DEFAULT_EPIC_COLORS } from "@multica/core/epics/config";
 import { resolvePlanningProgress } from "@multica/core/planning";

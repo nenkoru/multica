@@ -14,7 +14,7 @@ import {
   Hand,
   OctagonPause,
   WifiOff,
-} from "lucide-react";
+} from "@multica/ui/icons";
 import { sprintTimeline } from "@multica/core/planning";
 import {
   TV_POLL_INTERVAL_MS,
