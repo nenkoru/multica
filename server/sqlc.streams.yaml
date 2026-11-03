@@ -1,0 +1,18 @@
+# Fabrika (fork-owned) sqlc config. Separate from sqlc.yaml so upstream
+# regenerations never touch it: `make sqlc-streams`.
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/streams/queries/"
+    schema: "migrations/"
+    gen:
+      go:
+        package: "sdb"
+        out: "internal/streams/sdb"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_empty_slices: true
+        overrides:
+          - column: "issue_wakeup.condition"
+            go_type: "encoding/json.RawMessage"
+            nullable: true

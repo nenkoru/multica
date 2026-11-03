@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS stream_supervisor_state;
+DROP TABLE IF EXISTS ui_action;
+DROP TABLE IF EXISTS ui_block;
+DROP TABLE IF EXISTS chat_focus;
+DROP TABLE IF EXISTS executor_status;
+DROP TABLE IF EXISTS stream_journal;
+DROP TABLE IF EXISTS milestone;
+DROP TABLE IF EXISTS ask;
+DROP TABLE IF EXISTS stream_wait;
+DROP TABLE IF EXISTS stream_step;
+DROP TABLE IF EXISTS stream;
