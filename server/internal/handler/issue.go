@@ -3381,8 +3381,6 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 			sprintID = id
 		}
 	}
-		}
-	}
 	// Project existence and the final parent boundary check are enforced inside
 	// IssueService.Create atomically with the create. The handler preloads a
 	// supplied parent only because the assignee gate must bind any autopilot
