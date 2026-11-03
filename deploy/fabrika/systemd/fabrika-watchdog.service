@@ -1,0 +1,6 @@
+[Unit]
+Description=Fabrika watchdog: alarm when the stream supervisor goes silent
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/fabrika-watchdog.sh

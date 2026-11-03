@@ -1,0 +1,6 @@
+[Unit]
+Description=Fabrika %i digest to Telegram
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/fabrika-digest.sh %i
