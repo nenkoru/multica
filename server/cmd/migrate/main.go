@@ -152,6 +152,8 @@ var concurrentIndexCleanups = map[string]string{
 	"569_planning_idx_issue_epic":                               "idx_issue_epic",
 	"570_planning_idx_issue_sprint":                             "idx_issue_sprint",
 	"572_chat_message_agent_author_index":                       "idx_chat_message_agent_author",
+	"574_kiosk_token_hash_index":                                "idx_kiosk_token_hash",
+	"576_kiosk_pairing_code_index":                              "idx_kiosk_pairing_code",
 	"540_task_supplement_capability_index":                      "task_supplement_capability_task_uidx",
 	"541_task_supplement_comment_index":                         "task_supplement_comment_uidx",
 	"546_issue_pr_automation_workspace_index":                   "idx_issue_pr_automation_workspace",
