@@ -1124,6 +1124,31 @@ type IssueWorkflow struct {
 	OwnerID          pgtype.UUID        `json:"owner_id"`
 }
 
+type KioskPairing struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	TokenID     pgtype.UUID        `json:"token_id"`
+	CodeHash    string             `json:"code_hash"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	UsedAt      pgtype.Timestamptz `json:"used_at"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type KioskToken struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Name        string             `json:"name"`
+	TokenHash   string             `json:"token_hash"`
+	TokenPrefix string             `json:"token_prefix"`
+	OwnerLabel  string             `json:"owner_label"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
+	RevokedAt   pgtype.Timestamptz `json:"revoked_at"`
+	ParentID    pgtype.UUID        `json:"parent_id"`
+}
+
 type LarkBindingToken struct {
 	TokenHash      string             `json:"token_hash"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
