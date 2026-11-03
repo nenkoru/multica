@@ -655,16 +655,20 @@ func (s *Supervisor) observe(ctx context.Context, st sdb.Stream, c Charter, step
 			return s.failStep(ctx, st, step, fmt.Sprintf("hang: no progress for %s (повисло %d раз)", LeaseDuration, step.HangCount), false, states, now)
 		}
 	case "queued", "dispatched", "deferred", "waiting_local_directory":
-		// Waiting for a runtime. Upstream's runtime_offline path handles a
-		// dead daemon; we only move the step after 10 min without a runtime.
-		if task.RuntimeID.Valid && now.Sub(task.CreatedAt.Time) > OfflineReroute {
-			seen, err := s.Q.RuntimeLastSeen(ctx, task.RuntimeID)
-			if err == nil && (!seen.Valid || now.Sub(seen.Time) > OfflineReroute) {
-				if err := s.Carrier.Cancel(ctx, task.ID, "fabrika: runtime offline, rerouting step"); err != nil {
-					return err
+		// Not taken within 10 min: the runtime is offline or the agent is busy
+		// with other work (one task at a time). Either way the step moves down
+		// the chain instead of sitting in someone else's queue.
+		if now.Sub(task.CreatedAt.Time) > OfflineReroute {
+			why := "executor busy: task not taken"
+			if task.RuntimeID.Valid {
+				if seen, err := s.Q.RuntimeLastSeen(ctx, task.RuntimeID); err == nil && (!seen.Valid || now.Sub(seen.Time) > OfflineReroute) {
+					why = "runtime offline"
 				}
-				return s.reroute(ctx, st, step, now.Add(OfflineReroute), "runtime offline", states, now)
 			}
+			if err := s.Carrier.Cancel(ctx, task.ID, "fabrika: "+why+", rerouting step"); err != nil {
+				return err
+			}
+			return s.reroute(ctx, st, step, now.Add(OfflineReroute), why, states, now)
 		}
 	}
 	return nil

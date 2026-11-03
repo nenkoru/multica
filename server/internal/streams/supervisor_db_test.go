@@ -585,3 +585,19 @@ func TestDigestCarriesLastMilestone(t *testing.T) {
 		t.Fatalf("pulse line:\n%s", text)
 	}
 }
+
+// An online agent busy with other work never takes the task; after 10 min
+// the step leaves its queue for the next executor.
+func TestSupervisorQueuedTooLongMovesDownTheChain(t *testing.T) {
+	h := newHarness(t, "busy")
+	h.tick()
+	mg := h.only(KindManage, StepRunning)
+	h.f.Exec(t, `UPDATE agent_task_queue SET status = 'queued', created_at = now() - interval '11 minutes' WHERE id = $1`, uuidString(mg.TaskID))
+	h.tick()
+	if len(h.carrier.cancelled) != 1 || h.carrier.cancelled[0] != uuidString(mg.TaskID) {
+		t.Fatalf("queued task not cancelled: %v", h.carrier.cancelled)
+	}
+	if n := h.journalCount("quota"); n != 1 {
+		t.Fatalf("reroute journal %d", n)
+	}
+}
