@@ -696,6 +696,29 @@ func main() {
 	}
 	// Executors and manager of a stream from Мультика's interview (§9.3).
 	streamsSup.StreamTemplate = strings.TrimSpace(os.Getenv("FABRIKA_STREAM_TEMPLATE"))
+	// Budgets (§6.7): slot caps, GPU executors, the API ceiling. Unset: no limits.
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_EXECUTOR_SLOTS")); v != "" {
+		if slots, err := streams.ParseSlots(v); err != nil {
+			slog.Error("invalid FABRIKA_EXECUTOR_SLOTS; slot caps off", "error", err)
+		} else {
+			streamsSup.Slots = slots
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_GPU_EXECUTORS")); v != "" {
+		streamsSup.GPUExecutors = map[string]bool{}
+		for _, name := range strings.Split(v, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				streamsSup.GPUExecutors[name] = true
+			}
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_API_MONTHLY_USD")); v != "" {
+		if usd, err := strconv.ParseFloat(v, 64); err != nil || usd < 0 {
+			slog.Error("invalid FABRIKA_API_MONTHLY_USD; cost line off", "value", v)
+		} else {
+			streamsSup.APIMonthlyUSD = usd
+		}
+	}
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
 		Streams:             streamsSup,
 		HTTPMetrics:         httpMetrics,

@@ -253,6 +253,9 @@ func (s *Supervisor) streamPulse(ctx context.Context, st sdb.Stream, since, now 
 	if counts["no_ideas"] > 0 {
 		fmt.Fprintf(&b, "  %s: нет идей, поговорим?\n", st.Title)
 	}
+	if line := s.costLine(ctx, st, now); line != "" {
+		b.WriteString("  " + line + "\n")
+	}
 	last := st.CreatedAt.Time
 	if st.LastMilestoneAt.Valid {
 		last = st.LastMilestoneAt.Time
@@ -457,4 +460,31 @@ func (s *Supervisor) lastMilestoneLine(ctx context.Context, st sdb.Stream) strin
 	}
 	m := recent[0]
 	return fmt.Sprintf("последняя веха: %s (%s)", firstLine(m.Text, 160), fmtMSK(m.CreatedAt.Time))
+}
+
+// costLine shows API money against the stream's share (§6.7): pace is the
+// share of the monthly ceiling spread over the month's days. Shown, never
+// enforced. Empty without a ceiling or a share.
+func (s *Supervisor) costLine(ctx context.Context, st sdb.Stream, now time.Time) string {
+	if s.APIMonthlyUSD <= 0 {
+		return ""
+	}
+	c, err := ParseCharter(st.Charter)
+	if err != nil || c.BudgetShare <= 0 {
+		return ""
+	}
+	t := now.In(Moscow)
+	month := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, Moscow)
+	ticks, err := s.Q.StreamCostSince(ctx, sdb.StreamCostSinceParams{StreamID: uuidString(st.ID), Since: ts(month)})
+	if err != nil {
+		return ""
+	}
+	days := month.AddDate(0, 1, 0).Sub(month).Hours() / 24
+	share := s.APIMonthlyUSD * c.BudgetShare
+	pace := share / days * float64(t.Day())
+	line := fmt.Sprintf("API за месяц: $%.2f из $%.0f, темп на сегодня $%.2f", float64(ticks)/1e10, share, pace)
+	if float64(ticks)/1e10 > pace {
+		line += " — выше темпа"
+	}
+	return line
 }

@@ -1976,6 +1976,48 @@ func (q *Queries) ResolveWait(ctx context.Context, arg ResolveWaitParams) error 
 	return err
 }
 
+const runningStepsByExecutor = `-- name: RunningStepsByExecutor :many
+SELECT st.stream_id, st.status, st.executor, count(*)::int AS n
+FROM stream_step st
+JOIN stream s ON s.id = st.stream_id AND s.active
+WHERE st.status IN ('running', 'queued')
+GROUP BY st.stream_id, st.status, st.executor
+`
+
+type RunningStepsByExecutorRow struct {
+	StreamID pgtype.UUID `json:"stream_id"`
+	Status   string      `json:"status"`
+	Executor string      `json:"executor"`
+	N        int32       `json:"n"`
+}
+
+// Slot accounting across active streams (§6.7): running steps per executor
+// and which streams have queued ones.
+func (q *Queries) RunningStepsByExecutor(ctx context.Context) ([]RunningStepsByExecutorRow, error) {
+	rows, err := q.db.Query(ctx, runningStepsByExecutor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RunningStepsByExecutorRow{}
+	for rows.Next() {
+		var i RunningStepsByExecutorRow
+		if err := rows.Scan(
+			&i.StreamID,
+			&i.Status,
+			&i.Executor,
+			&i.N,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const runtimeLastSeen = `-- name: RuntimeLastSeen :one
 SELECT last_seen_at FROM agent_runtime WHERE id = $1
 `
@@ -2108,6 +2150,27 @@ type SetStreamSummaryParams struct {
 func (q *Queries) SetStreamSummary(ctx context.Context, arg SetStreamSummaryParams) error {
 	_, err := q.db.Exec(ctx, setStreamSummary, arg.ID, arg.Summary)
 	return err
+}
+
+const streamCostSince = `-- name: StreamCostSince :one
+SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+FROM task_usage u
+JOIN agent_task_queue q ON q.id = u.task_id
+WHERE q.context->>'stream_id' = $1::text AND u.created_at >= $2::timestamptz
+`
+
+type StreamCostSinceParams struct {
+	StreamID string             `json:"stream_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+}
+
+// Provider-reported cost of a stream's tasks since a moment, in 1e-10 USD.
+// Rows without a reported cost are not estimated here.
+func (q *Queries) StreamCostSince(ctx context.Context, arg StreamCostSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, streamCostSince, arg.StreamID, arg.Since)
+	var ticks int64
+	err := row.Scan(&ticks)
+	return ticks, err
 }
 
 const tagTaskContext = `-- name: TagTaskContext :exec

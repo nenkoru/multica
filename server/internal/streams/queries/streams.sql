@@ -393,3 +393,20 @@ UPDATE multika_charter SET slug = $2, stream_id = $3, error = $4 WHERE task_id =
 UPDATE multika_charter SET reported_at = now()
 WHERE workspace_id = $1 AND reported_at IS NULL
 RETURNING *;
+
+-- name: RunningStepsByExecutor :many
+-- Slot accounting across active streams (§6.7): running steps per executor
+-- and which streams have queued ones.
+SELECT st.stream_id, st.status, st.executor, count(*)::int AS n
+FROM stream_step st
+JOIN stream s ON s.id = st.stream_id AND s.active
+WHERE st.status IN ('running', 'queued')
+GROUP BY st.stream_id, st.status, st.executor;
+
+-- name: StreamCostSince :one
+-- Provider-reported cost of a stream's tasks since a moment, in 1e-10 USD.
+-- Rows without a reported cost are not estimated here.
+SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+FROM task_usage u
+JOIN agent_task_queue q ON q.id = u.task_id
+WHERE q.context->>'stream_id' = @stream_id::text AND u.created_at >= @since::timestamptz;
