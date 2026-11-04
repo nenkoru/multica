@@ -1270,6 +1270,17 @@ type Milestone struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type MultikaCharter struct {
+	TaskID        pgtype.UUID        `json:"task_id"`
+	ChatSessionID pgtype.UUID        `json:"chat_session_id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	Slug          string             `json:"slug"`
+	StreamID      pgtype.UUID        `json:"stream_id"`
+	Error         string             `json:"error"`
+	ReportedAt    pgtype.Timestamptz `json:"reported_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
 type MultikaTurn struct {
 	TaskID        pgtype.UUID        `json:"task_id"`
 	ChatSessionID pgtype.UUID        `json:"chat_session_id"`

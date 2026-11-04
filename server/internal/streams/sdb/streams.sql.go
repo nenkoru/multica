@@ -62,6 +62,35 @@ func (q *Queries) AppendQueuedStepBrief(ctx context.Context, arg AppendQueuedSte
 	return result.RowsAffected(), nil
 }
 
+const claimMultikaCharter = `-- name: ClaimMultikaCharter :one
+INSERT INTO multika_charter (task_id, chat_session_id, workspace_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (task_id) DO NOTHING
+RETURNING task_id, chat_session_id, workspace_id, slug, stream_id, error, reported_at, created_at
+`
+
+type ClaimMultikaCharterParams struct {
+	TaskID        pgtype.UUID `json:"task_id"`
+	ChatSessionID pgtype.UUID `json:"chat_session_id"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) ClaimMultikaCharter(ctx context.Context, arg ClaimMultikaCharterParams) (MultikaCharter, error) {
+	row := q.db.QueryRow(ctx, claimMultikaCharter, arg.TaskID, arg.ChatSessionID, arg.WorkspaceID)
+	var i MultikaCharter
+	err := row.Scan(
+		&i.TaskID,
+		&i.ChatSessionID,
+		&i.WorkspaceID,
+		&i.Slug,
+		&i.StreamID,
+		&i.Error,
+		&i.ReportedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const clearChatFocus = `-- name: ClearChatFocus :exec
 UPDATE chat_focus SET focus_stream_id = NULL, focus_until = NULL, updated_at = now()
 WHERE chat_session_id = $1
@@ -143,6 +172,67 @@ func (q *Queries) CountStepsSinceSummarize(ctx context.Context, streamID pgtype.
 	return count, err
 }
 
+const createStream = `-- name: CreateStream :one
+INSERT INTO stream (workspace_id, slug, title, charter, weight, min_share, max_parallel, manager_agent_id, carrier_project_id, active)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (workspace_id, slug) DO NOTHING
+RETURNING id, workspace_id, slug, title, charter, summary, state, reason, until, weight, min_share, max_parallel, manager_agent_id, carrier_project_id, next_seq, fail_streak, last_milestone_at, active, created_at, updated_at
+`
+
+type CreateStreamParams struct {
+	WorkspaceID      pgtype.UUID    `json:"workspace_id"`
+	Slug             string         `json:"slug"`
+	Title            string         `json:"title"`
+	Charter          []byte         `json:"charter"`
+	Weight           int32          `json:"weight"`
+	MinShare         pgtype.Numeric `json:"min_share"`
+	MaxParallel      int32          `json:"max_parallel"`
+	ManagerAgentID   pgtype.UUID    `json:"manager_agent_id"`
+	CarrierProjectID pgtype.UUID    `json:"carrier_project_id"`
+	Active           bool           `json:"active"`
+}
+
+// A new stream only: an existing slug returns no row instead of overwriting
+// its charter.
+func (q *Queries) CreateStream(ctx context.Context, arg CreateStreamParams) (Stream, error) {
+	row := q.db.QueryRow(ctx, createStream,
+		arg.WorkspaceID,
+		arg.Slug,
+		arg.Title,
+		arg.Charter,
+		arg.Weight,
+		arg.MinShare,
+		arg.MaxParallel,
+		arg.ManagerAgentID,
+		arg.CarrierProjectID,
+		arg.Active,
+	)
+	var i Stream
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Slug,
+		&i.Title,
+		&i.Charter,
+		&i.Summary,
+		&i.State,
+		&i.Reason,
+		&i.Until,
+		&i.Weight,
+		&i.MinShare,
+		&i.MaxParallel,
+		&i.ManagerAgentID,
+		&i.CarrierProjectID,
+		&i.NextSeq,
+		&i.FailStreak,
+		&i.LastMilestoneAt,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const expireAskActions = `-- name: ExpireAskActions :exec
 UPDATE ui_action SET status = 'expired', done_at = now()
 WHERE ask_id = $1 AND status = 'pending'
@@ -173,6 +263,27 @@ UPDATE ui_action SET status = 'failed', done_at = now() WHERE id = $1 AND status
 
 func (q *Queries) FailUIAction(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, failUIAction, id)
+	return err
+}
+
+const finishMultikaCharter = `-- name: FinishMultikaCharter :exec
+UPDATE multika_charter SET slug = $2, stream_id = $3, error = $4 WHERE task_id = $1
+`
+
+type FinishMultikaCharterParams struct {
+	TaskID   pgtype.UUID `json:"task_id"`
+	Slug     string      `json:"slug"`
+	StreamID pgtype.UUID `json:"stream_id"`
+	Error    string      `json:"error"`
+}
+
+func (q *Queries) FinishMultikaCharter(ctx context.Context, arg FinishMultikaCharterParams) error {
+	_, err := q.db.Exec(ctx, finishMultikaCharter,
+		arg.TaskID,
+		arg.Slug,
+		arg.StreamID,
+		arg.Error,
+	)
 	return err
 }
 
@@ -826,6 +937,56 @@ type LastStepOfKindParams struct {
 
 func (q *Queries) LastStepOfKind(ctx context.Context, arg LastStepOfKindParams) (StreamStep, error) {
 	row := q.db.QueryRow(ctx, lastStepOfKind, arg.StreamID, arg.Kind)
+	var i StreamStep
+	err := row.Scan(
+		&i.ID,
+		&i.StreamID,
+		&i.Seq,
+		&i.Kind,
+		&i.Status,
+		&i.Brief,
+		&i.Moves,
+		&i.CostClass,
+		&i.Executor,
+		&i.ExecutorAgentID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.Rejections,
+		&i.HangCount,
+		&i.LeaseUntil,
+		&i.RecoveryNote,
+		&i.Output,
+		&i.LastError,
+		&i.CarrierIssueID,
+		&i.TaskID,
+		&i.Origin,
+		&i.ReservedSlot,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const latestAcceptedVerify = `-- name: LatestAcceptedVerify :one
+SELECT id, stream_id, seq, kind, status, brief, moves, cost_class, executor, executor_agent_id, attempt, max_attempts, rejections, hang_count, lease_until, recovery_note, output, last_error, carrier_issue_id, task_id, origin, reserved_slot, created_at, started_at, finished_at, updated_at FROM stream_step
+WHERE stream_id = $1 AND kind = 'verify' AND status = 'done'
+  AND output->>'verdict' = 'accept'
+  AND finished_at > $2::timestamptz
+ORDER BY finished_at DESC
+LIMIT 1
+`
+
+type LatestAcceptedVerifyParams struct {
+	StreamID pgtype.UUID        `json:"stream_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+}
+
+// The newest verify accepted after the last milestone: a milestone needs one
+// (§8 p.3), and one acceptance backs one milestone.
+func (q *Queries) LatestAcceptedVerify(ctx context.Context, arg LatestAcceptedVerifyParams) (StreamStep, error) {
+	row := q.db.QueryRow(ctx, latestAcceptedVerify, arg.StreamID, arg.Since)
 	var i StreamStep
 	err := row.Scan(
 		&i.ID,
@@ -1964,6 +2125,42 @@ type TagTaskContextParams struct {
 func (q *Queries) TagTaskContext(ctx context.Context, arg TagTaskContextParams) error {
 	_, err := q.db.Exec(ctx, tagTaskContext, arg.Tags, arg.ID)
 	return err
+}
+
+const takeMultikaCharters = `-- name: TakeMultikaCharters :many
+UPDATE multika_charter SET reported_at = now()
+WHERE workspace_id = $1 AND reported_at IS NULL
+RETURNING task_id, chat_session_id, workspace_id, slug, stream_id, error, reported_at, created_at
+`
+
+// Outcomes Мультика has not told Руслан yet, oldest first; taking marks them.
+func (q *Queries) TakeMultikaCharters(ctx context.Context, workspaceID pgtype.UUID) ([]MultikaCharter, error) {
+	rows, err := q.db.Query(ctx, takeMultikaCharters, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MultikaCharter{}
+	for rows.Next() {
+		var i MultikaCharter
+		if err := rows.Scan(
+			&i.TaskID,
+			&i.ChatSessionID,
+			&i.WorkspaceID,
+			&i.Slug,
+			&i.StreamID,
+			&i.Error,
+			&i.ReportedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const taskLastProgress = `-- name: TaskLastProgress :one

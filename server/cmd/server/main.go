@@ -694,6 +694,8 @@ func main() {
 			slog.Info("fabrika: multika chat hooks on", "agent_id", v)
 		}
 	}
+	// Executors and manager of a stream from Мультика's interview (§9.3).
+	streamsSup.StreamTemplate = strings.TrimSpace(os.Getenv("FABRIKA_STREAM_TEMPLATE"))
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
 		Streams:             streamsSup,
 		HTTPMetrics:         httpMetrics,

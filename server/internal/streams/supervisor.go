@@ -32,6 +32,9 @@ type Supervisor struct {
 	// MultikaAgentID is the agent Руслан talks to (FABRIKA_MULTIKA_AGENT_ID).
 	// Unset keeps the chat hooks off (multika.go).
 	MultikaAgentID pgtype.UUID
+	// StreamTemplate is the slug of the stream whose executor chains and
+	// manager a stream from the interview copies (FABRIKA_STREAM_TEMPLATE).
+	StreamTemplate string
 	// AskButtons sends shown questions with inline buttons to Мультика's
 	// Telegram chat. Nil: questions go out as digest text only.
 	AskButtons AskButtonSender
@@ -428,8 +431,24 @@ func (s *Supervisor) dispatchQueued(ctx context.Context, st sdb.Stream, c Charte
 		case !isManage && runningWork >= int(st.MaxParallel):
 			continue
 		}
-		avoid := s.avoidFor(ctx, step)
-		ex, until, ok := PickExecutor(chainFor(st, c, step), states, avoid, now)
+		chain := chainFor(st, c, step)
+		if step.Kind == KindVerify {
+			author, seq := s.verifyAuthor(ctx, step)
+			chain = withoutExecutor(chain, author)
+			if len(chain) == 0 {
+				// §8: the check runs on another model or provider. A chain
+				// with only the author is a charter defect: falling back to
+				// the author would be a self-review, waiting would never end.
+				s.journal(ctx, st.ID, step.ID, "no_chain", map[string]any{"kind": step.Kind, "author": author.Name})
+				why := fmt.Sprintf("в уставе нет проверяющего на другой модели: шаг #%d сделал %s", seq, author.Name)
+				if err := s.breakStream(ctx, st, step, why, now); err != nil {
+					return time.Time{}, err
+				}
+				return time.Time{}, errStreamBroken
+			}
+		}
+		avoid := s.avoidFor(step)
+		ex, until, ok := PickExecutor(chain, states, avoid, now)
 		if !ok {
 			if until.IsZero() {
 				// No chain at all is a charter defect, not a budget state:
@@ -464,24 +483,52 @@ func (s *Supervisor) dispatchQueued(ctx context.Context, st sdb.Stream, c Charte
 	return budgetUntil, nil
 }
 
-// avoidFor returns executors a step should not land on: the author of the
-// work under verification (§8 "another model or provider") and the executor
+// avoidFor returns executors a step should preferably not land on: the one
 // that returned garbage twice (§6.4).
-func (s *Supervisor) avoidFor(ctx context.Context, step sdb.StreamStep) map[string]bool {
+func (s *Supervisor) avoidFor(step sdb.StreamStep) map[string]bool {
 	avoid := map[string]bool{}
-	if step.Kind == KindVerify {
-		if workID, ok := strings.CutPrefix(step.Origin, "verify:"); ok {
-			if id, err := parseUUID(workID); err == nil {
-				if work, err := s.Q.GetStep(ctx, id); err == nil && work.Executor != "" {
-					avoid[work.Executor] = true
-				}
-			}
-		}
-	}
 	if step.Executor != "" && strings.HasPrefix(step.LastError, "contract") && step.Attempt >= 2 {
 		avoid[step.Executor] = true
 	}
 	return avoid
+}
+
+// verifyAuthor returns the executor that did the work a verify step checks,
+// and that work's seq. Unknown (legacy origin, never dispatched) is zero.
+func (s *Supervisor) verifyAuthor(ctx context.Context, step sdb.StreamStep) (Executor, int32) {
+	workID, ok := strings.CutPrefix(step.Origin, "verify:")
+	if !ok {
+		return Executor{}, 0
+	}
+	id, err := parseUUID(workID)
+	if err != nil {
+		return Executor{}, 0
+	}
+	work, err := s.Q.GetStep(ctx, id)
+	if err != nil {
+		return Executor{}, 0
+	}
+	ex := Executor{Name: work.Executor}
+	if work.ExecutorAgentID.Valid {
+		ex.AgentID = uuidString(work.ExecutorAgentID)
+	}
+	return ex, work.Seq
+}
+
+// withoutExecutor drops the author from a verify chain: the same provider key
+// is the same model, and the same agent is the same author whatever its key.
+func withoutExecutor(chain []Executor, author Executor) []Executor {
+	if author.Name == "" && author.AgentID == "" {
+		return chain
+	}
+	out := make([]Executor, 0, len(chain))
+	for _, e := range chain {
+		if (author.Name != "" && e.Name == author.Name) || (author.AgentID != "" && strings.EqualFold(e.AgentID, author.AgentID)) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func (s *Supervisor) dispatch(ctx context.Context, st sdb.Stream, c Charter, step sdb.StreamStep, ex Executor, now time.Time) error {
@@ -820,12 +867,22 @@ func (s *Supervisor) handleCompleted(ctx context.Context, st sdb.Stream, c Chart
 func (s *Supervisor) applyManage(ctx context.Context, st sdb.Stream, step sdb.StreamStep, out StepOutput, ask *AskDraft, raw []byte, now time.Time) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.Q.WithTx(tx)
-		if _, err := q.LockStream(ctx, st.ID); err != nil {
+		locked, err := q.LockStream(ctx, st.ID)
+		if err != nil {
 			return err
 		}
 		if strings.TrimSpace(out.Summary) != "" {
 			if err := q.SetStreamSummary(ctx, sdb.SetStreamSummaryParams{ID: st.ID, Summary: out.Summary}); err != nil {
 				return err
+			}
+		}
+		if out.Milestone != nil {
+			ok, err := gateMilestone(ctx, q, locked, step, out.Milestone)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				out.Milestone = nil
 			}
 		}
 		if out.Milestone != nil {
@@ -893,6 +950,26 @@ func (s *Supervisor) applyManage(ctx context.Context, st sdb.Stream, step sdb.St
 		}
 		return q.FinishStep(ctx, sdb.FinishStepParams{ID: step.ID, Status: StepDone, Output: raw})
 	})
+}
+
+// gateMilestone lets a milestone through only when a verify accepted work
+// after the previous milestone (§8 p.3, §13), and adds that verify to the
+// evidence. Without one the claim is journaled as rejected and dropped; the
+// rest of the manager's turn still applies.
+func gateMilestone(ctx context.Context, q *sdb.Queries, st sdb.Stream, step sdb.StreamStep, m *MilestoneSpec) (bool, error) {
+	since := time.Unix(0, 0)
+	if st.LastMilestoneAt.Valid {
+		since = st.LastMilestoneAt.Time
+	}
+	v, err := q.LatestAcceptedVerify(ctx, sdb.LatestAcceptedVerifyParams{StreamID: st.ID, Since: ts(since)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, appendJournal(ctx, q, st.ID, step.ID, "milestone_rejected", map[string]any{"text": firstLine(m.Text, 200), "why": "нет принятой проверки после прошлой вехи"})
+	}
+	if err != nil {
+		return false, err
+	}
+	m.Evidence = append(m.Evidence, fmt.Sprintf("проверка #%d (%s): accept", v.Seq, v.Executor))
+	return true, nil
 }
 
 func (s *Supervisor) applyWork(ctx context.Context, st sdb.Stream, c Charter, step sdb.StreamStep, out StepOutput, ask *AskDraft, raw []byte, now time.Time) error {

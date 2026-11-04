@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/events"
@@ -29,4 +30,24 @@ func Subscribe(bus *events.Bus, s *Supervisor) {
 	kick := func(events.Event) { s.Kick() }
 	bus.Subscribe(protocol.EventTaskCompleted, kick)
 	bus.Subscribe(protocol.EventTaskFailed, kick)
+	if s.MultikaEnabled() {
+		bus.Subscribe(protocol.EventChatDone, func(e events.Event) {
+			p, ok := e.Payload.(protocol.ChatDonePayload)
+			if !ok || !strings.Contains(p.Content, "```fabrika-charter") {
+				return
+			}
+			sessionID, err1 := parseUUID(p.ChatSessionID)
+			taskID, err2 := parseUUID(p.TaskID)
+			if err1 != nil || err2 != nil {
+				return
+			}
+			// Off the publisher's goroutine: the chat reply is delivered
+			// whatever happens to the charter.
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				s.OnMultikaReply(ctx, sessionID, taskID, p.Content)
+			}()
+		})
+	}
 }

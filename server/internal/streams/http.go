@@ -151,7 +151,7 @@ type upsertRequest struct {
 
 // reservedSlugs are fixed routes under /api/streams that a stream slug
 // would shadow.
-var reservedSlugs = map[string]bool{"health": true, "digest": true, "answer": true, "waits": true}
+var reservedSlugs = map[string]bool{"health": true, "digest": true, "answer": true, "waits": true, "asks": true, "multika": true}
 
 var streamSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
