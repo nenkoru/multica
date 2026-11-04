@@ -1,6 +1,7 @@
 package streams
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -13,6 +14,8 @@ const OriginMigration = "migration"
 // MaxMigrateIssues bounds one migration turn: in_progress and blocked issues
 // only, backlog does not move.
 const MaxMigrateIssues = 40
+
+var errMigrationOpen = errors.New("migrate: this stream already has an open migration turn")
 
 var issueIdentifier = regexp.MustCompile(`^[A-Z][A-Z0-9]*-[0-9]+$`)
 

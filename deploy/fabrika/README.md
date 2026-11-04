@@ -125,7 +125,9 @@ All off until set on the server:
 
 Off until `FABRIKA_WHISPER_URL` points at an OpenAI-compatible transcription
 service (its root; `/v1/audio/transcriptions` is appended).
-`FABRIKA_WHISPER_MODEL` defaults to `whisper-1`. With it set, `GET
+`FABRIKA_WHISPER_MODEL` defaults to `whisper-1`. `FABRIKA_WHISPER_TOKEN`, if
+set, goes as `Authorization: Bearer …` (the in-cluster `fabrika-whisper`
+service needs it; mount it from a Secret with `secretKeyRef`). With the URL set, `GET
 /api/streams/multika` reports `"voice": true` and the web chat shows a
 microphone next to Send in Мультика's chat only: a note of up to a minute
 (5 MB) goes to `POST /api/streams/multika/voice` (multipart `file`), the text

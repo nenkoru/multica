@@ -209,10 +209,25 @@ func (h *HTTP) Upsert(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if len(migrate) > 0 {
+			// A second migration turn on a live stream would queue the old
+			// tails twice; after a failed one a new PUT is fine.
+			open, lerr := q.ListOpenSteps(r.Context(), st.ID)
+			if lerr != nil {
+				return lerr
+			}
+			for _, x := range open {
+				if x.Origin == OriginMigration {
+					return errMigrationOpen
+				}
+			}
 			_, err = insertStepTx(r.Context(), q, st.ID, KindSummarize, MigrationBrief(migrate), "", "S", OriginMigration, false)
 		}
 		return err
 	})
+	if errors.Is(err, errMigrationOpen) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -488,7 +503,12 @@ func (h *HTTP) MultikaVoice(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxVoiceBytes+1<<16)
 	if err := r.ParseMultipartForm(MaxVoiceBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "voice note too large or not multipart")
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeError(w, http.StatusRequestEntityTooLarge, "voice note too large")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "voice note is not multipart")
 		return
 	}
 	f, hdr, err := r.FormFile("file")

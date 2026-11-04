@@ -11,7 +11,13 @@ import { useT } from "../../i18n";
 /** A voice note longer than this stops by itself (the server takes ≤ 5 MB). */
 export const MAX_VOICE_MS = 60_000;
 
-type Phase = "idle" | "recording" | "transcribing";
+/**
+ * A permission prompt dismissed without an answer (Firefox "Not now") leaves
+ * getUserMedia pending forever; after this the button is usable again.
+ */
+export const PERMISSION_WAIT_MS = 30_000;
+
+type Phase = "idle" | "starting" | "recording" | "transcribing";
 
 /**
  * Voice input for Мультика's chat (harness-design §9, §13 day 9): records a
@@ -24,12 +30,21 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Set on unmount: a microphone granted after that is released at once.
+  const unmountedRef = useRef(false);
+  // Set from the first click until the recorder exists, the prompt fails or
+  // the wait for it times out.
+  const startingRef = useRef(false);
+  // Bumped when a permission wait is given up: a late grant is released.
+  const attemptRef = useRef(0);
 
   useEffect(
     () => () => {
+      unmountedRef.current = true;
       clearTimeout(timerRef.current);
       const rec = recorderRef.current;
       recorderRef.current = null;
+      if (rec) rec.onerror = null;
       if (rec && rec.state !== "inactive") {
         rec.onstop = null;
         rec.stop();
@@ -45,21 +60,61 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
   };
 
   const start = async () => {
+    if (startingRef.current || recorderRef.current) return;
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       toast.error(t(($) => $.voice.unsupported));
       return;
     }
+    // "starting" disables the button while the permission prompt is open, so
+    // a second click cannot open a second recorder.
+    startingRef.current = true;
+    setPhase("starting");
+    const attempt = ++attemptRef.current;
+    const giveUp = setTimeout(() => {
+      if (attemptRef.current !== attempt) return;
+      attemptRef.current++;
+      startingRef.current = false;
+      if (!unmountedRef.current) setPhase("idle");
+    }, PERMISSION_WAIT_MS);
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      toast.error(t(($) => $.voice.no_microphone));
+      clearTimeout(giveUp);
+      if (attemptRef.current !== attempt) return;
+      startingRef.current = false;
+      if (!unmountedRef.current) {
+        setPhase("idle");
+        toast.error(t(($) => $.voice.no_microphone));
+      }
       return;
     }
-    const rec = new MediaRecorder(stream);
+    clearTimeout(giveUp);
+    const stale = attemptRef.current !== attempt;
+    if (!stale) startingRef.current = false;
+    if (stale || unmountedRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    const rec = newRecorder(stream);
+    if (!rec) {
+      // No usable codec (NotSupportedError): release the microphone, stay usable.
+      stream.getTracks().forEach((track) => track.stop());
+      setPhase("idle");
+      toast.error(t(($) => $.voice.failed));
+      return;
+    }
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
+    };
+    rec.onerror = () => {
+      clearTimeout(timerRef.current);
+      rec.onstop = null;
+      stream.getTracks().forEach((track) => track.stop());
+      recorderRef.current = null;
+      setPhase("idle");
+      toast.error(t(($) => $.voice.failed));
     };
     rec.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
@@ -83,8 +138,15 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
         },
       );
     };
+    try {
+      rec.start();
+    } catch {
+      stream.getTracks().forEach((track) => track.stop());
+      setPhase("idle");
+      toast.error(t(($) => $.voice.failed));
+      return;
+    }
     recorderRef.current = rec;
-    rec.start();
     setPhase("recording");
     timerRef.current = setTimeout(stop, MAX_VOICE_MS);
   };
@@ -103,12 +165,12 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
       className="rounded-full"
       aria-label={label}
       aria-busy={phase === "transcribing" || undefined}
-      disabled={phase === "transcribing"}
+      disabled={phase === "transcribing" || phase === "starting"}
       onClick={phase === "recording" ? stop : () => void start()}
     >
       {phase === "recording" ? (
         <Square className="fill-current" aria-hidden="true" />
-      ) : phase === "transcribing" ? (
+      ) : phase === "transcribing" || phase === "starting" ? (
         <Loader2 className="animate-spin" aria-hidden="true" />
       ) : (
         <Mic aria-hidden="true" />
@@ -121,6 +183,14 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
   );
+}
+
+function newRecorder(stream: MediaStream): MediaRecorder | null {
+  try {
+    return new MediaRecorder(stream);
+  } catch {
+    return null;
+  }
 }
 
 /** File extension the transcription service uses to pick a decoder. */
