@@ -332,6 +332,54 @@ func (s *Supervisor) exhaustedLine(ctx context.Context, now time.Time) string {
 	return "Исчерпаны: " + strings.Join(parts, ", ")
 }
 
+// replyOutcome is what applyReply did with one reply.
+type replyOutcome int
+
+const (
+	replyApplied  replyOutcome = iota
+	replyMismatch              // does not fit the ask's kind or options
+	replyClosed                // the ask was resolved meanwhile; nothing done
+)
+
+// applyReply resolves one ask with one reply. The journal entry and the
+// crash-question pause follow only when this reply is the one that resolved
+// the ask, so a losing concurrent reply (a second button, a text answer, the
+// deadline default) changes nothing.
+func (s *Supervisor) applyReply(ctx context.Context, a sdb.Ask, r Reply, channel string, now time.Time) (replyOutcome, error) {
+	var opts []string
+	_ = json.Unmarshal(a.Options, &opts)
+	answer := map[string]any{"channel": channel, "at": now}
+	switch {
+	case a.Kind == "choice" && r.Choice >= 0 && r.Choice < len(opts):
+		answer["choice"] = r.Choice
+	case a.Kind == "choice" && r.Yes != nil && len(opts) == 2:
+		// "да/нет" on a two-way choice: да = first option.
+		if *r.Yes {
+			answer["choice"] = 0
+		} else {
+			answer["choice"] = 1
+		}
+	case a.Kind == "batch" && r.Yes != nil:
+		answer["items"] = *r.Yes
+	default:
+		return replyMismatch, nil
+	}
+	raw, _ := json.Marshal(answer)
+	n, err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "answered", Answer: raw})
+	if err != nil {
+		return replyMismatch, err
+	}
+	if n == 0 {
+		return replyClosed, nil
+	}
+	s.journal(ctx, a.StreamID, a.OriginStepID, "ask_answered", map[string]any{"text": a.Text, "answer": answer})
+	// The crash question's second option is "pause the stream" (§5.1).
+	if st, err := s.Q.GetStream(ctx, a.StreamID); err == nil && st.State == StateBroken && a.Zone == "red" && answer["choice"] == 1 {
+		_ = s.setState(ctx, st, StatePaused, "пауза после аварии (ответ Руслана)", time.Time{})
+	}
+	return replyApplied, nil
+}
+
 // AnswerResult reports what a one-line reply did.
 type AnswerResult struct {
 	Applied []string `json:"applied"`
@@ -359,35 +407,19 @@ func (s *Supervisor) Answer(ctx context.Context, workspaceID pgtype.UUID, line, 
 			unknown = append(unknown, fmt.Sprintf("покажи вопрос %d", r.N))
 			continue
 		}
-		var opts []string
-		_ = json.Unmarshal(a.Options, &opts)
-		answer := map[string]any{"channel": channel, "at": now}
-		switch {
-		case a.Kind == "choice" && r.Choice >= 0 && r.Choice < len(opts):
-			answer["choice"] = r.Choice
-		case a.Kind == "choice" && r.Yes != nil && len(opts) == 2:
-			// "да/нет" on a two-way choice: да = first option.
-			if *r.Yes {
-				answer["choice"] = 0
-			} else {
-				answer["choice"] = 1
-			}
-		case a.Kind == "batch" && r.Yes != nil:
-			answer["items"] = *r.Yes
-		default:
-			unknown = append(unknown, fmt.Sprintf("%d: не понял ответ", r.N))
-			continue
-		}
-		raw, _ := json.Marshal(answer)
-		if err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "answered", Answer: raw}); err != nil {
+		out, err := s.applyReply(ctx, a, r, channel, now)
+		if err != nil {
 			return res, err
 		}
-		s.journal(ctx, a.StreamID, a.OriginStepID, "ask_answered", map[string]any{"text": a.Text, "answer": answer})
-		res.Applied = append(res.Applied, fmt.Sprintf("%d → %s", r.N, a.Text))
-		// The crash question's second option is "pause the stream" (§5.1).
-		if st, err := s.Q.GetStream(ctx, a.StreamID); err == nil && st.State == StateBroken && a.Zone == "red" && answer["choice"] == 1 {
-			_ = s.setState(ctx, st, StatePaused, "пауза после аварии (ответ Руслана)", time.Time{})
+		switch out {
+		case replyMismatch:
+			unknown = append(unknown, fmt.Sprintf("%d: не понял ответ", r.N))
+			continue
+		case replyClosed:
+			unknown = append(unknown, fmt.Sprintf("%d: уже отвечено", r.N))
+			continue
 		}
+		res.Applied = append(res.Applied, fmt.Sprintf("%d → %s", r.N, a.Text))
 	}
 	if len(unknown) > 0 {
 		if res.Rest != "" {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -37,6 +38,7 @@ func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor) {
 	r.Get("/api/streams", h.List)
 	r.Post("/api/streams/digest", h.Digest)
 	r.Post("/api/streams/answer", h.Answer)
+	r.Post("/api/streams/asks/push", h.PushAsks)
 	r.Post("/api/streams/waits/{id}/fire", h.FireWait)
 	r.Get("/api/streams/multika", h.Multika)
 	r.Get("/api/streams/{slug}", h.Get)
@@ -82,4 +84,39 @@ func multikaTelegramNotices(sup *streams.Supervisor) telegram.NoticesFunc {
 			NewChatDisabled: streams.MultikaNewChatDisabledText,
 		}, true
 	}
+}
+
+// multikaTelegramCallbacks routes inline button presses on Мультика's bot to
+// the question buttons (§7). Nil without the flag: the polling loop then does
+// not even ask Telegram for callback queries.
+func multikaTelegramCallbacks(sup *streams.Supervisor) telegram.CallbackFunc {
+	if sup == nil || !sup.MultikaEnabled() {
+		return nil
+	}
+	return sup.PressAskButton
+}
+
+// askButtonSender adapts telegram.ButtonSender to streams.AskButtonSender.
+type askButtonSender struct{ s *telegram.ButtonSender }
+
+func (a askButtonSender) SendButtons(ctx context.Context, installationID pgtype.UUID, chatID int64, text string, rows [][]streams.AskButton) error {
+	out := make([][]telegram.Button, 0, len(rows))
+	for _, row := range rows {
+		r := make([]telegram.Button, 0, len(row))
+		for _, b := range row {
+			r = append(r, telegram.Button{Text: b.Text, Data: b.Data})
+		}
+		out = append(out, r)
+	}
+	_, err := a.s.Send(ctx, installationID, chatID, text, out)
+	return err
+}
+
+// wireMultikaAskButtons lets the supervisor send question buttons through
+// the Telegram integration's bots.
+func wireMultikaAskButtons(sup *streams.Supervisor, s *telegram.ButtonSender) {
+	if sup == nil || !sup.MultikaEnabled() {
+		return
+	}
+	sup.AskButtons = askButtonSender{s: s}
 }

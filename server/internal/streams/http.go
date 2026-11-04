@@ -272,6 +272,22 @@ func (h *HTTP) Digest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"slot": slot, "text": text})
 }
 
+// PushAsks: POST /api/streams/asks/push — shown questions without live
+// buttons go to Мультика's Telegram chat with inline buttons. Called after the
+// digest text is sent; a no-op without the Мультика flag or a Telegram chat.
+func (h *HTTP) PushAsks(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	n, err := h.Sup.PushAskButtons(r.Context(), ws)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sent": n})
+}
+
 // Answer: POST /api/streams/answer {"line": "1 а, 2 да", "channel": "telegram"}.
 func (h *HTTP) Answer(w http.ResponseWriter, r *http.Request) {
 	ws, ok := h.workspace(w, r)

@@ -26,3 +26,9 @@ text=$(printf '%s' "$resp" | python3 -c 'import sys,json; print(json.load(sys.st
 # An evening slot with nothing to answer is empty by design.
 [ -n "$text" ] || exit 0
 printf '%s\n' "$text" | $FABRIKA_NOTIFY digest
+# Questions with buttons in Мультика's Telegram chat (§7). Best-effort: the
+# digest text above already carries them, so a failure here only logs.
+[ "$SLOT" = preview ] && exit 0
+curl -sS -m 60 --fail -o /dev/null -X POST \
+  -H "Authorization: Bearer $FABRIKA_TOKEN" -H "X-Workspace-ID: $FABRIKA_WORKSPACE_ID" \
+  "${FABRIKA_API%/}/api/streams/asks/push" || echo "fabrika-digest: asks/push failed" >&2

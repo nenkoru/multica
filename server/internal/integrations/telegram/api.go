@@ -315,11 +315,32 @@ type MessageEntity struct {
 	Length int    `json:"length"`
 }
 
-// Update is the getUpdates envelope entry. Only new messages are consumed;
-// edits, channel posts, and callback queries are ignored in v1.
+// Update is the getUpdates envelope entry. New messages are consumed; button
+// presses (callback queries) only when the installation has a callback
+// handler. Edits and channel posts are ignored.
 type Update struct {
-	UpdateID int64    `json:"update_id"`
-	Message  *Message `json:"message"`
+	UpdateID      int64          `json:"update_id"`
+	Message       *Message       `json:"message"`
+	CallbackQuery *CallbackQuery `json:"callback_query,omitempty"`
+}
+
+// CallbackQuery is a press on an inline keyboard button.
+type CallbackQuery struct {
+	ID      string   `json:"id"`
+	From    *User    `json:"from"`
+	Message *Message `json:"message"`
+	Data    string   `json:"data"`
+}
+
+// InlineKeyboardButton is one inline button; CallbackData is at most 64 bytes.
+type InlineKeyboardButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
+// InlineKeyboardMarkup is a message's inline keyboard, row by row.
+type InlineKeyboardMarkup struct {
+	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
 // GetMe validates the token and returns the bot's own identity.
@@ -351,13 +372,22 @@ type getUpdatesParams struct {
 
 // GetUpdates long-polls for new updates. A 409 is translated to ErrConflict.
 func (a *botAPI) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
+	return a.getUpdates(ctx, offset, false)
+}
+
+// getUpdates restricts the stream to plain messages (fewer wakeups; edits,
+// reactions and channel posts never enter the pipeline), plus button presses
+// when callbacks is set.
+func (a *botAPI) getUpdates(ctx context.Context, offset int64, callbacks bool) ([]Update, error) {
+	allowed := []string{"message"}
+	if callbacks {
+		allowed = append(allowed, "callback_query")
+	}
 	var updates []Update
 	err := a.call(ctx, "getUpdates", getUpdatesParams{
-		Offset:  offset,
-		Timeout: longPollTimeoutSecs,
-		// Restrict the stream to plain messages: fewer wakeups, and edits /
-		// reactions / channel posts never enter the pipeline.
-		AllowedUpdates: []string{"message"},
+		Offset:         offset,
+		Timeout:        longPollTimeoutSecs,
+		AllowedUpdates: allowed,
 	}, &updates)
 	if err != nil {
 		var ae *apiError
@@ -370,11 +400,12 @@ func (a *botAPI) GetUpdates(ctx context.Context, offset int64) ([]Update, error)
 }
 
 type sendMessageParams struct {
-	ChatID          int64            `json:"chat_id"`
-	Text            string           `json:"text"`
-	ParseMode       string           `json:"parse_mode,omitempty"`
-	MessageThreadID int64            `json:"message_thread_id,omitempty"`
-	ReplyParameters *replyParameters `json:"reply_parameters,omitempty"`
+	ChatID          int64                 `json:"chat_id"`
+	Text            string                `json:"text"`
+	ParseMode       string                `json:"parse_mode,omitempty"`
+	MessageThreadID int64                 `json:"message_thread_id,omitempty"`
+	ReplyParameters *replyParameters      `json:"reply_parameters,omitempty"`
+	ReplyMarkup     *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 }
 
 // replyParameters is Telegram's current quote-reply shape. The legacy
@@ -411,12 +442,22 @@ type editMessageTextParams struct {
 	MessageID int64  `json:"message_id"`
 	Text      string `json:"text"`
 	ParseMode string `json:"parse_mode,omitempty"`
+	// ReplyMarkup nil leaves the keyboard off the edited message.
+	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 }
 
 // EditMessageText replaces a previously sent message's text — the streaming
 // primitive. "message is not modified" errors are swallowed by the caller.
 func (a *botAPI) EditMessageText(ctx context.Context, p editMessageTextParams) error {
 	return a.call(ctx, "editMessageText", p, nil)
+}
+
+// AnswerCallbackQuery stops the button's spinner; text shows as a toast.
+func (a *botAPI) AnswerCallbackQuery(ctx context.Context, id, text string) error {
+	return a.call(ctx, "answerCallbackQuery", struct {
+		CallbackQueryID string `json:"callback_query_id"`
+		Text            string `json:"text,omitempty"`
+	}{CallbackQueryID: id, Text: text}, nil)
 }
 
 // SendChatAction shows the native "typing…" indicator for ~5s in the same
