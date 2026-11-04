@@ -190,3 +190,76 @@ func TestAskButtonsOffWithoutFlag(t *testing.T) {
 		t.Fatalf("n=%d err=%v sent=%d", n, err, len(fake.sent))
 	}
 }
+
+// TestAskButtonsLosingPressOfCrashQuestionChangesNothing: both buttons of a
+// red crash question are pressed at once. The press that loses the race
+// must not pause the stream or journal an answer the ask does not hold.
+func TestAskButtonsLosingPressOfCrashQuestionChangesNothing(t *testing.T) {
+	h := newHarness(t, "askbtnrace")
+	h.cleanupActions()
+	ctx := context.Background()
+	ws, _ := parseUUID(testWorkspaceID)
+	inst, chat := h.multikaTelegram(454545)
+	fake := &fakeButtonSender{}
+	h.sup.AskButtons = fake
+	h.askShown("Поток упал. Продолжить?")
+	h.f.Exec(t, `UPDATE ask SET zone = 'red' WHERE stream_id = $1`, h.stream.ID)
+	h.f.Exec(t, `UPDATE stream SET state = 'broken' WHERE id = $1`, h.stream.ID)
+	if _, err := h.sup.PushAskButtons(ctx, ws); err != nil || len(fake.sent) != 1 {
+		t.Fatalf("push err=%v sent=%d", err, len(fake.sent))
+	}
+	rows := fake.sent[0].rows
+	var askID pgtype.UUID
+	if err := testPool.QueryRow(ctx, `SELECT id FROM ask WHERE stream_id = $1`, h.stream.ID).Scan(&askID); err != nil {
+		t.Fatal(err)
+	}
+	// Both presses read the ask while it is still open, then the first wins.
+	stale, err := h.sup.Q.GetAsk(ctx, askID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, rows[0][0].Data); done != "✓ а) продлить" {
+		t.Fatalf("first press: %q", done)
+	}
+	out, err := h.sup.applyReply(ctx, stale, Reply{Choice: 1}, askButtonsChan, time.Now())
+	if err != nil || out != replyClosed {
+		t.Fatalf("losing reply: out=%v err=%v", out, err)
+	}
+	if st := h.reload(); st.State == StatePaused {
+		t.Fatal("losing «pause» reply paused the stream")
+	}
+	if h.journalCount("ask_answered") != 1 {
+		t.Fatalf("ask_answered journaled %d times", h.journalCount("ask_answered"))
+	}
+	var choice int
+	if err := testPool.QueryRow(ctx, `SELECT (answer->>'choice')::int FROM ask WHERE id = $1`, askID).Scan(&choice); err != nil || choice != 0 {
+		t.Fatalf("stored choice %d err %v", choice, err)
+	}
+}
+
+// TestMultikaTelegramTargetIsTheInstallersChat: another member's direct chat
+// with Мультика's bot never receives the question buttons.
+func TestMultikaTelegramTargetIsTheInstallersChat(t *testing.T) {
+	h := newHarness(t, "askbtnowner")
+	h.cleanupActions()
+	ctx := context.Background()
+	ws, _ := parseUUID(testWorkspaceID)
+	inst, chat := h.multikaTelegram(464646)
+	// A newer direct chat of someone else with the same bot.
+	other := h.f.User(t, "askbtn-other", "askbtn-other@example.test")
+	sid := h.f.ChatSession(t, uuidString(h.sup.MultikaAgentID), testutil.Cols{"creator_id": other})
+	bind := h.f.Insert(t, "channel_chat_session_binding", testutil.Cols{
+		"chat_session_id": sid, "installation_id": uuidString(inst), "channel_type": "telegram",
+		"channel_chat_id": "474747", "chat_type": "p2p", "created_at": time.Now().Add(time.Hour),
+	})
+	t.Cleanup(func() { _, _ = testPool.Exec(ctx, `DELETE FROM channel_chat_session_binding WHERE id = $1`, bind) })
+	fake := &fakeButtonSender{}
+	h.sup.AskButtons = fake
+	h.askShown("Продлить домен?")
+	if _, err := h.sup.PushAskButtons(ctx, ws); err != nil || len(fake.sent) != 1 || fake.sent[0].chat != chat {
+		t.Fatalf("err=%v sent=%+v", err, fake.sent)
+	}
+	if toast, _ := h.sup.PressAskButton(ctx, inst, 474747, 474747, fake.sent[0].rows[0][0].Data); toast != pressNotOurs {
+		t.Fatalf("other member's press: %q", toast)
+	}
+}

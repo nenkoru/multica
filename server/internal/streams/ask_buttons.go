@@ -218,8 +218,15 @@ func (s *Supervisor) PressAskButton(ctx context.Context, installationID pgtype.U
 	if n == 0 {
 		return pressAnswered, ""
 	}
-	ok, err := s.applyReply(ctx, a, r, askButtonsChan, s.now())
-	if err != nil || !ok {
+	out, err := s.applyReply(ctx, a, r, askButtonsChan, s.now())
+	if err == nil && out == replyClosed {
+		// Another button or a text answer resolved it first: this press
+		// changed nothing, so its action ends expired, not done.
+		_ = s.Q.ReleaseUIAction(ctx, ua.ID)
+		_ = s.Q.ExpireAskActions(ctx, a.ID)
+		return pressClosed, "— " + pressClosed
+	}
+	if err != nil || out != replyApplied {
 		_ = s.Q.ReleaseUIAction(ctx, ua.ID)
 		return pressFailed, ""
 	}

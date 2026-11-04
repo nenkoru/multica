@@ -1052,14 +1052,22 @@ func (s *Supervisor) settleAsks(ctx context.Context, st sdb.Stream, now time.Tim
 		}
 		switch {
 		case a.Status == "queued":
-			if err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "dropped", Answer: []byte(`{"reason":"устарел, не показан"}`)}); err != nil {
+			n, err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "dropped", Answer: []byte(`{"reason":"устарел, не показан"}`)})
+			if err != nil {
 				return err
+			}
+			if n == 0 {
+				continue // answered meanwhile
 			}
 			s.journal(ctx, st.ID, a.OriginStepID, "ask_dropped", map[string]any{"text": a.Text})
 		case a.Zone == "normal" && a.DefaultOption.Valid:
 			ans, _ := json.Marshal(map[string]any{"choice": a.DefaultOption.Int32, "channel": "default", "at": now})
-			if err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "defaulted", Answer: ans}); err != nil {
+			n, err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "defaulted", Answer: ans})
+			if err != nil {
 				return err
+			}
+			if n == 0 {
+				continue // answered meanwhile
 			}
 			s.journal(ctx, st.ID, a.OriginStepID, "ask_defaulted", map[string]any{"text": a.Text, "choice": a.DefaultOption.Int32})
 		case !a.RemindedAt.Valid:
