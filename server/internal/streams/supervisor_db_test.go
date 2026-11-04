@@ -663,3 +663,47 @@ func TestDBAcceptsEveryValidatorValue(t *testing.T) {
 		t.Error("stream_wait accepted kind \"bogus\"")
 	}
 }
+
+// RUSL-2620: the 27B went silent for 10m18s while alive. A class S step
+// keeps its lease for 25 min of silence; class M still hangs after 10.
+func TestSupervisorSilentClassSStepIsNotHung(t *testing.T) {
+	for _, tc := range []struct {
+		cost   string
+		cancel bool
+	}{{"S", false}, {"M", true}} {
+		h := newHarness(t, "silent"+strings.ToLower(tc.cost))
+		h.planAndRunWork(tc.cost)
+		work := h.only(KindWork, StepRunning)
+		h.f.Exec(t, `UPDATE agent_task_queue SET status = 'running', started_at = now() - interval '15 minutes' WHERE id = $1`, uuidString(work.TaskID))
+		h.f.Exec(t, `INSERT INTO task_message (task_id, seq, type, content, created_at) VALUES ($1, 1, 'text', 'читаю журнал', now() - interval '12 minutes')`, uuidString(work.TaskID))
+		h.f.Exec(t, `UPDATE stream_step SET lease_until = now() - interval '1 minute' WHERE id = $1`, uuidString(work.ID))
+		h.tick()
+		if got := len(h.carrier.cancelled) == 1; got != tc.cancel {
+			t.Fatalf("%s: cancelled %v", tc.cost, h.carrier.cancelled)
+		}
+		if !tc.cancel {
+			if s := h.only(KindWork, StepRunning); s.HangCount != 0 || !s.LeaseUntil.Time.After(time.Now().Add(12*time.Minute)) {
+				t.Fatalf("S lease not extended: %+v", s)
+			}
+		}
+	}
+}
+
+// RUSL-2625: a verify turn that spells its verdict only in result is
+// applied, not retried.
+func TestSupervisorVerifyVerdictInResultIsApplied(t *testing.T) {
+	h := newHarness(t, "verdict")
+	h.planAndRunWork("M")
+	h.finish(h.only(KindWork, StepRunning), contract(map[string]any{"result": "ветка собрана", "evidence": []string{"ci:run/1"}}))
+	h.tick()
+	h.finish(h.only(KindVerify, StepRunning), "Вердикт — rework.\n"+contract(map[string]any{"result": "rework: тестов нет"}))
+	h.tick()
+	if n := h.journalCount("step_retry"); n != 0 {
+		t.Fatalf("verify retried %d times", n)
+	}
+	for _, s := range h.open() {
+		if s.Kind == KindVerify {
+			t.Fatalf("verify still open: %+v", s)
+		}
+	}
+}
