@@ -311,3 +311,48 @@ SELECT * FROM multika_turn WHERE task_id = $1;
 -- Coalesces chat remarks into a manager turn that has not started yet.
 UPDATE stream_step SET brief = brief || E'\n' || @line::text
 WHERE id = @id AND status = 'queued' AND task_id IS NULL;
+
+-- name: MultikaTelegramTarget :one
+-- Where Мультика's Telegram direct chat lives, for messages with buttons.
+SELECT b.installation_id, b.channel_chat_id FROM channel_chat_session_binding b
+JOIN channel_installation i ON i.id = b.installation_id
+WHERE i.agent_id = $1 AND i.workspace_id = $2 AND i.status = 'active'
+  AND i.channel_type = 'telegram' AND b.retired_at IS NULL AND b.chat_type = 'p2p'
+ORDER BY b.created_at DESC LIMIT 1;
+
+-- name: MultikaTelegramChatWorkspace :one
+-- The workspace of a press, only when it came from Мультика's live direct chat.
+SELECT i.workspace_id FROM channel_chat_session_binding b
+JOIN channel_installation i ON i.id = b.installation_id
+WHERE b.installation_id = @installation_id AND b.channel_chat_id = @channel_chat_id
+  AND i.agent_id = @agent_id AND i.status = 'active'
+  AND b.retired_at IS NULL AND b.chat_type = 'p2p';
+
+-- name: InsertUIAction :one
+INSERT INTO ui_action (ask_id, token, action, zone, idempotency_key)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (idempotency_key) DO NOTHING
+RETURNING *;
+
+-- name: CountAskActions :one
+SELECT count(*) FROM ui_action WHERE ask_id = $1 AND status <> 'failed';
+
+-- name: GetUIActionByToken :one
+SELECT * FROM ui_action WHERE token = $1;
+
+-- name: FinishUIAction :execrows
+-- Claims a pending action; 0 rows means another press got there first.
+UPDATE ui_action SET status = @status, result = @result, done_at = now()
+WHERE id = @id AND status = 'pending';
+
+-- name: ReleaseUIAction :exec
+-- Gives a claimed action back when applying it failed.
+UPDATE ui_action SET status = 'pending', result = NULL, done_at = NULL
+WHERE id = $1 AND status = 'done';
+
+-- name: FailUIAction :exec
+UPDATE ui_action SET status = 'failed', done_at = now() WHERE id = $1 AND status = 'pending';
+
+-- name: ExpireAskActions :exec
+UPDATE ui_action SET status = 'expired', done_at = now()
+WHERE ask_id = $1 AND status = 'pending';

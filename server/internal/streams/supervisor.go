@@ -32,6 +32,9 @@ type Supervisor struct {
 	// MultikaAgentID is the agent Руслан talks to (FABRIKA_MULTIKA_AGENT_ID).
 	// Unset keeps the chat hooks off (multika.go).
 	MultikaAgentID pgtype.UUID
+	// AskButtons sends shown questions with inline buttons to Мультика's
+	// Telegram chat. Nil: questions go out as digest text only.
+	AskButtons AskButtonSender
 
 	kick chan struct{}
 }

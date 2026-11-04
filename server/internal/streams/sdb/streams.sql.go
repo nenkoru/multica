@@ -82,6 +82,17 @@ func (q *Queries) ClearExecutorStatus(ctx context.Context, executor string) erro
 	return err
 }
 
+const countAskActions = `-- name: CountAskActions :one
+SELECT count(*) FROM ui_action WHERE ask_id = $1 AND status <> 'failed'
+`
+
+func (q *Queries) CountAskActions(ctx context.Context, askID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAskActions, askID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countAsksShownSince = `-- name: CountAsksShownSince :one
 SELECT count(*) FROM ask a JOIN stream s ON s.id = a.stream_id
 WHERE s.workspace_id = $1 AND a.shown_at >= $2
@@ -132,6 +143,16 @@ func (q *Queries) CountStepsSinceSummarize(ctx context.Context, streamID pgtype.
 	return count, err
 }
 
+const expireAskActions = `-- name: ExpireAskActions :exec
+UPDATE ui_action SET status = 'expired', done_at = now()
+WHERE ask_id = $1 AND status = 'pending'
+`
+
+func (q *Queries) ExpireAskActions(ctx context.Context, askID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, expireAskActions, askID)
+	return err
+}
+
 const extendStepLease = `-- name: ExtendStepLease :exec
 UPDATE stream_step SET lease_until = $2, updated_at = now() WHERE id = $1 AND (lease_until IS NULL OR lease_until < $2)
 `
@@ -143,6 +164,15 @@ type ExtendStepLeaseParams struct {
 
 func (q *Queries) ExtendStepLease(ctx context.Context, arg ExtendStepLeaseParams) error {
 	_, err := q.db.Exec(ctx, extendStepLease, arg.ID, arg.LeaseUntil)
+	return err
+}
+
+const failUIAction = `-- name: FailUIAction :exec
+UPDATE ui_action SET status = 'failed', done_at = now() WHERE id = $1 AND status = 'pending'
+`
+
+func (q *Queries) FailUIAction(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, failUIAction, id)
 	return err
 }
 
@@ -172,6 +202,26 @@ func (q *Queries) FinishStep(ctx context.Context, arg FinishStepParams) error {
 		arg.LastError,
 	)
 	return err
+}
+
+const finishUIAction = `-- name: FinishUIAction :execrows
+UPDATE ui_action SET status = $1, result = $2, done_at = now()
+WHERE id = $3 AND status = 'pending'
+`
+
+type FinishUIActionParams struct {
+	Status string      `json:"status"`
+	Result []byte      `json:"result"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+// Claims a pending action; 0 rows means another press got there first.
+func (q *Queries) FinishUIAction(ctx context.Context, arg FinishUIActionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishUIAction, arg.Status, arg.Result, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getAsk = `-- name: GetAsk :one
@@ -421,6 +471,29 @@ func (q *Queries) GetSupervisorState(ctx context.Context) (StreamSupervisorState
 	return i, err
 }
 
+const getUIActionByToken = `-- name: GetUIActionByToken :one
+SELECT id, ui_block_id, ask_id, token, action, zone, idempotency_key, status, result, created_at, done_at FROM ui_action WHERE token = $1
+`
+
+func (q *Queries) GetUIActionByToken(ctx context.Context, token string) (UiAction, error) {
+	row := q.db.QueryRow(ctx, getUIActionByToken, token)
+	var i UiAction
+	err := row.Scan(
+		&i.ID,
+		&i.UiBlockID,
+		&i.AskID,
+		&i.Token,
+		&i.Action,
+		&i.Zone,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.Result,
+		&i.CreatedAt,
+		&i.DoneAt,
+	)
+	return i, err
+}
+
 const getWait = `-- name: GetWait :one
 SELECT id, stream_id, step_id, kind, "check", deadline, on_deadline, status, cursor, created_at, resolved_at FROM stream_wait WHERE id = $1
 `
@@ -628,6 +701,46 @@ func (q *Queries) InsertStep(ctx context.Context, arg InsertStepParams) (StreamS
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertUIAction = `-- name: InsertUIAction :one
+INSERT INTO ui_action (ask_id, token, action, zone, idempotency_key)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (idempotency_key) DO NOTHING
+RETURNING id, ui_block_id, ask_id, token, action, zone, idempotency_key, status, result, created_at, done_at
+`
+
+type InsertUIActionParams struct {
+	AskID          pgtype.UUID `json:"ask_id"`
+	Token          string      `json:"token"`
+	Action         []byte      `json:"action"`
+	Zone           string      `json:"zone"`
+	IdempotencyKey pgtype.Text `json:"idempotency_key"`
+}
+
+func (q *Queries) InsertUIAction(ctx context.Context, arg InsertUIActionParams) (UiAction, error) {
+	row := q.db.QueryRow(ctx, insertUIAction,
+		arg.AskID,
+		arg.Token,
+		arg.Action,
+		arg.Zone,
+		arg.IdempotencyKey,
+	)
+	var i UiAction
+	err := row.Scan(
+		&i.ID,
+		&i.UiBlockID,
+		&i.AskID,
+		&i.Token,
+		&i.Action,
+		&i.Zone,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.Result,
+		&i.CreatedAt,
+		&i.DoneAt,
 	)
 	return i, err
 }
@@ -1559,6 +1672,54 @@ func (q *Queries) MultikaChannelSession(ctx context.Context, arg MultikaChannelS
 	return chat_session_id, err
 }
 
+const multikaTelegramChatWorkspace = `-- name: MultikaTelegramChatWorkspace :one
+SELECT i.workspace_id FROM channel_chat_session_binding b
+JOIN channel_installation i ON i.id = b.installation_id
+WHERE b.installation_id = $1 AND b.channel_chat_id = $2
+  AND i.agent_id = $3 AND i.status = 'active'
+  AND b.retired_at IS NULL AND b.chat_type = 'p2p'
+`
+
+type MultikaTelegramChatWorkspaceParams struct {
+	InstallationID pgtype.UUID `json:"installation_id"`
+	ChannelChatID  string      `json:"channel_chat_id"`
+	AgentID        pgtype.UUID `json:"agent_id"`
+}
+
+// The workspace of a press, only when it came from Мультика's live direct chat.
+func (q *Queries) MultikaTelegramChatWorkspace(ctx context.Context, arg MultikaTelegramChatWorkspaceParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, multikaTelegramChatWorkspace, arg.InstallationID, arg.ChannelChatID, arg.AgentID)
+	var workspace_id pgtype.UUID
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
+}
+
+const multikaTelegramTarget = `-- name: MultikaTelegramTarget :one
+SELECT b.installation_id, b.channel_chat_id FROM channel_chat_session_binding b
+JOIN channel_installation i ON i.id = b.installation_id
+WHERE i.agent_id = $1 AND i.workspace_id = $2 AND i.status = 'active'
+  AND i.channel_type = 'telegram' AND b.retired_at IS NULL AND b.chat_type = 'p2p'
+ORDER BY b.created_at DESC LIMIT 1
+`
+
+type MultikaTelegramTargetParams struct {
+	AgentID     pgtype.UUID `json:"agent_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+type MultikaTelegramTargetRow struct {
+	InstallationID pgtype.UUID `json:"installation_id"`
+	ChannelChatID  string      `json:"channel_chat_id"`
+}
+
+// Where Мультика's Telegram direct chat lives, for messages with buttons.
+func (q *Queries) MultikaTelegramTarget(ctx context.Context, arg MultikaTelegramTargetParams) (MultikaTelegramTargetRow, error) {
+	row := q.db.QueryRow(ctx, multikaTelegramTarget, arg.AgentID, arg.WorkspaceID)
+	var i MultikaTelegramTargetRow
+	err := row.Scan(&i.InstallationID, &i.ChannelChatID)
+	return i, err
+}
+
 const recordSupervisorTick = `-- name: RecordSupervisorTick :exec
 INSERT INTO stream_supervisor_state (id, last_tick_at, last_error, ticks)
 VALUES (true, now(), $1, 1)
@@ -1567,6 +1728,17 @@ ON CONFLICT (id) DO UPDATE SET last_tick_at = now(), last_error = EXCLUDED.last_
 
 func (q *Queries) RecordSupervisorTick(ctx context.Context, lastError string) error {
 	_, err := q.db.Exec(ctx, recordSupervisorTick, lastError)
+	return err
+}
+
+const releaseUIAction = `-- name: ReleaseUIAction :exec
+UPDATE ui_action SET status = 'pending', result = NULL, done_at = NULL
+WHERE id = $1 AND status = 'done'
+`
+
+// Gives a claimed action back when applying it failed.
+func (q *Queries) ReleaseUIAction(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, releaseUIAction, id)
 	return err
 }
 

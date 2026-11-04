@@ -1240,7 +1240,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				Logger:            slog.Default(),
 				RecentContextSize: telegram.DefaultRecentContextSize,
 				AcceptsMedia:      store != nil,
+				Callbacks:         multikaTelegramCallbacks(opts.Streams),
 			})
+			wireMultikaAskButtons(opts.Streams, telegram.NewButtonSender(queries, box.Open, ""))
 
 			installSvc, ierr := telegram.NewInstallService(queries, pool, box, slog.Default())
 			if ierr != nil {

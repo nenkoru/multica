@@ -24,6 +24,7 @@ All under `/api/streams`, workspace member auth and `X-Workspace-ID`.
 | POST | `/waits/{id}/fire` | resolve a wait early (CI finished, process exited) |
 | GET | `/multika` | the one chat with Мультика: `chat_session_id`, current focus |
 | PUT | `/multika/focus` | `{"slug":"buvg01"}` sets the focus, `{"slug":""}` clears it (human only) |
+| POST | `/asks/push` | shown questions without live buttons → Мультика's Telegram chat with inline buttons; `{"sent": n}` |
 
 A charter needs `title`, `charter.goal`, `charter.metric`, `charter.done`.
 `charter.chains` maps a cost class (`S`, `M`, `L`, `manage`, `verify`, `*`) to an
@@ -67,6 +68,14 @@ web chat Руслан uses. Unset keeps everything below off.
     did) in front of the message; it is not stored in the chat.
 - **Never silence.** A failed run or an offline runtime posts «Мультика недоступна,
   потоки идут» in Telegram instead of the generic English notice.
+- **Question buttons (§7).** After the digest text `fabrika-digest.sh` calls
+  `/asks/push`: each shown question goes to Мультика's Telegram direct chat as its
+  own message, numbered as in the digest, with one button per option (`да`/`нет`
+  for a batch). A button carries a short token from `ui_action`; the press comes
+  back through the same getUpdates loop (`allowed_updates` gains `callback_query`
+  only with the flag), is accepted only from that direct chat, answers the
+  question once and closes its other buttons. Text answers («1 а») keep working;
+  a button of an already answered question says «Вопрос уже закрыт».
 
 ## Operations
 

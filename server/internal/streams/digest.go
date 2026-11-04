@@ -332,6 +332,39 @@ func (s *Supervisor) exhaustedLine(ctx context.Context, now time.Time) string {
 	return "Исчерпаны: " + strings.Join(parts, ", ")
 }
 
+// applyReply resolves one ask with one reply. ok=false: the reply does not
+// fit the ask's kind or options.
+func (s *Supervisor) applyReply(ctx context.Context, a sdb.Ask, r Reply, channel string, now time.Time) (bool, error) {
+	var opts []string
+	_ = json.Unmarshal(a.Options, &opts)
+	answer := map[string]any{"channel": channel, "at": now}
+	switch {
+	case a.Kind == "choice" && r.Choice >= 0 && r.Choice < len(opts):
+		answer["choice"] = r.Choice
+	case a.Kind == "choice" && r.Yes != nil && len(opts) == 2:
+		// "да/нет" on a two-way choice: да = first option.
+		if *r.Yes {
+			answer["choice"] = 0
+		} else {
+			answer["choice"] = 1
+		}
+	case a.Kind == "batch" && r.Yes != nil:
+		answer["items"] = *r.Yes
+	default:
+		return false, nil
+	}
+	raw, _ := json.Marshal(answer)
+	if err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "answered", Answer: raw}); err != nil {
+		return false, err
+	}
+	s.journal(ctx, a.StreamID, a.OriginStepID, "ask_answered", map[string]any{"text": a.Text, "answer": answer})
+	// The crash question's second option is "pause the stream" (§5.1).
+	if st, err := s.Q.GetStream(ctx, a.StreamID); err == nil && st.State == StateBroken && a.Zone == "red" && answer["choice"] == 1 {
+		_ = s.setState(ctx, st, StatePaused, "пауза после аварии (ответ Руслана)", time.Time{})
+	}
+	return true, nil
+}
+
 // AnswerResult reports what a one-line reply did.
 type AnswerResult struct {
 	Applied []string `json:"applied"`
@@ -359,35 +392,15 @@ func (s *Supervisor) Answer(ctx context.Context, workspaceID pgtype.UUID, line, 
 			unknown = append(unknown, fmt.Sprintf("покажи вопрос %d", r.N))
 			continue
 		}
-		var opts []string
-		_ = json.Unmarshal(a.Options, &opts)
-		answer := map[string]any{"channel": channel, "at": now}
-		switch {
-		case a.Kind == "choice" && r.Choice >= 0 && r.Choice < len(opts):
-			answer["choice"] = r.Choice
-		case a.Kind == "choice" && r.Yes != nil && len(opts) == 2:
-			// "да/нет" on a two-way choice: да = first option.
-			if *r.Yes {
-				answer["choice"] = 0
-			} else {
-				answer["choice"] = 1
-			}
-		case a.Kind == "batch" && r.Yes != nil:
-			answer["items"] = *r.Yes
-		default:
+		ok, err := s.applyReply(ctx, a, r, channel, now)
+		if err != nil {
+			return res, err
+		}
+		if !ok {
 			unknown = append(unknown, fmt.Sprintf("%d: не понял ответ", r.N))
 			continue
 		}
-		raw, _ := json.Marshal(answer)
-		if err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "answered", Answer: raw}); err != nil {
-			return res, err
-		}
-		s.journal(ctx, a.StreamID, a.OriginStepID, "ask_answered", map[string]any{"text": a.Text, "answer": answer})
 		res.Applied = append(res.Applied, fmt.Sprintf("%d → %s", r.N, a.Text))
-		// The crash question's second option is "pause the stream" (§5.1).
-		if st, err := s.Q.GetStream(ctx, a.StreamID); err == nil && st.State == StateBroken && a.Zone == "red" && answer["choice"] == 1 {
-			_ = s.setState(ctx, st, StatePaused, "пауза после аварии (ответ Руслана)", time.Time{})
-		}
 	}
 	if len(unknown) > 0 {
 		if res.Rest != "" {
