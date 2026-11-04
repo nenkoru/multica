@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
 
@@ -475,15 +476,19 @@ func (s *Supervisor) costLine(ctx context.Context, st sdb.Stream, now time.Time)
 	}
 	t := now.In(Moscow)
 	month := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, Moscow)
-	ticks, err := s.Q.StreamCostSince(ctx, sdb.StreamCostSinceParams{StreamID: uuidString(st.ID), Since: ts(month)})
+	rows, err := s.Q.StreamCostSince(ctx, sdb.StreamCostSinceParams{StreamID: uuidString(st.ID), Since: ts(month)})
 	if err != nil {
 		return ""
+	}
+	spent := 0.0
+	for _, r := range rows {
+		spent += metrics.UsageCostUSD(r.Model, r.Ticks, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens)
 	}
 	days := month.AddDate(0, 1, 0).Sub(month).Hours() / 24
 	share := s.APIMonthlyUSD * c.BudgetShare
 	pace := share / days * float64(t.Day())
-	line := fmt.Sprintf("API за месяц: $%.2f из $%.0f, темп на сегодня $%.2f", float64(ticks)/1e10, share, pace)
-	if float64(ticks)/1e10 > pace {
+	line := fmt.Sprintf("API за месяц: $%.2f из $%.0f, темп на сегодня $%.2f", spent, share, pace)
+	if spent > pace {
 		line += " — выше темпа"
 	}
 	return line

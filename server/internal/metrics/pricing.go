@@ -379,3 +379,20 @@ func tokenCostUSD(tokens int64, pricePerM float64) float64 {
 	}
 	return float64(tokens) * pricePerM / 1_000_000
 }
+
+// UsageCostUSD prices usage the way the dashboard does: the provider's own
+// cost (1e-10 USD ticks) for rows that carry one, plus the rate-table
+// estimate of the tokens from rows that don't. A model without a rate row
+// adds only its reported cost.
+func UsageCostUSD(model string, costUSDTicks, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int64) float64 {
+	usd := float64(costUSDTicks) / CostUSDTicksPerUSD
+	price, ok := PriceForModelAlias(model)
+	if !ok {
+		return usd
+	}
+	return usd +
+		tokenCostUSD(inputTokens, price.InputPerM) +
+		tokenCostUSD(outputTokens, price.OutputPerM) +
+		tokenCostUSD(cacheReadTokens, price.CacheReadPerM) +
+		tokenCostUSD(cacheWriteTokens, price.CacheWritePerM)
+}

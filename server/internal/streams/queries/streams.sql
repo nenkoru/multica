@@ -403,13 +403,20 @@ JOIN stream s ON s.id = st.stream_id AND s.active
 WHERE st.status IN ('running', 'queued')
 GROUP BY st.stream_id, st.status, st.executor, st.kind, st.cost_class;
 
--- name: StreamCostSince :one
--- Provider-reported cost of a stream's tasks since a moment, in 1e-10 USD.
--- Rows without a reported cost are not estimated here.
-SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+-- name: StreamCostSince :many
+-- Usage of a stream's tasks since a moment, per model: provider-reported
+-- cost (1e-10 USD) and the tokens of rows without one, for the rate table
+-- (metrics.UsageCostUSD).
+SELECT u.model,
+       COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks,
+       COALESCE(SUM(u.input_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS input_tokens,
+       COALESCE(SUM(u.output_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS output_tokens,
+       COALESCE(SUM(u.cache_read_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_read_tokens,
+       COALESCE(SUM(u.cache_write_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_write_tokens
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
-WHERE q.context->>'stream_id' = @stream_id::text AND u.created_at >= @since::timestamptz;
+WHERE q.context->>'stream_id' = @stream_id::text AND u.created_at >= @since::timestamptz
+GROUP BY u.model;
 
 -- name: InsertUIBlock :one
 -- The id is derived from (task_id, seq) in code: a redelivered reply finds
@@ -464,23 +471,36 @@ UPDATE ui_action SET result = $2 WHERE id = $1;
 SELECT agent_id, chat_session_id FROM agent_task_queue WHERE id = $1;
 
 -- name: StreamDailyCost :many
--- Provider-reported cost per stream and Moscow day since a moment, 1e-10 USD.
+-- Usage per stream, Moscow day and model since a moment; priced in code
+-- like StreamCostSince.
 SELECT (q.context->>'stream_id')::text AS stream_id,
        to_char(u.created_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD')::text AS day,
-       SUM(u.cost_usd_ticks)::bigint AS ticks
+       u.model,
+       COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks,
+       COALESCE(SUM(u.input_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS input_tokens,
+       COALESCE(SUM(u.output_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS output_tokens,
+       COALESCE(SUM(u.cache_read_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_read_tokens,
+       COALESCE(SUM(u.cache_write_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_write_tokens
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
 WHERE q.context->>'stream_id' = ANY(@stream_ids::text[])
-  AND u.created_at >= @since::timestamptz AND u.cost_usd_ticks IS NOT NULL
-GROUP BY 1, 2;
+  AND u.created_at >= @since::timestamptz
+GROUP BY 1, 2, 3;
 
--- name: WorkspaceCostSince :one
--- All provider-reported cost of the workspace's agents since a moment.
-SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+-- name: WorkspaceCostSince :many
+-- All usage of the workspace's agents since a moment, per model; priced in
+-- code like StreamCostSince.
+SELECT u.model,
+       COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks,
+       COALESCE(SUM(u.input_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS input_tokens,
+       COALESCE(SUM(u.output_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS output_tokens,
+       COALESCE(SUM(u.cache_read_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_read_tokens,
+       COALESCE(SUM(u.cache_write_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_write_tokens
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
 JOIN agent a ON a.id = q.agent_id
-WHERE a.workspace_id = @workspace_id AND u.created_at >= @since::timestamptz;
+WHERE a.workspace_id = @workspace_id AND u.created_at >= @since::timestamptz
+GROUP BY u.model;
 
 -- name: StreamCardStats :one
 SELECT

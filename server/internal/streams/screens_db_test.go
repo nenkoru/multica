@@ -8,11 +8,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/streams/genui"
+	"github.com/multica-ai/multica/server/internal/streams/sdb"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
@@ -268,5 +271,31 @@ func TestTelegramReplyTextHidesScreens(t *testing.T) {
 	}
 	if p := TelegramPartialText("Вот:\n```openui\nroot = Kp"); strings.Contains(p, "openui") {
 		t.Fatalf("partial %q", p)
+	}
+}
+
+// TestScreenSpendEstimatesTokens: usage without a provider cost (Claude) is
+// priced from its tokens; a row with a reported cost counts that cost only.
+func TestScreenSpendEstimatesTokens(t *testing.T) {
+	h, ws, _, _ := screensHarness(t, "scrspend")
+	ctx := context.Background()
+	h.sup.APIMonthlyUSD = 3000
+	h.f.Exec(t, `UPDATE stream SET charter = charter || '{"budget_share": 0.5}'::jsonb WHERE id = $1`, h.stream.ID)
+	task := h.f.Task(t, h.agents["claude"], testutil.Cols{"runtime_id": h.carrier.rt, "status": "completed", "context": fmt.Sprintf(`{"stream_id": %q}`, uuidString(h.stream.ID))})
+	h.f.Insert(t, "task_usage", testutil.Cols{"task_id": task, "provider": "claude", "model": "claude-opus-5-5", "input_tokens": 1_000_000, "output_tokens": 100_000})
+	h.f.Insert(t, "task_usage", testutil.Cols{"task_id": task, "provider": "grok", "model": "grok-4.6", "input_tokens": 1_000_000, "cost_usd_ticks": int64(3e10)})
+	tab, err := h.sup.spend(ctx, ws, []sdb.Stream{h.reload()}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	days := tab.By[uuidString(h.stream.ID)]
+	if got := days[len(days)-1]; got < 8.999 || got > 9.001 || tab.Stream < 8.999 || tab.Stream > 9.001 {
+		t.Fatalf("stream spend today %v, window %v; want 9 (4+2 estimated, 3 reported)", got, tab.Stream)
+	}
+	if tab.Total < tab.Stream {
+		t.Fatalf("workspace total %v below the stream's %v", tab.Total, tab.Stream)
+	}
+	if line := h.sup.costLine(ctx, h.reload(), time.Now()); !strings.Contains(line, "API за месяц: $9.00 из $1500") {
+		t.Fatalf("cost line: %q", line)
 	}
 }

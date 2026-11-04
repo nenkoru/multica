@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/streams/genui"
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
 	"github.com/multica-ai/multica/server/pkg/llm"
@@ -62,14 +63,16 @@ func (s *Supervisor) spend(ctx context.Context, ws pgtype.UUID, streams []sdb.St
 	}
 	for _, r := range rows {
 		if i, ok := index[r.Day]; ok && tab.By[r.StreamID] != nil {
-			usd := float64(r.Ticks) / 1e10
+			usd := metrics.UsageCostUSD(r.Model, r.Ticks, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens)
 			tab.By[r.StreamID][i] += usd
 			tab.Stream += usd
 		}
 	}
 	total, err := s.Q.WorkspaceCostSince(ctx, sdb.WorkspaceCostSinceParams{WorkspaceID: ws, Since: ts(start)})
 	if err == nil {
-		tab.Total = float64(total) / 1e10
+		for _, r := range total {
+			tab.Total += metrics.UsageCostUSD(r.Model, r.Ticks, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens)
+		}
 	}
 	return tab, nil
 }
@@ -90,7 +93,7 @@ func (s *Supervisor) screenContext(ctx context.Context, ws pgtype.UUID, streams 
 		slog.Warn("streams: spend for multika failed", "error", err)
 		return b.String()
 	}
-	fmt.Fprintf(&b, "Расход API за %d дней по МСК, $ (по отчётам провайдеров; дни %s–%s):\n", SpendDays, tab.Days[0], tab.Days[len(tab.Days)-1])
+	fmt.Fprintf(&b, "Расход API за %d дней по МСК, $ (отчёт провайдера, без него — оценка по токенам и прайсу; дни %s–%s):\n", SpendDays, tab.Days[0], tab.Days[len(tab.Days)-1])
 	for _, st := range active {
 		vals := tab.By[uuidString(st.ID)]
 		sum := 0.0
