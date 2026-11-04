@@ -1977,18 +1977,20 @@ func (q *Queries) ResolveWait(ctx context.Context, arg ResolveWaitParams) error 
 }
 
 const runningStepsByExecutor = `-- name: RunningStepsByExecutor :many
-SELECT st.stream_id, st.status, st.executor, count(*)::int AS n
+SELECT st.stream_id, st.status, st.executor, st.kind, st.cost_class, count(*)::int AS n
 FROM stream_step st
 JOIN stream s ON s.id = st.stream_id AND s.active
 WHERE st.status IN ('running', 'queued')
-GROUP BY st.stream_id, st.status, st.executor
+GROUP BY st.stream_id, st.status, st.executor, st.kind, st.cost_class
 `
 
 type RunningStepsByExecutorRow struct {
-	StreamID pgtype.UUID `json:"stream_id"`
-	Status   string      `json:"status"`
-	Executor string      `json:"executor"`
-	N        int32       `json:"n"`
+	StreamID  pgtype.UUID `json:"stream_id"`
+	Status    string      `json:"status"`
+	Executor  string      `json:"executor"`
+	Kind      string      `json:"kind"`
+	CostClass string      `json:"cost_class"`
+	N         int32       `json:"n"`
 }
 
 // Slot accounting across active streams (§6.7): running steps per executor
@@ -2006,6 +2008,8 @@ func (q *Queries) RunningStepsByExecutor(ctx context.Context) ([]RunningStepsByE
 			&i.StreamID,
 			&i.Status,
 			&i.Executor,
+			&i.Kind,
+			&i.CostClass,
 			&i.N,
 		); err != nil {
 			return nil, err

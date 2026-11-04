@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
 
@@ -50,23 +48,41 @@ func ParseSlots(v string) (map[string]int, error) {
 // slotAlloc is one tick's view of who runs what on capacity-bound executors.
 type slotAlloc struct {
 	slots   map[string]int
-	running map[string]int              // executor → running steps
-	by      map[[16]byte]map[string]int // stream → executor → running
-	share   map[[16]byte]float64        // stream → min_share
-	queued  map[[16]byte]bool           // stream has queued steps
-	waited  map[[16]byte]bool           // stream skipped a full executor this tick
+	running map[string]int               // executor → running steps
+	by      map[[16]byte]map[string]int  // stream → executor → running
+	share   map[[16]byte]float64         // stream → min_share
+	weight  map[[16]byte]int             // stream → weight
+	wants   map[[16]byte]map[string]bool // stream → executors its queued steps can use
+	waited  map[[16]byte]bool            // stream skipped a full executor this tick
 }
 
 func newSlotAlloc(slots map[string]int, streams []sdb.Stream, rows []sdb.RunningStepsByExecutorRow) *slotAlloc {
-	a := &slotAlloc{slots: slots, running: map[string]int{}, by: map[[16]byte]map[string]int{}, share: map[[16]byte]float64{}, queued: map[[16]byte]bool{}, waited: map[[16]byte]bool{}}
+	a := &slotAlloc{slots: slots, running: map[string]int{}, by: map[[16]byte]map[string]int{}, share: map[[16]byte]float64{},
+		weight: map[[16]byte]int{}, wants: map[[16]byte]map[string]bool{}, waited: map[[16]byte]bool{}}
+	byID := map[[16]byte]sdb.Stream{}
 	for _, st := range streams {
 		f, _ := st.MinShare.Float64Value()
 		a.share[st.ID.Bytes] = f.Float64
+		a.weight[st.ID.Bytes] = max(int(st.Weight), 1)
 		a.by[st.ID.Bytes] = map[string]int{}
+		a.wants[st.ID.Bytes] = map[string]bool{}
+		byID[st.ID.Bytes] = st
 	}
 	for _, r := range rows {
 		if r.Status == StepQueued {
-			a.queued[r.StreamID.Bytes] = true
+			// A waiting stream holds its guarantee only on the executors its
+			// queued steps can actually run on.
+			st, ok := byID[r.StreamID.Bytes]
+			if !ok {
+				continue
+			}
+			c, err := ParseCharter(st.Charter)
+			if err != nil {
+				continue
+			}
+			for _, e := range chainFor(st, c, sdb.StreamStep{Kind: r.Kind, CostClass: r.CostClass}) {
+				a.wants[r.StreamID.Bytes][e.Name] = true
+			}
 			continue
 		}
 		a.running[r.Executor] += int(r.N)
@@ -90,21 +106,32 @@ func (a *slotAlloc) canTake(stream [16]byte, ex string) bool {
 	if a.running[ex] >= capacity {
 		return false
 	}
-	if a.by[stream][ex] < a.guaranteed(stream, capacity) {
+	mine := a.by[stream][ex]
+	if mine < a.guaranteed(stream, capacity) {
 		return true
 	}
 	// Above its own guarantee a stream uses only what others' unmet
-	// guarantees leave free.
-	reserved := 0
-	for other := range a.by {
-		if other == stream || !a.queued[other] {
+	// guarantees leave free, and, while others wait for this executor, no
+	// more than its weighted part of the capacity: weight divides empty
+	// capacity within one tick, not only as slots free up.
+	reserved, weights := 0, a.weight[stream]
+	for other, w := range a.wants {
+		if other == stream || !w[ex] {
 			continue
 		}
+		weights += a.weight[other]
 		if d := a.guaranteed(other, capacity) - a.by[other][ex]; d > 0 {
 			reserved += d
 		}
 	}
-	return capacity-a.running[ex] > reserved
+	if capacity-a.running[ex] <= reserved {
+		return false
+	}
+	if weights > a.weight[stream] {
+		fair := int(math.Ceil(float64(capacity) * float64(a.weight[stream]) / float64(weights)))
+		return mine < fair
+	}
+	return true
 }
 
 func (a *slotAlloc) take(stream [16]byte, ex string) {
@@ -131,9 +158,12 @@ func orderByLoad(streams []sdb.Stream, a *slotAlloc) {
 	sort.SliceStable(streams, func(i, j int) bool { return load(streams[i]) < load(streams[j]) })
 }
 
-// gpuWindowUntil returns the end of an open "gpu" window in any active
-// stream's charter, and whose it is.
-func gpuWindowUntil(streams []sdb.Stream, now time.Time) (time.Time, pgtype.UUID) {
+// gpuWindows returns the open "gpu" windows of active streams: their owners
+// and when the last of them ends. Overlapping windows share the GPU among
+// their owners; everyone else waits for the latest end.
+func gpuWindows(streams []sdb.Stream, now time.Time) (time.Time, map[[16]byte]bool) {
+	var until time.Time
+	owners := map[[16]byte]bool{}
 	for _, st := range streams {
 		c, err := ParseCharter(st.Charter)
 		if err != nil {
@@ -144,11 +174,14 @@ func gpuWindowUntil(streams []sdb.Stream, now time.Time) (time.Time, pgtype.UUID
 				continue
 			}
 			if end, ok := windowOpen(w, now); ok {
-				return end, st.ID
+				owners[st.ID.Bytes] = true
+				if end.After(until) {
+					until = end
+				}
 			}
 		}
 	}
-	return time.Time{}, pgtype.UUID{}
+	return until, owners
 }
 
 // windowOpen reports whether now (any zone) is inside a daily Moscow window
@@ -179,9 +212,9 @@ func windowOpen(w Window, now time.Time) (time.Time, bool) {
 // tickResources prepares the tick's slot view and GPU window. Errors only
 // disable the limits for this tick: the supervisor must not stand still.
 func (s *Supervisor) tickResources(ctx context.Context, streams []sdb.Stream, now time.Time) {
-	s.alloc, s.gpuUntil, s.gpuOwner = nil, time.Time{}, pgtype.UUID{}
+	s.alloc, s.gpuUntil, s.gpuOwners = nil, time.Time{}, nil
 	if len(s.GPUExecutors) > 0 {
-		s.gpuUntil, s.gpuOwner = gpuWindowUntil(streams, now)
+		s.gpuUntil, s.gpuOwners = gpuWindows(streams, now)
 	}
 	if len(s.Slots) == 0 {
 		return
@@ -199,7 +232,7 @@ func (s *Supervisor) tickResources(ctx context.Context, streams []sdb.Stream, no
 // reports whether any was).
 func (s *Supervisor) resourceView(st sdb.Stream, chain []Executor, states map[string]ExecutorState) (out []Executor, view map[string]ExecutorState, full bool) {
 	view = states
-	if !s.gpuUntil.IsZero() && st.ID != s.gpuOwner {
+	if !s.gpuUntil.IsZero() && !s.gpuOwners[st.ID.Bytes] {
 		view = make(map[string]ExecutorState, len(states)+len(s.GPUExecutors))
 		for k, v := range states {
 			view[k] = v

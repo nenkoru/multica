@@ -52,10 +52,10 @@ func streamWithShare(id pgtype.UUID, share string, weight int32) sdb.Stream {
 // streams' unmet guarantees leave free.
 func TestSlotAllocGuaranteesMinShare(t *testing.T) {
 	a, b := sid(1), sid(2)
-	streams := []sdb.Stream{streamWithShare(a, "0", 1), streamWithShare(b, "0.5", 1)}
+	streams := []sdb.Stream{streamWithShare(a, "0", 1), withChain(streamWithShare(b, "0.5", 1), "sub")}
 	rows := []sdb.RunningStepsByExecutorRow{
 		{StreamID: a, Status: StepRunning, Executor: "sub", N: 2},
-		{StreamID: b, Status: StepQueued, Executor: "", N: 1},
+		{StreamID: b, Status: StepQueued, Executor: "", Kind: KindWork, CostClass: "M", N: 1},
 	}
 	al := newSlotAlloc(map[string]int{"sub": 4}, streams, rows)
 	// 4 slots, A runs 2, B is owed ceil(0.5×4)=2 and waits: A must not take more.
@@ -72,6 +72,48 @@ func TestSlotAllocGuaranteesMinShare(t *testing.T) {
 	}
 	if !al.canTake(a.Bytes, "other") {
 		t.Fatal("unbounded executor limited")
+	}
+}
+
+func withChain(st sdb.Stream, names ...string) sdb.Stream {
+	var chain []Executor
+	for _, n := range names {
+		chain = append(chain, Executor{Name: n})
+	}
+	st.Charter, _ = json.Marshal(Charter{Chains: map[string][]Executor{"M": chain}})
+	return st
+}
+
+// A stream waiting on another executor does not hold slots on this one.
+func TestSlotAllocReservesOnlyWantedExecutors(t *testing.T) {
+	a, b := sid(1), sid(2)
+	streams := []sdb.Stream{streamWithShare(a, "0", 1), withChain(streamWithShare(b, "1", 1), "api")}
+	rows := []sdb.RunningStepsByExecutorRow{{StreamID: b, Status: StepQueued, Kind: KindWork, CostClass: "M", N: 1}}
+	al := newSlotAlloc(map[string]int{"sub": 2}, streams, rows)
+	if !al.canTake(a.Bytes, "sub") {
+		t.Fatal("B's queue on api reserved sub")
+	}
+}
+
+// Empty capacity is divided by weight within one tick: the first stream in
+// order does not take every free slot while another waits for them.
+func TestSlotAllocWeightDividesEmptyCapacity(t *testing.T) {
+	a, b := sid(1), sid(2)
+	streams := []sdb.Stream{withChain(streamWithShare(a, "0", 1), "sub"), withChain(streamWithShare(b, "0", 3), "sub")}
+	rows := []sdb.RunningStepsByExecutorRow{
+		{StreamID: a, Status: StepQueued, Kind: KindWork, CostClass: "M", N: 4},
+		{StreamID: b, Status: StepQueued, Kind: KindWork, CostClass: "M", N: 4},
+	}
+	al := newSlotAlloc(map[string]int{"sub": 4}, streams, rows)
+	took := map[[16]byte]int{}
+	for _, id := range []pgtype.UUID{a, a, a, a, b, b, b, b} {
+		if al.canTake(id.Bytes, "sub") {
+			al.take(id.Bytes, "sub")
+			took[id.Bytes]++
+		}
+	}
+	if took[a.Bytes] != 1 || took[b.Bytes] != 3 {
+		t.Fatalf("weight 1:3 over 4 slots gave %d:%d", took[a.Bytes], took[b.Bytes])
 	}
 }
 
@@ -94,11 +136,11 @@ func TestGPUWindowTakesGPUExecutorsFromOthers(t *testing.T) {
 	raw, _ := json.Marshal(Charter{Windows: []Window{{Kind: "gpu", Start: "02:00", End: "07:00"}}})
 	owner := sdb.Stream{ID: sid(1), Charter: raw}
 	other := sdb.Stream{ID: sid(2)}
-	until, who := gpuWindowUntil([]sdb.Stream{other, owner}, now)
-	if who != owner.ID || until.In(Moscow).Hour() != 7 {
-		t.Fatalf("window %v %v", until, who)
+	until, owners := gpuWindows([]sdb.Stream{other, owner}, now)
+	if !owners[owner.ID.Bytes] || owners[other.ID.Bytes] || until.In(Moscow).Hour() != 7 {
+		t.Fatalf("window %v %v", until, owners)
 	}
-	s := &Supervisor{GPUExecutors: map[string]bool{"qwen-gpu": true}, gpuUntil: until, gpuOwner: who}
+	s := &Supervisor{GPUExecutors: map[string]bool{"qwen-gpu": true}, gpuUntil: until, gpuOwners: owners}
 	chain := []Executor{{Name: "qwen-gpu"}, {Name: "sub"}}
 	_, view, _ := s.resourceView(other, chain, map[string]ExecutorState{})
 	ex, _, ok := PickExecutor(chain, view, nil, now)
@@ -113,6 +155,17 @@ func TestGPUWindowTakesGPUExecutorsFromOthers(t *testing.T) {
 	_, view, _ = s.resourceView(other, chain[:1], map[string]ExecutorState{})
 	if _, u, ok := PickExecutor(chain[:1], view, nil, now); ok || !u.Equal(until) {
 		t.Fatalf("want wait until %v, got %v %v", until, u, ok)
+	}
+}
+
+// Overlapping windows: both owners keep the GPU, others wait for the later end.
+func TestGPUWindowsOverlap(t *testing.T) {
+	now := time.Date(2026, 11, 5, 3, 0, 0, 0, Moscow)
+	w1, _ := json.Marshal(Charter{Windows: []Window{{Kind: "gpu", Start: "02:00", End: "05:00"}}})
+	w2, _ := json.Marshal(Charter{Windows: []Window{{Kind: "gpu", Start: "01:00", End: "07:00"}}})
+	until, owners := gpuWindows([]sdb.Stream{{ID: sid(1), Charter: w1}, {ID: sid(2), Charter: w2}, {ID: sid(3)}}, now)
+	if !owners[sid(1).Bytes] || !owners[sid(2).Bytes] || owners[sid(3).Bytes] || until.In(Moscow).Hour() != 7 {
+		t.Fatalf("until %v owners %v", until, owners)
 	}
 }
 

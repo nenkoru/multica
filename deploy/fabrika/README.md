@@ -105,14 +105,18 @@ All off until set on the server:
 - `FABRIKA_EXECUTOR_SLOTS=claude-sub=3,qwen-gpu=2` caps concurrent steps per
   executor over all streams. Each stream is guaranteed `ceil(min_share × N)` of
   an executor's slots; above that it uses only what other waiting streams'
-  guarantees leave free, and streams with fewer running steps per `weight`
-  dispatch first. The focused stream's reserved slot obeys the same rule. A step
+  guarantees leave free and, while other streams wait for the same executor, no
+  more than its `weight`-proportional part of the slots (so weight divides empty
+  capacity in the same tick). A waiting stream holds its guarantee only on the
+  executors its queued steps can use. The focused stream's reserved slot obeys the same rule. A step
   whose links are full waits with «шаг ждёт свободный слот исполнителя», not a
   budget state. Unlisted executors are unlimited.
 - `FABRIKA_GPU_EXECUTORS=qwen-gpu` names the executors a charter window
   `{"kind": "gpu", "start": "02:00", "end": "07:00"}` (Moscow) takes over: while it
   is open, other streams skip them (class S falls through to the subscription);
-  a chain with nothing else waits until the window ends («бюджет до T»).
+  a chain with nothing else goes to `budget` until the window ends («бюджет до
+  T»), not to a slot wait. Overlapping windows share the GPU among their owners;
+  others wait for the latest end.
 - `FABRIKA_API_MONTHLY_USD=…` adds a pulse line per stream with a `budget_share`:
   provider-reported API cost this month vs the pace (share ÷ days of month).
   Shown, never enforced.

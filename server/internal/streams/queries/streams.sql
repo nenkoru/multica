@@ -397,11 +397,11 @@ RETURNING *;
 -- name: RunningStepsByExecutor :many
 -- Slot accounting across active streams (§6.7): running steps per executor
 -- and which streams have queued ones.
-SELECT st.stream_id, st.status, st.executor, count(*)::int AS n
+SELECT st.stream_id, st.status, st.executor, st.kind, st.cost_class, count(*)::int AS n
 FROM stream_step st
 JOIN stream s ON s.id = st.stream_id AND s.active
 WHERE st.status IN ('running', 'queued')
-GROUP BY st.stream_id, st.status, st.executor;
+GROUP BY st.stream_id, st.status, st.executor, st.kind, st.cost_class;
 
 -- name: StreamCostSince :one
 -- Provider-reported cost of a stream's tasks since a moment, in 1e-10 USD.

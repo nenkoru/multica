@@ -45,9 +45,9 @@ type Supervisor struct {
 	// divides (FABRIKA_API_MONTHLY_USD); 0 hides the cost line.
 	APIMonthlyUSD float64
 	// Per-tick resource view, set by Tick (tickResources).
-	alloc    *slotAlloc
-	gpuUntil time.Time
-	gpuOwner pgtype.UUID
+	alloc     *slotAlloc
+	gpuUntil  time.Time
+	gpuOwners map[[16]byte]bool
 	// AskButtons sends shown questions with inline buttons to Мультика's
 	// Telegram chat. Nil: questions go out as digest text only.
 	AskButtons AskButtonSender
