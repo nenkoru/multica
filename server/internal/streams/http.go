@@ -209,10 +209,25 @@ func (h *HTTP) Upsert(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if len(migrate) > 0 {
+			// A second migration turn on a live stream would queue the old
+			// tails twice; after a failed one a new PUT is fine.
+			open, lerr := q.ListOpenSteps(r.Context(), st.ID)
+			if lerr != nil {
+				return lerr
+			}
+			for _, x := range open {
+				if x.Origin == OriginMigration {
+					return errMigrationOpen
+				}
+			}
 			_, err = insertStepTx(r.Context(), q, st.ID, KindSummarize, MigrationBrief(migrate), "", "S", OriginMigration, false)
 		}
 		return err
 	})
+	if errors.Is(err, errMigrationOpen) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

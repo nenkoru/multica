@@ -60,6 +60,9 @@ func TestMigrationTurnIsTheFirstAndOnlyTurn(t *testing.T) {
 		t.Fatalf("upsert: %d %s", rec.Code, rec.Body)
 	}
 	h.tick()
+	if rec := h.upsert(body); rec.Code != http.StatusConflict {
+		t.Fatalf("second migration while the first is open: %d %s", rec.Code, rec.Body)
+	}
 	h.tick()
 	open := h.open()
 	if len(open) != 1 {

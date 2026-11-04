@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
 import { toast } from "sonner";
 import { renderWithI18n } from "../../test/i18n";
-import { VoiceButton, extensionFor } from "./voice-button";
+import { PERMISSION_WAIT_MS, VoiceButton, extensionFor } from "./voice-button";
 
 vi.mock("@multica/core/api", () => ({ api: { transcribeMultikaVoice: vi.fn() } }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
@@ -132,6 +132,46 @@ it("gets back to idle when the recorder fails", async () => {
   expect(toast.error).toHaveBeenCalledWith("Could not transcribe the recording.");
   expect(stopTrack).toHaveBeenCalled();
   expect(transcribe).not.toHaveBeenCalled();
+});
+
+it("stays usable when the recorder cannot be created", async () => {
+  class BrokenRecorder {
+    constructor() {
+      throw new DOMException("no codec", "NotSupportedError");
+    }
+  }
+  vi.stubGlobal("MediaRecorder", BrokenRecorder);
+  renderButton(vi.fn());
+  fireEvent.click(screen.getByRole("button", { name: "Dictate" }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not transcribe the recording."));
+  const button = await screen.findByRole("button", { name: "Dictate" });
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+  expect(stopTrack).toHaveBeenCalled();
+});
+
+it("frees the button when the permission prompt never answers, and drops a late grant", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    let grant: (s: unknown) => void = () => {};
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValueOnce(
+      new Promise((resolve) => (grant = resolve as (s: unknown) => void)),
+    );
+    renderButton(vi.fn());
+    const button = screen.getByRole("button", { name: "Dictate" }) as HTMLButtonElement;
+    fireEvent.click(button);
+    await waitFor(() => expect(button.disabled).toBe(true));
+    await vi.advanceTimersByTimeAsync(PERMISSION_WAIT_MS + 1);
+    await waitFor(() => expect(button.disabled).toBe(false));
+    grant({ getTracks: () => [{ stop: stopTrack }] });
+    await waitFor(() => expect(stopTrack).toHaveBeenCalled());
+    expect(FakeRecorder.created).toBe(0);
+    // A new click works with a fresh prompt.
+    fireEvent.click(button);
+    await screen.findByRole("button", { name: "Stop recording" });
+    expect(FakeRecorder.created).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("names the file after the recorded format", () => {

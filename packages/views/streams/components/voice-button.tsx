@@ -11,6 +11,12 @@ import { useT } from "../../i18n";
 /** A voice note longer than this stops by itself (the server takes ≤ 5 MB). */
 export const MAX_VOICE_MS = 60_000;
 
+/**
+ * A permission prompt dismissed without an answer (Firefox "Not now") leaves
+ * getUserMedia pending forever; after this the button is usable again.
+ */
+export const PERMISSION_WAIT_MS = 30_000;
+
 type Phase = "idle" | "starting" | "recording" | "transcribing";
 
 /**
@@ -26,8 +32,11 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Set on unmount: a microphone granted after that is released at once.
   const unmountedRef = useRef(false);
-  // Set from the first click until the recorder exists or the prompt fails.
+  // Set from the first click until the recorder exists, the prompt fails or
+  // the wait for it times out.
   const startingRef = useRef(false);
+  // Bumped when a permission wait is given up: a late grant is released.
+  const attemptRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -60,10 +69,19 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
     // a second click cannot open a second recorder.
     startingRef.current = true;
     setPhase("starting");
+    const attempt = ++attemptRef.current;
+    const giveUp = setTimeout(() => {
+      if (attemptRef.current !== attempt) return;
+      attemptRef.current++;
+      startingRef.current = false;
+      if (!unmountedRef.current) setPhase("idle");
+    }, PERMISSION_WAIT_MS);
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
+      clearTimeout(giveUp);
+      if (attemptRef.current !== attempt) return;
       startingRef.current = false;
       if (!unmountedRef.current) {
         setPhase("idle");
@@ -71,12 +89,21 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
       }
       return;
     }
-    startingRef.current = false;
-    if (unmountedRef.current) {
+    clearTimeout(giveUp);
+    const stale = attemptRef.current !== attempt;
+    if (!stale) startingRef.current = false;
+    if (stale || unmountedRef.current) {
       stream.getTracks().forEach((track) => track.stop());
       return;
     }
-    const rec = new MediaRecorder(stream);
+    const rec = newRecorder(stream);
+    if (!rec) {
+      // No usable codec (NotSupportedError): release the microphone, stay usable.
+      stream.getTracks().forEach((track) => track.stop());
+      setPhase("idle");
+      toast.error(t(($) => $.voice.failed));
+      return;
+    }
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
@@ -111,8 +138,15 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
         },
       );
     };
+    try {
+      rec.start();
+    } catch {
+      stream.getTracks().forEach((track) => track.stop());
+      setPhase("idle");
+      toast.error(t(($) => $.voice.failed));
+      return;
+    }
     recorderRef.current = rec;
-    rec.start();
     setPhase("recording");
     timerRef.current = setTimeout(stop, MAX_VOICE_MS);
   };
@@ -149,6 +183,14 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
   );
+}
+
+function newRecorder(stream: MediaStream): MediaRecorder | null {
+  try {
+    return new MediaRecorder(stream);
+  } catch {
+    return null;
+  }
 }
 
 /** File extension the transcription service uses to pick a decoder. */
