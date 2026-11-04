@@ -604,6 +604,27 @@ func TestDigestShowsMilestoneOlderThanWindow(t *testing.T) {
 	}
 }
 
+// A night stuck in reconcile_error is a silent stop even while the state
+// says "running" (RUSL-2642).
+func TestDigestCountsReconcileErrorSeries(t *testing.T) {
+	h := newHarness(t, "pulseerr")
+	ctx := context.Background()
+	h.tick()
+	for i := 0; i < 12; i++ {
+		h.f.Exec(t, `INSERT INTO stream_journal (stream_id, event, detail, created_at)
+			VALUES ($1, 'reconcile_error', '{"error": "stream_wait_kind_check"}', now() - interval '10 minutes' + make_interval(secs => $2))`,
+			uuidString(h.stream.ID), float64(i)*360/11)
+	}
+	h.f.Exec(t, `INSERT INTO stream_journal (stream_id, event, created_at) VALUES ($1, 'state', now() - interval '3 minutes')`, uuidString(h.stream.ID))
+	text, err := h.sup.Digest(ctx, h.stream.WorkspaceID, SlotPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Тихих остановок за сутки: 1") || !strings.Contains(text, "стоял на ошибке супервизора 6 мин, последняя: stream_wait_kind_check") {
+		t.Fatalf("pulse:\n%s", text)
+	}
+}
+
 // An online agent busy with other work never takes the task; after 10 min
 // the step leaves its queue for the next executor.
 func TestSupervisorQueuedTooLongMovesDownTheChain(t *testing.T) {

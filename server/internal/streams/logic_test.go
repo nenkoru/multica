@@ -4,6 +4,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
 
 var t0 = time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
@@ -322,5 +326,60 @@ func TestExtractContractUppercaseFence(t *testing.T) {
 func TestLeaseForClassS(t *testing.T) {
 	if LeaseFor("S") != 25*time.Minute || LeaseFor("M") != LeaseDuration || LeaseFor("") != LeaseDuration {
 		t.Fatalf("S %s M %s", LeaseFor("S"), LeaseFor("M"))
+	}
+}
+
+func journalAt(event string, at time.Time) sdb.StreamJournal {
+	return sdb.StreamJournal{Event: event, Detail: []byte(`{"error":"stream_wait_kind_check\nmore"}`), CreatedAt: pgtype.Timestamptz{Time: at, Valid: true}}
+}
+
+// errorSeries is n reconcile_error events spread evenly over span.
+func errorSeries(start time.Time, n int, span time.Duration) []sdb.StreamJournal {
+	var out []sdb.StreamJournal
+	for i := 0; i < n; i++ {
+		out = append(out, journalAt("reconcile_error", start.Add(span*time.Duration(i)/time.Duration(n-1))))
+	}
+	return out
+}
+
+func TestErrorRunsCountsLongSeries(t *testing.T) {
+	j := append(errorSeries(t0, 12, 6*time.Minute), journalAt("state", t0.Add(7*time.Minute)))
+	runs := errorRuns(j, t0.Add(time.Hour))
+	if len(runs) != 1 || runs[0].Duration != 6*time.Minute || runs[0].LastError != "stream_wait_kind_check" {
+		t.Fatalf("runs %+v", runs)
+	}
+}
+
+func TestErrorRunsIgnoresShortSeries(t *testing.T) {
+	j := append(errorSeries(t0, 8, 4*time.Minute), journalAt("step_dispatched", t0.Add(5*time.Minute)))
+	if runs := errorRuns(j, t0.Add(time.Hour)); len(runs) != 0 {
+		t.Fatalf("runs %+v", runs)
+	}
+}
+
+func TestErrorRunsSplitByOtherEvent(t *testing.T) {
+	j := errorSeries(t0, 12, 6*time.Minute)
+	j = append(j, journalAt("state", t0.Add(7*time.Minute)))
+	j = append(j, errorSeries(t0.Add(8*time.Minute), 12, 6*time.Minute)...)
+	j = append(j, journalAt("state", t0.Add(15*time.Minute)))
+	if runs := errorRuns(j, t0.Add(time.Hour)); len(runs) != 2 {
+		t.Fatalf("runs %+v", runs)
+	}
+}
+
+func TestErrorRunsOngoingSeriesCounts(t *testing.T) {
+	j := errorSeries(t0, 3, time.Minute)
+	runs := errorRuns(j, t0.Add(2*time.Minute))
+	if len(runs) != 1 || runs[0].Duration != 2*time.Minute {
+		t.Fatalf("runs %+v", runs)
+	}
+}
+
+func TestFmtStood(t *testing.T) {
+	if got := fmtStood(5*time.Hour + 45*time.Minute); got != "5 ч 45 мин" {
+		t.Fatal(got)
+	}
+	if got := fmtStood(6 * time.Minute); got != "6 мин" {
+		t.Fatal(got)
 	}
 }
