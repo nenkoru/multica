@@ -619,3 +619,47 @@ func TestSupervisorQueuedTooLongMovesDownTheChain(t *testing.T) {
 		t.Fatalf("reroute journal %d", n)
 	}
 }
+
+// Every value the contract validator lets through must also pass the table
+// CHECKs, or the supervisor fails on the insert after accepting the contract
+// (RUSL-2632: wait.kind "issue" vs stream_wait_kind_check).
+func TestDBAcceptsEveryValidatorValue(t *testing.T) {
+	h := newHarness(t, "checks")
+	ctx := context.Background()
+	q := h.sup.Q
+	seq := int32(1000)
+	step := func(kind, cost string) (sdb.StreamStep, error) {
+		seq++
+		return q.InsertStep(ctx, sdb.InsertStepParams{
+			StreamID: h.stream.ID, Seq: seq, Kind: kind, Brief: "check " + kind + "/" + cost,
+			CostClass: cost, Origin: "test", MaxAttempts: 1,
+		})
+	}
+	for kind := range validKinds {
+		for cost := range validCost {
+			if _, err := step(kind, cost); err != nil {
+				t.Errorf("stream_step kind=%q cost_class=%q: %v", kind, cost, err)
+			}
+		}
+	}
+	st, err := step(KindWork, "S")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := ts(time.Now().Add(time.Hour))
+	for kind := range validWaitKinds {
+		for on := range validOnDeadline {
+			if _, err := q.InsertWait(ctx, sdb.InsertWaitParams{
+				StreamID: h.stream.ID, StepID: st.ID, Kind: kind, Check: "x", Deadline: deadline, OnDeadline: on,
+			}); err != nil {
+				t.Errorf("stream_wait kind=%q on_deadline=%q: %v", kind, on, err)
+			}
+		}
+	}
+	// The CHECK must still reject what the validator rejects.
+	if _, err := q.InsertWait(ctx, sdb.InsertWaitParams{
+		StreamID: h.stream.ID, StepID: st.ID, Kind: "bogus", Check: "x", Deadline: deadline, OnDeadline: "replan",
+	}); err == nil {
+		t.Error("stream_wait accepted kind \"bogus\"")
+	}
+}
