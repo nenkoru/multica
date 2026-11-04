@@ -16,5 +16,29 @@
     "no_microphone": "마이크에 접근할 수 없습니다.",
     "empty": "인식된 내용이 없습니다.",
     "failed": "녹음을 받아쓰지 못했습니다."
+  },
+  "screen": {
+    "confirm": "확인",
+    "cancel": "취소",
+    "failed": "이 화면을 만들 수 없습니다.",
+    "action_failed": "작업을 완료하지 못했습니다.",
+    "stale": "이 버튼은 더 이상 사용할 수 없습니다.",
+    "done": "완료",
+    "already": "이미 완료됨",
+    "digest": "요약",
+    "from_screen": "화면에서: {{text}}",
+    "evidence": "근거",
+    "goal": "목표",
+    "now": "현재",
+    "next": "다음",
+    "state": {
+      "running": "진행 중",
+      "waiting": "대기 중",
+      "asking": "응답 필요",
+      "budget": "예산",
+      "paused": "일시 중지",
+      "broken": "장애",
+      "milestone": "마일스톤"
+    }
   }
 }

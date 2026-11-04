@@ -134,6 +134,30 @@ microphone next to Send in Мультика's chat only: a note of up to a minut
 lands in the draft and is sent only by Руслан. Without the URL the endpoint
 answers 404 and the button is not shown. Rollback: unset the variable.
 
+## Screens in chat (§10, §13 week 3)
+
+Off until `FABRIKA_SCREENS=1`; then `GET /api/streams/multika` reports
+`"screens": true`. Мультика's context gets the screen rules and a 14-day
+spend table; a reply may carry a ```` ```openui ```` block (OpenUI Lang, one
+`id = Component(...)` per line). Each finished line goes out as
+`chat:ui_line`; on `chat:done` the block is checked, repaired up to twice by
+the model in `FABRIKA_GENUI_REPAIR_MODEL` (via `MULTICA_LLM_*`; without it
+invalid nodes are pruned), stored in `ui_block` as A2UI and sent as
+`chat:ui_final`. Every button is a `ui_action` row (one press runs once);
+`raise_budget` and `set_share` with a factor ≥ 1 are red and need the web
+confirmation window. Entering a stream's focus stores its StreamCard; the
+morning digest stores a digest screen. Telegram gets a text version and an
+«Открыть вживую» link; screen buttons work in the web only.
+
+- Links a screen may carry: `github.com`, the app's own host and
+  `FABRIKA_GENUI_LINK_HOSTS` (comma-separated hosts).
+- Endpoints: `GET /api/streams/ui/blocks?session=…`,
+  `POST /api/streams/ui/actions/{id}` `{"confirm":bool}`,
+  `POST /api/streams/ui/actions/{id}/cancel`.
+- Migrations `9004_fabrika_genui`, `9005_fabrika_ui_block_session_idx`.
+- Rollback: unset `FABRIKA_SCREENS`. Мультика stops getting the screen
+  rules and the web stops drawing screens; stored rows stay.
+
 ## Moving a stream off the board (§12, day 10)
 
 The old board keeps working; streams move one at a time.

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,6 +48,9 @@ type Outbound struct {
 
 	// notices (Fabrika fork) overrides the run-failed notice per agent.
 	notices NoticesFunc
+	// Fabrika fork: screens in a reply become text (SetReplyText).
+	replyText   ReplyTextFunc
+	partialText func(string) string
 
 	mu                 sync.Mutex
 	streams            map[string]*streamState // key = task_id
@@ -428,6 +432,11 @@ func (o *Outbound) handleTaskMessage(e events.Event) {
 	snapshot := st.accumulated
 	msgID := st.messageID
 	o.mu.Unlock()
+	if o.partialText != nil {
+		if snapshot = o.partialText(snapshot); strings.TrimSpace(snapshot) == "" {
+			return
+		}
+	}
 
 	o.pushPartial(ctx, target, st, lease, msgID, snapshot)
 }
@@ -914,7 +923,11 @@ func (o *Outbound) initializeTerminalReply(ctx context.Context, reply *terminalR
 	if reply.kind == terminalKindNotice {
 		return terminalRequestResult{retryAt: o.now()}
 	}
-	reply.chunks = chunkMessage(chatDoneContent(reply.event.Payload), maxMessageUnits)
+	content := chatDoneContent(reply.event.Payload)
+	if o.replyText != nil {
+		content = o.replyText(ctx, reply.event.ChatSessionID, content)
+	}
+	reply.chunks = chunkMessage(content, maxMessageUnits)
 	if len(reply.chunks) == 0 {
 		o.settleDelivery(ctx, lease, "empty_reply")
 		return terminalRequestResult{done: true}
@@ -1661,6 +1674,16 @@ func firstNonEmpty(a, b string) string {
 
 // SetNotices (Fabrika fork) installs per-agent notices; call before Register.
 func (o *Outbound) SetNotices(f NoticesFunc) { o.notices = f }
+
+// ReplyTextFunc rewrites a final reply before it is sent (Fabrika fork:
+// screen blocks become their text version and a link to open them live).
+type ReplyTextFunc func(ctx context.Context, chatSessionID, content string) string
+
+// SetReplyText (Fabrika fork) installs the final and the streaming rewrite;
+// call before Register.
+func (o *Outbound) SetReplyText(final ReplyTextFunc, partial func(string) string) {
+	o.replyText, o.partialText = final, partial
+}
 
 func (o *Outbound) failedText(agentID pgtype.UUID) string {
 	return pickNotice(o.notices, agentID, func(n Notices) string { return n.TaskFailed }, taskFailedText)

@@ -51,6 +51,11 @@ type askButtonAction struct {
 	Choice *int   `json:"choice,omitempty"`
 	Yes    *bool  `json:"yes,omitempty"`
 	Label  string `json:"label"`
+	// Target is the red answer an ask_confirm button confirms or cancels;
+	// Window is the confirmation message it belongs to. Only the latest
+	// window of the target confirms: a cancelled or superseded one is stale.
+	Target string `json:"target,omitempty"`
+	Window string `json:"window,omitempty"`
 }
 
 func newAskToken() (string, error) {
@@ -203,15 +208,32 @@ func (s *Supervisor) PressAskButton(ctx context.Context, installationID pgtype.U
 		return pressAnswered, ""
 	}
 	var act askButtonAction
-	if err := json.Unmarshal(ua.Action, &act); err != nil || act.Kind != "ask_reply" {
+	if err := json.Unmarshal(ua.Action, &act); err != nil {
 		return pressStale, ""
 	}
+	switch act.Kind {
+	case "ask_reply":
+	case "ask_confirm":
+		return s.pressAskConfirm(ctx, a, ua, act)
+	default:
+		return pressStale, ""
+	}
+	if ua.Zone == "red" {
+		// Red zone: a separate system message confirms (§10.4, §10.5).
+		return s.askRedConfirm(ctx, installationID, chatID, a, ua, act)
+	}
+	return s.applyAskButton(ctx, a, ua, act)
+}
+
+// applyAskButton settles the question with the pressed answer. ua is
+// pending, or confirming after the red-zone confirmation.
+func (s *Supervisor) applyAskButton(ctx context.Context, a sdb.Ask, ua sdb.UiAction, act askButtonAction) (toast, done string) {
 	r := Reply{Choice: -1, Yes: act.Yes}
 	if act.Choice != nil {
 		r.Choice = *act.Choice
 	}
 	result, _ := json.Marshal(map[string]any{"label": act.Label})
-	n, err := s.Q.FinishUIAction(ctx, sdb.FinishUIActionParams{ID: ua.ID, Status: "done", Result: result})
+	n, err := s.Q.FinishUIActionAny(ctx, sdb.FinishUIActionAnyParams{ID: ua.ID, Status: "done", Result: result})
 	if err != nil {
 		return pressFailed, ""
 	}
@@ -233,4 +255,82 @@ func (s *Supervisor) PressAskButton(ctx context.Context, installationID pgtype.U
 	_ = s.Q.ExpireAskActions(ctx, a.ID)
 	s.Kick()
 	return "Принято: " + act.Label, "✓ " + act.Label
+}
+
+// Red-zone confirmation in Telegram: the press of a red answer only sends a
+// system message, built from the action record, with «Подтвердить» and
+// «Отмена»; the answer applies on «Подтвердить».
+const (
+	pressConfirmSent = "Красная зона — подтверди отдельным сообщением."
+	pressCancelled   = "Отменено."
+)
+
+func (s *Supervisor) askRedConfirm(ctx context.Context, installationID pgtype.UUID, chatID int64, a sdb.Ask, ua sdb.UiAction, act askButtonAction) (toast, done string) {
+	if s.AskButtons == nil {
+		return pressFailed, ""
+	}
+	window, err := newAskToken()
+	if err != nil {
+		return pressFailed, ""
+	}
+	text := fmt.Sprintf("Красная зона. Подтверди ответ на вопрос «%s»: %s", firstLine(a.Text, 160), act.Label)
+	rawWindow, _ := json.Marshal(confirmWindow{Window: window, Text: text})
+	n, err := s.Q.ConfirmUIAction(ctx, sdb.ConfirmUIActionParams{ID: ua.ID, ConfirmWindow: rawWindow})
+	if err != nil {
+		return pressFailed, ""
+	}
+	if n == 0 {
+		return pressAnswered, ""
+	}
+	target := uuidString(ua.ID)
+	yes, no := true, false
+	var row []AskButton
+	for _, c := range []struct {
+		label string
+		yes   *bool
+	}{{"Подтвердить", &yes}, {"Отмена", &no}} {
+		tok, err := newAskToken()
+		if err != nil {
+			_, _ = s.Q.CancelUIActionConfirm(ctx, ua.ID)
+			return pressFailed, ""
+		}
+		raw, _ := json.Marshal(askButtonAction{Kind: "ask_confirm", AskID: act.AskID, Yes: c.yes, Label: c.label, Target: target, Window: window})
+		if _, err := s.Q.InsertUIAction(ctx, sdb.InsertUIActionParams{AskID: a.ID, Token: tok, Action: raw, Zone: "normal"}); err != nil {
+			_, _ = s.Q.CancelUIActionConfirm(ctx, ua.ID)
+			return pressFailed, ""
+		}
+		row = append(row, AskButton{Text: c.label, Data: tok})
+	}
+	if err := s.AskButtons.SendButtons(ctx, installationID, chatID, text, [][]AskButton{row}); err != nil {
+		_, _ = s.Q.CancelUIActionConfirm(ctx, ua.ID)
+		return pressFailed, ""
+	}
+	return pressConfirmSent, ""
+}
+
+func (s *Supervisor) pressAskConfirm(ctx context.Context, a sdb.Ask, ua sdb.UiAction, act askButtonAction) (toast, done string) {
+	targetID, err := parseUUID(act.Target)
+	if err != nil {
+		return pressStale, ""
+	}
+	target, err := s.Q.GetUIAction(ctx, targetID)
+	if err != nil || target.AskID != a.ID || target.Status != "confirming" {
+		return pressStale, ""
+	}
+	var open confirmWindow
+	if err := json.Unmarshal(target.Result, &open); err != nil || act.Window == "" || open.Window != act.Window {
+		return pressStale, ""
+	}
+	var orig askButtonAction
+	if err := json.Unmarshal(target.Action, &orig); err != nil || orig.Kind != "ask_reply" {
+		return pressStale, ""
+	}
+	if n, err := s.Q.FinishUIAction(ctx, sdb.FinishUIActionParams{ID: ua.ID, Status: "done", Result: []byte("{}")}); err != nil || n == 0 {
+		return pressAnswered, ""
+	}
+	if act.Yes == nil || !*act.Yes {
+		_, _ = s.Q.CancelUIActionConfirm(ctx, target.ID)
+		return pressCancelled, "— " + pressCancelled
+	}
+	return s.applyAskButton(ctx, a, target, orig)
 }

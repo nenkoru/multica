@@ -5,6 +5,7 @@ export const streamKeys = {
   all: (wsId: string) => ["streams", wsId] as const,
   list: (wsId: string) => [...streamKeys.all(wsId), "list"] as const,
   multika: (wsId: string) => [...streamKeys.all(wsId), "multika"] as const,
+  screens: (wsId: string, sessionId: string) => [...streamKeys.all(wsId), "screens", sessionId] as const,
 };
 
 // The streams API exists only on the Fabrika fork; elsewhere it 404s and the
@@ -26,5 +27,15 @@ export function multikaOptions(wsId: string) {
     queryFn: () => api.getMultika(),
     retry: false,
     refetchInterval: pollUnlessFailed,
+  });
+}
+
+/** Stored screens of a chat; live lines and finals patch this cache. */
+export function screenBlocksOptions(wsId: string, sessionId: string) {
+  return queryOptions({
+    queryKey: streamKeys.screens(wsId, sessionId),
+    queryFn: () => api.listScreenBlocks(sessionId),
+    enabled: !!sessionId,
+    retry: false,
   });
 }

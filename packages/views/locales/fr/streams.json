@@ -16,5 +16,29 @@
     "no_microphone": "Pas d’accès au micro.",
     "empty": "Rien n’a été reconnu.",
     "failed": "Impossible de transcrire l’enregistrement."
+  },
+  "screen": {
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "failed": "Impossible de construire cet écran.",
+    "action_failed": "L’action n’a pas abouti.",
+    "stale": "Ce bouton n’est plus actif.",
+    "done": "Fait",
+    "already": "Déjà fait",
+    "digest": "Résumé",
+    "from_screen": "Depuis l’écran : {{text}}",
+    "evidence": "Preuve",
+    "goal": "Objectif",
+    "now": "Maintenant",
+    "next": "Ensuite",
+    "state": {
+      "running": "en cours",
+      "waiting": "en attente",
+      "asking": "vous attend",
+      "budget": "budget",
+      "paused": "en pause",
+      "broken": "en panne",
+      "milestone": "jalon"
+    }
   }
 }

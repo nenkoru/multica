@@ -1,6 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { ListStreamsResponseSchema, MultikaSchema, TranscriptionSchema } from "./schemas";
+import {
+  FAILED_SCREEN_PRESS,
+  ListScreenBlocksResponseSchema,
+  ListStreamsResponseSchema,
+  MultikaSchema,
+  ScreenPressResultSchema,
+  TranscriptionSchema,
+} from "./schemas";
 import { parseWithFallback } from "../api/schema";
 
 describe("streams schemas", () => {
@@ -43,5 +50,30 @@ describe("streams schemas", () => {
   it("reads a transcription without text as empty", () => {
     expect(TranscriptionSchema.parse({}).text).toBe("");
     expect(TranscriptionSchema.parse({ text: "привет", extra: 1 }).text).toBe("привет");
+  });
+
+  it("reads screens as off unless the server says so", () => {
+    expect(MultikaSchema.parse({ enabled: true }).screens).toBe(false);
+    expect(MultikaSchema.parse({ enabled: true, screens: true }).screens).toBe(true);
+  });
+
+  it("keeps the list when one screen's doc is malformed", () => {
+    const { blocks } = ListScreenBlocksResponseSchema.parse({
+      blocks: [
+        { id: "a", task_id: "t", a2ui: { root: "root", components: [{ id: "root", component: { Text: { text: "x" } } }] } },
+        { id: "b", a2ui: { components: "nope" } },
+      ],
+    });
+    expect(blocks.map((b) => b.id)).toEqual(["a", "b"]);
+    expect(blocks[0]?.a2ui?.components).toHaveLength(1);
+    expect(blocks[1]?.a2ui).toBeNull();
+    expect(parseWithFallback(7, ListScreenBlocksResponseSchema, { blocks: [] }, { endpoint: "x" }).blocks).toEqual([]);
+  });
+
+  it("reads an unreadable press answer as failed, never done", () => {
+    expect(parseWithFallback({}, ScreenPressResultSchema, FAILED_SCREEN_PRESS, { endpoint: "x" }).status).toBe("failed");
+    expect(
+      ScreenPressResultSchema.parse({ status: "confirm", confirm: { title: "Поднять бюджет?", text: "на $20" } }).confirm,
+    ).toEqual({ window: "", title: "Поднять бюджет?", text: "на $20" });
   });
 });

@@ -53,6 +53,8 @@ type Supervisor struct {
 	// AskButtons sends shown questions with inline buttons to Мультика's
 	// Telegram chat. Nil: questions go out as digest text only.
 	AskButtons AskButtonSender
+	// Screens is the screens-in-chat pipeline (screens.go); nil: off.
+	Screens *Screens
 
 	kick chan struct{}
 }

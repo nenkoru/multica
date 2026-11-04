@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -723,6 +724,22 @@ func main() {
 			streamsSup.APIMonthlyUSD = usd
 		}
 	}
+	// Screens in Мультика's chat (§10): on with FABRIKA_SCREENS=1.
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_SCREENS")); v == "1" || v == "true" || v == "on" {
+		// Links a screen may carry: GitHub, the app itself and the hosts
+		// listed in FABRIKA_GENUI_LINK_HOSTS (comma-separated).
+		hosts := []string{"github.com"}
+		for _, h := range strings.Split(os.Getenv("FABRIKA_GENUI_LINK_HOSTS"), ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				hosts = append(hosts, h)
+			}
+		}
+		appURL := appURLFromEnv()
+		if u, err := url.Parse(appURL); err == nil && u.Hostname() != "" {
+			hosts = append(hosts, u.Hostname())
+		}
+		streamsSup.Screens = &streams.Screens{LinkHosts: hosts, AppURL: appURL}
+	}
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
 		Streams:             streamsSup,
 		HTTPMetrics:         httpMetrics,
@@ -741,6 +758,11 @@ func main() {
 	})
 	if streamsSup.MultikaEnabled() {
 		h.ChatClaimContext = streamsSup.OnMultikaClaim
+	}
+	if streamsSup.Screens != nil {
+		// Repair rounds (§10.2) use the server's LLM; without it the
+		// screen is shown without the parts that stayed invalid.
+		streamsSup.Screens.Repair = streams.LLMRepairer(h.LLM, strings.TrimSpace(os.Getenv("FABRIKA_GENUI_REPAIR_MODEL")))
 	}
 	// member_delegation_day exists only for self-host telemetry; DO_NOT_TRACK
 	// stops writing it as well as sending the snapshot.

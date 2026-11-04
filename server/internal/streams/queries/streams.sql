@@ -410,3 +410,100 @@ SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
 WHERE q.context->>'stream_id' = @stream_id::text AND u.created_at >= @since::timestamptz;
+
+-- name: InsertUIBlock :one
+-- The id is derived from (task_id, seq) in code: a redelivered reply finds
+-- the stored block instead of storing a second one.
+INSERT INTO ui_block (id, message_id, workspace_id, chat_session_id, task_id, seq, kind, openui_source, a2ui, status, issues, repairs, text_version)
+VALUES (@id, @message_id, @workspace_id, @chat_session_id, @task_id, @seq, @kind, @openui_source, @a2ui, @status, @issues, @repairs, @text_version)
+ON CONFLICT (id) DO NOTHING
+RETURNING *;
+
+-- name: GetUIBlock :one
+SELECT * FROM ui_block WHERE id = $1;
+
+-- name: SetUIBlockA2UI :exec
+UPDATE ui_block SET a2ui = $2, updated_at = now() WHERE id = $1;
+
+-- name: ListUIBlocksBySession :many
+-- Newest first; failed screens are not shown.
+SELECT * FROM ui_block
+WHERE chat_session_id = $1 AND workspace_id = $2 AND status <> 'failed'
+ORDER BY created_at DESC LIMIT $3;
+
+-- name: InsertBlockUIAction :one
+INSERT INTO ui_action (ui_block_id, ask_id, token, action, zone, idempotency_key)
+VALUES (@ui_block_id, @ask_id, @token, @action, @zone, @idempotency_key)
+ON CONFLICT (idempotency_key) DO NOTHING
+RETURNING *;
+
+-- name: GetUIAction :one
+SELECT * FROM ui_action WHERE id = $1;
+
+-- name: GetUIActionByKey :one
+SELECT * FROM ui_action WHERE idempotency_key = $1;
+
+-- name: ConfirmUIAction :execrows
+-- A red action waits for the app's own confirmation window (§10.4). The
+-- window (its id and text) is kept in result; a new press opens a new one.
+UPDATE ui_action SET status = 'confirming', result = @confirm_window
+WHERE id = @id AND status IN ('pending', 'confirming');
+
+-- name: FinishUIActionAny :execrows
+-- Claims a pending or confirming action; 0 rows: another press won.
+UPDATE ui_action SET status = @status, result = @result, done_at = now()
+WHERE id = @id AND status IN ('pending', 'confirming');
+
+-- name: CancelUIActionConfirm :execrows
+UPDATE ui_action SET status = 'pending', result = NULL WHERE id = $1 AND status = 'confirming';
+
+-- name: SetUIActionResult :exec
+UPDATE ui_action SET result = $2 WHERE id = $1;
+
+-- name: TaskChatAgent :one
+SELECT agent_id, chat_session_id FROM agent_task_queue WHERE id = $1;
+
+-- name: StreamDailyCost :many
+-- Provider-reported cost per stream and Moscow day since a moment, 1e-10 USD.
+SELECT (q.context->>'stream_id')::text AS stream_id,
+       to_char(u.created_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD')::text AS day,
+       SUM(u.cost_usd_ticks)::bigint AS ticks
+FROM task_usage u
+JOIN agent_task_queue q ON q.id = u.task_id
+WHERE q.context->>'stream_id' = ANY(@stream_ids::text[])
+  AND u.created_at >= @since::timestamptz AND u.cost_usd_ticks IS NOT NULL
+GROUP BY 1, 2;
+
+-- name: WorkspaceCostSince :one
+-- All provider-reported cost of the workspace's agents since a moment.
+SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+FROM task_usage u
+JOIN agent_task_queue q ON q.id = u.task_id
+JOIN agent a ON a.id = q.agent_id
+WHERE a.workspace_id = @workspace_id AND u.created_at >= @since::timestamptz;
+
+-- name: StreamCardStats :one
+SELECT
+    (SELECT count(*) FROM stream_step s WHERE s.stream_id = @stream_id AND s.status = 'done' AND s.finished_at >= @since::timestamptz)::int AS steps_done,
+    (SELECT count(*) FROM milestone m WHERE m.stream_id = @stream_id AND m.created_at >= @since::timestamptz)::int AS milestones,
+    (SELECT count(*) FROM ask a WHERE a.stream_id = @stream_id AND a.status IN ('queued', 'shown'))::int AS open_asks;
+
+-- name: SetStreamShare :exec
+UPDATE stream SET charter = $2, min_share = $3, updated_at = now() WHERE id = $1;
+
+-- name: SetUIBlocksMessage :exec
+UPDATE ui_block SET message_id = @message_id, updated_at = now()
+WHERE task_id = @task_id AND message_id IS NULL;
+
+-- name: ListUIBlocksByTask :many
+SELECT * FROM ui_block WHERE task_id = $1 ORDER BY seq;
+
+-- name: WorkspaceSlug :one
+SELECT slug FROM workspace WHERE id = $1;
+
+-- name: ChatSessionCreator :one
+SELECT creator_id FROM chat_session WHERE id = $1;
+
+-- name: ChatSessionOfUser :one
+-- A chat of this user in this workspace: screens are private to the chat.
+SELECT id FROM chat_session WHERE id = @id AND workspace_id = @workspace_id AND creator_id = @user_id;
