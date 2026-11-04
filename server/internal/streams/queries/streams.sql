@@ -190,6 +190,16 @@ INSERT INTO milestone (stream_id, step_id, text, evidence, metric_delta)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- name: LatestAcceptedVerify :one
+-- The newest verify accepted after the last milestone: a milestone needs one
+-- (§8 p.3), and one acceptance backs one milestone.
+SELECT * FROM stream_step
+WHERE stream_id = @stream_id AND kind = 'verify' AND status = 'done'
+  AND output->>'verdict' = 'accept'
+  AND finished_at > @since::timestamptz
+ORDER BY finished_at DESC
+LIMIT 1;
+
 -- name: ListRecentMilestones :many
 SELECT * FROM milestone WHERE stream_id = $1 ORDER BY created_at DESC LIMIT $2;
 
@@ -360,3 +370,26 @@ UPDATE ui_action SET status = 'failed', done_at = now() WHERE id = $1 AND status
 -- name: ExpireAskActions :exec
 UPDATE ui_action SET status = 'expired', done_at = now()
 WHERE ask_id = $1 AND status = 'pending';
+
+-- name: CreateStream :one
+-- A new stream only: an existing slug returns no row instead of overwriting
+-- its charter.
+INSERT INTO stream (workspace_id, slug, title, charter, weight, min_share, max_parallel, manager_agent_id, carrier_project_id, active)
+VALUES (@workspace_id, @slug, @title, @charter, @weight, @min_share, @max_parallel, @manager_agent_id, @carrier_project_id, @active)
+ON CONFLICT (workspace_id, slug) DO NOTHING
+RETURNING *;
+
+-- name: ClaimMultikaCharter :one
+INSERT INTO multika_charter (task_id, chat_session_id, workspace_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (task_id) DO NOTHING
+RETURNING *;
+
+-- name: FinishMultikaCharter :exec
+UPDATE multika_charter SET slug = $2, stream_id = $3, error = $4 WHERE task_id = $1;
+
+-- name: TakeMultikaCharters :many
+-- Outcomes Мультика has not told Руслан yet, oldest first; taking marks them.
+UPDATE multika_charter SET reported_at = now()
+WHERE workspace_id = $1 AND reported_at IS NULL
+RETURNING *;

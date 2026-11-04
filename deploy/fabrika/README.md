@@ -77,6 +77,27 @@ web chat Руслан uses. Unset keeps everything below off.
   question once and closes its other buttons. Text answers («1 а») keep working;
   a button of an already answered question says «Вопрос уже закрыт».
 
+- **New stream from the interview (§9.3).** Мультика asks all the questions at once,
+  shows the charter and, only after Руслан's explicit yes, ends her reply with a
+  ```` ```fabrika-charter ```` JSON block (`slug`, `title`, `charter` with goal,
+  metric, done, mandate; optional `pause`). On `chat:done` code validates it and
+  creates the stream (migration 9003, `multika_charter` keeps it once per turn):
+  executor chains, manager, weight and carrier project come from the stream named
+  by `FABRIKA_STREAM_TEMPLATE`; the block may not set chains. With five streams
+  active the block must name one to `pause`. The new stream gets the focus and its
+  first manager turn at once; the outcome, or why nothing was created, is in
+  Мультика's next context. Without `FABRIKA_STREAM_TEMPLATE` nothing is created.
+  Undo: `deactivate` the stream.
+
+## Verify and milestones (§8)
+
+- A `verify` step never runs on the author: its chain drops the author's provider
+  key and agent. Other verifiers out of budget → the step waits; a chain with only
+  the author → the stream is `broken` («нет проверяющего на другой модели»).
+- A milestone counts only when a `verify` accepted work after the previous
+  milestone; that check is appended to its evidence. Otherwise the journal gets
+  `milestone_rejected` and the rest of the manager turn applies.
+
 ## Operations
 
 - **Watchdog fired.** `curl $FABRIKA_API/api/streams/health`. Unreachable → server down, follow the server runbook. Stale tick → check the server log for `fabrika_streams_supervisor` and `sys_cron_executions` for the job; a restart re-registers the job.

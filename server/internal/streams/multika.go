@@ -184,6 +184,8 @@ type MultikaTurnActions struct {
 	Answered  []string `json:"answered,omitempty"`
 	Ambiguous []string `json:"ambiguous,omitempty"`
 	Unknown   string   `json:"unknown,omitempty"`
+	// Charters are interview outcomes since her last turn (interview.go).
+	Charters []string `json:"charters,omitempty"`
 }
 
 // OnMultikaClaim runs when the daemon claims a chat turn. It returns the
@@ -297,6 +299,7 @@ func (s *Supervisor) applyMultikaTurn(ctx context.Context, taskID, sessionID, fo
 		}
 	}
 
+	acts.Charters = s.takeCharterOutcomes(ctx, ws)
 	raw, _ := json.Marshal(acts)
 	var focusID pgtype.UUID
 	if focus.Stream != nil {
@@ -411,6 +414,12 @@ func (s *Supervisor) MultikaFocusOf(ctx context.Context, ws, sessionID pgtype.UU
 	return s.liveFocus(s.currentFocus(ctx, sessionID, streams), s.now())
 }
 
+// interviewRules is how Мультика opens a new stream (§9.3). The block is
+// what code reads; without Руслан's explicit yes she does not write it.
+const interviewRules = "Новый поток («хочу X», «заведи поток») — интервью: задай одним сообщением все вопросы о вкусе и рамках, 5–10 штук, у каждого свой вариант по умолчанию. Обязательны цель одной фразой, метрика, «готово», мандат; ещё — круг людей, доля бюджета, репозитории, правила. Ничего не придумывай за Руслана: чего он не сказал и не принял вариантом — того в уставе нет. Собери устав и покажи его. Только после явного «да» Руслана закончи ответ одним блоком:\n" +
+	"```fabrika-charter\n{\"slug\": \"latin-slug\", \"title\": \"Название\", \"charter\": {\"goal\": \"…\", \"metric\": \"…\", \"done\": \"…\", \"mandate\": \"…\", \"people\": [], \"budget_share\": 0, \"repos\": [], \"rules\": []}}\n```\n" +
+	"Исполнителей и управляющего не указывай — их назначит код. Если активных уже 5 — сначала спроси, кого на паузу, и добавь в блок \"pause\": \"slug\". Что вышло, код скажет в следующем ходе; до этого не обещай, что поток заведён.\n"
+
 // MaxSummaryInContext bounds the summary handed to Мультика (§11: ≤1500
 // tokens is the manager's budget; Мультика gets a slice).
 const MaxSummaryInContext = 1500
@@ -456,7 +465,9 @@ func MultikaContext(streams []sdb.Stream, focus MultikaFocus, acts MultikaTurnAc
 	} else {
 		b.WriteString("Фокуса нет. Если реплика явно про один поток, отвечай по нему; если непонятно, про какой, — сразу переспроси одним вопросом.\n")
 	}
+	b.WriteString(interviewRules)
 	var done []string
+	done = append(done, acts.Charters...)
 	if acts.IdleExit != "" {
 		done = append(done, "фокус на «"+acts.IdleExit+"» снят после 30 мин тишины")
 	}
