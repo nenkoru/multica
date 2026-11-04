@@ -1654,6 +1654,7 @@ func (q *Queries) MarkStepDispatched(ctx context.Context, arg MarkStepDispatched
 const multikaChannelSession = `-- name: MultikaChannelSession :one
 SELECT b.chat_session_id FROM channel_chat_session_binding b
 JOIN channel_installation i ON i.id = b.installation_id
+JOIN chat_session cs ON cs.id = b.chat_session_id AND cs.creator_id = i.installer_user_id
 WHERE i.agent_id = $1 AND i.workspace_id = $2 AND i.status = 'active'
   AND b.retired_at IS NULL AND b.chat_type = 'p2p'
 ORDER BY b.created_at DESC LIMIT 1
@@ -1665,6 +1666,7 @@ type MultikaChannelSessionParams struct {
 }
 
 // The chat the Telegram integration currently routes Мультика's direct chat to.
+// Only the bot installer's own chat counts (Руслан installed Мультика's bot).
 func (q *Queries) MultikaChannelSession(ctx context.Context, arg MultikaChannelSessionParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, multikaChannelSession, arg.AgentID, arg.WorkspaceID)
 	var chat_session_id pgtype.UUID
@@ -1675,6 +1677,7 @@ func (q *Queries) MultikaChannelSession(ctx context.Context, arg MultikaChannelS
 const multikaTelegramChatWorkspace = `-- name: MultikaTelegramChatWorkspace :one
 SELECT i.workspace_id FROM channel_chat_session_binding b
 JOIN channel_installation i ON i.id = b.installation_id
+JOIN chat_session cs ON cs.id = b.chat_session_id AND cs.creator_id = i.installer_user_id
 WHERE b.installation_id = $1 AND b.channel_chat_id = $2
   AND i.agent_id = $3 AND i.status = 'active'
   AND b.retired_at IS NULL AND b.chat_type = 'p2p'
@@ -1697,6 +1700,7 @@ func (q *Queries) MultikaTelegramChatWorkspace(ctx context.Context, arg MultikaT
 const multikaTelegramTarget = `-- name: MultikaTelegramTarget :one
 SELECT b.installation_id, b.channel_chat_id FROM channel_chat_session_binding b
 JOIN channel_installation i ON i.id = b.installation_id
+JOIN chat_session cs ON cs.id = b.chat_session_id AND cs.creator_id = i.installer_user_id
 WHERE i.agent_id = $1 AND i.workspace_id = $2 AND i.status = 'active'
   AND i.channel_type = 'telegram' AND b.retired_at IS NULL AND b.chat_type = 'p2p'
 ORDER BY b.created_at DESC LIMIT 1
@@ -1779,7 +1783,7 @@ func (q *Queries) RequeueStep(ctx context.Context, arg RequeueStepParams) error 
 	return err
 }
 
-const resolveAsk = `-- name: ResolveAsk :exec
+const resolveAsk = `-- name: ResolveAsk :execrows
 UPDATE ask SET status = $2, answer = $3, resolved_at = now() WHERE id = $1 AND status IN ('queued', 'shown')
 `
 
@@ -1789,9 +1793,12 @@ type ResolveAskParams struct {
 	Answer []byte      `json:"answer"`
 }
 
-func (q *Queries) ResolveAsk(ctx context.Context, arg ResolveAskParams) error {
-	_, err := q.db.Exec(ctx, resolveAsk, arg.ID, arg.Status, arg.Answer)
-	return err
+func (q *Queries) ResolveAsk(ctx context.Context, arg ResolveAskParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resolveAsk, arg.ID, arg.Status, arg.Answer)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const resolveWait = `-- name: ResolveWait :exec

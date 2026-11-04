@@ -202,8 +202,8 @@ func TestAskButtonsLosingPressOfCrashQuestionChangesNothing(t *testing.T) {
 	inst, chat := h.multikaTelegram(454545)
 	fake := &fakeButtonSender{}
 	h.sup.AskButtons = fake
-	h.askShown("Поток упал. Продолжить?")
-	h.f.Exec(t, `UPDATE ask SET zone = 'red' WHERE stream_id = $1`, h.stream.ID)
+	h.askShown("Продлить сертификат после аварии?")
+	h.f.Exec(t, `UPDATE ask SET zone = 'red', default_option = NULL WHERE stream_id = $1`, h.stream.ID)
 	h.f.Exec(t, `UPDATE stream SET state = 'broken' WHERE id = $1`, h.stream.ID)
 	if _, err := h.sup.PushAskButtons(ctx, ws); err != nil || len(fake.sent) != 1 {
 		t.Fatalf("push err=%v sent=%d", err, len(fake.sent))
