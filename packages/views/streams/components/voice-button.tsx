@@ -26,6 +26,8 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Set on unmount: a microphone granted after that is released at once.
   const unmountedRef = useRef(false);
+  // Set from the first click until the recorder exists or the prompt fails.
+  const startingRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -33,6 +35,7 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
       clearTimeout(timerRef.current);
       const rec = recorderRef.current;
       recorderRef.current = null;
+      if (rec) rec.onerror = null;
       if (rec && rec.state !== "inactive") {
         rec.onstop = null;
         rec.stop();
@@ -48,24 +51,27 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
   };
 
   const start = async () => {
-    if (phase !== "idle" || recorderRef.current) return;
+    if (startingRef.current || recorderRef.current) return;
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       toast.error(t(($) => $.voice.unsupported));
       return;
     }
     // "starting" disables the button while the permission prompt is open, so
     // a second click cannot open a second recorder.
+    startingRef.current = true;
     setPhase("starting");
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
+      startingRef.current = false;
       if (!unmountedRef.current) {
         setPhase("idle");
         toast.error(t(($) => $.voice.no_microphone));
       }
       return;
     }
+    startingRef.current = false;
     if (unmountedRef.current) {
       stream.getTracks().forEach((track) => track.stop());
       return;
