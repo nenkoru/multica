@@ -103,6 +103,7 @@ func TestInterviewCharterRejectsIncompleteOrOverreaching(t *testing.T) {
 		{`{"slug": "multika", "title": "X", "charter": {"goal": "g", "metric": "m", "done": "d", "mandate": "m"}}`, "не подходит"},
 		{`{"slug": "iv-x", "title": "X", "charter": {"goal": "g", "metric": "m", "done": "d", "mandate": "m", "chains": {"M": [{"name": "x", "agent_id": "y"}]}}}`, "цепочки исполнителей"},
 		{`{"slug": "iv-x", "title": "X", "owner": "me", "charter": {"goal": "g"}}`, "не читается"},
+		{`{"slug": "iv-x", "title": "X", "charter": {"goal": "g", "metric": "m", "done": "d", "mandate": "m", "budget_share": 1.5}}`, "доля бюджета"},
 	}
 	for _, tc := range cases {
 		h.sup.OnMultikaReply(ctx, sid, newUUID(t), charterReply(tc.body))
@@ -110,6 +111,10 @@ func TestInterviewCharterRejectsIncompleteOrOverreaching(t *testing.T) {
 		if !strings.Contains(out, "НЕ заведён") || !strings.Contains(out, tc.want) {
 			t.Errorf("%s: context\n%s", tc.body, out)
 		}
+	}
+	h.sup.OnMultikaReply(ctx, sid, newUUID(t), "Завожу.\n```fabrika-charter\n{\"slug\": \"iv-x\"")
+	if out := h.sup.OnMultikaClaim(ctx, newUUID(t), sid, h.sup.MultikaAgentID, "?"); !strings.Contains(out, "не закрыт") {
+		t.Errorf("unclosed block: context\n%s", out)
 	}
 	if n := h.f.Count(t, `SELECT count(*) FROM stream WHERE slug IN ('iv-x', 'multika')`); n != 0 {
 		t.Fatalf("created %d", n)
@@ -145,6 +150,19 @@ func TestInterviewCharterNeedsPauseAtFiveActive(t *testing.T) {
 	}
 	if st := h.reload(); st.Active {
 		t.Fatal("paused stream still active")
+	}
+}
+
+// A pause in the block with room to spare pauses nothing.
+func TestInterviewPauseOnlyWhenFull(t *testing.T) {
+	h, sid := interviewHarness(t)
+	withPause := strings.Replace(goodCharter, `"slug": "iv-new"`, `"slug": "iv-new", "pause": "iv-tpl"`, 1)
+	h.sup.OnMultikaReply(context.Background(), sid, newUUID(t), charterReply(withPause))
+	if h.streamCount("iv-new") != 1 {
+		t.Fatal("not created")
+	}
+	if st := h.reload(); !st.Active {
+		t.Fatal("paused a stream with room to spare")
 	}
 }
 

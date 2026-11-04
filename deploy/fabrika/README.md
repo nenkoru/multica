@@ -84,7 +84,7 @@ web chat Руслан uses. Unset keeps everything below off.
   creates the stream (migration 9003, `multika_charter` keeps it once per turn):
   executor chains, manager, weight and carrier project come from the stream named
   by `FABRIKA_STREAM_TEMPLATE`; the block may not set chains. With five streams
-  active the block must name one to `pause`. The new stream gets the focus and its
+  active the block must name one to `pause` (with room to spare `pause` is ignored). The new stream gets the focus and its
   first manager turn at once; the outcome, or why nothing was created, is in
   Мультика's next context. Without `FABRIKA_STREAM_TEMPLATE` nothing is created.
   Undo: `deactivate` the stream.

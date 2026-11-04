@@ -43,6 +43,10 @@ var charterFence = regexp.MustCompile("(?s)```fabrika-charter\\s*(\\{.*?\\})\\s*
 func ParseCharterBlock(content string) (*CharterDraft, error) {
 	m := charterFence.FindAllStringSubmatch(content, -1)
 	if len(m) == 0 {
+		if strings.Contains(content, "```fabrika-charter") {
+			// Opened but not closed (or not an object): say so, never drop it.
+			return &CharterDraft{}, errors.New("блок устава не закрыт или в нём не JSON-объект")
+		}
 		return nil, nil
 	}
 	var d CharterDraft
@@ -71,6 +75,9 @@ func (d CharterDraft) Validate() error {
 	}
 	if !streamSlug.MatchString(d.Slug) || reservedSlugs[d.Slug] {
 		return fmt.Errorf("slug «%s» не подходит: латиница, цифры и дефис, не служебное имя", d.Slug)
+	}
+	if c.BudgetShare < 0 || c.BudgetShare > 1 {
+		return fmt.Errorf("доля бюджета %v вне 0..1", c.BudgetShare)
 	}
 	if len(c.Chains) > 0 {
 		// Executors are the fleet's business, not the interview's.
@@ -176,7 +183,8 @@ func (s *Supervisor) createFromDraft(ctx context.Context, q *sdb.Queries, ws pgt
 	if d.Pause != "" && pause == nil {
 		return nil, "активного потока «" + d.Pause + "» нет — уточни у Руслана, кого на паузу", nil
 	}
-	if pause != nil {
+	// Pausing frees a place; with room to spare nothing is paused.
+	if pause != nil && active >= MaxActiveStreams {
 		if err := q.SetStreamActive(ctx, sdb.SetStreamActiveParams{ID: pause.ID, Active: false}); err != nil {
 			return nil, "", err
 		}
