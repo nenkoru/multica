@@ -7,5 +7,14 @@
   "clear_focus": "清除焦点",
   "set_focus": "设为焦点",
   "empty": "还没有流。",
-  "unavailable": "此服务器不支持流。"
+  "unavailable": "此服务器不支持流。",
+  "voice": {
+    "record": "语音输入",
+    "stop": "停止录音",
+    "transcribing": "正在转写…",
+    "unsupported": "此浏览器无法录音。",
+    "no_microphone": "无法访问麦克风。",
+    "empty": "未识别到内容。",
+    "failed": "无法转写录音。"
+  }
 }

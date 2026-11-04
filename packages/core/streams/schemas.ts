@@ -37,12 +37,17 @@ export const MultikaSchema = z
     focus_slug: z.string().optional(),
     focus_title: z.string().optional(),
     focus_until: z.string().nullish(),
+    voice: z.boolean().default(false),
   })
   .loose();
+
+export const TranscriptionSchema = z.object({ text: z.string().default("") }).loose();
 
 export type Stream = z.infer<typeof StreamSchema>;
 export type ListStreamsResponse = z.infer<typeof ListStreamsResponseSchema>;
 export type Multika = z.infer<typeof MultikaSchema>;
+export type Transcription = z.infer<typeof TranscriptionSchema>;
 
 export const EMPTY_LIST_STREAMS_RESPONSE: ListStreamsResponse = { streams: [] };
-export const EMPTY_MULTIKA: Multika = { enabled: false };
+export const EMPTY_MULTIKA: Multika = { enabled: false, voice: false };
+export const EMPTY_TRANSCRIPTION: Transcription = { text: "" };

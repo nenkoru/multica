@@ -7,5 +7,14 @@
   "clear_focus": "清除焦點",
   "set_focus": "設為焦點",
   "empty": "還沒有流。",
-  "unavailable": "此伺服器不支援流。"
+  "unavailable": "此伺服器不支援流。",
+  "voice": {
+    "record": "語音輸入",
+    "stop": "停止錄音",
+    "transcribing": "正在轉寫…",
+    "unsupported": "此瀏覽器無法錄音。",
+    "no_microphone": "無法存取麥克風。",
+    "empty": "未辨識到內容。",
+    "failed": "無法轉寫錄音。"
+  }
 }

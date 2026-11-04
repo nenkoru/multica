@@ -52,7 +52,7 @@ it("shows streams, Мультика's focus and the way into the one chat", asyn
       { id: "2", slug: "work", title: "Работа", state: "asking", state_label: "ждёт тебя", reason: "вопрос 1", summary: "", active: true },
     ],
   });
-  getMultika.mockResolvedValue({ enabled: true, chat_session_id: "cs-1", focus_slug: "tern", focus_title: "Терн" });
+  getMultika.mockResolvedValue({ enabled: true, voice: false, chat_session_id: "cs-1", focus_slug: "tern", focus_title: "Терн" });
   renderPage();
 
   expect(await screen.findByTestId("stream-tern")).toHaveTextContent("ноды живы");

@@ -44,6 +44,8 @@ type Supervisor struct {
 	// APIMonthlyUSD is the monthly API ceiling the charters' budget_share
 	// divides (FABRIKA_API_MONTHLY_USD); 0 hides the cost line.
 	APIMonthlyUSD float64
+	// Voice transcribes Мультика's voice notes (FABRIKA_WHISPER_URL); nil: off.
+	Voice Transcriber
 	// Per-tick resource view, set by Tick (tickResources).
 	alloc     *slotAlloc
 	gpuUntil  time.Time

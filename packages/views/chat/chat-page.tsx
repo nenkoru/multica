@@ -11,7 +11,7 @@ import {
   ResizableHandle,
 } from "@multica/ui/components/ui/resizable";
 import { useIsCompact } from "@multica/ui/hooks/use-mobile";
-import { useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
+import { useCurrentWorkspace, useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
 import { getCurrentSlug } from "@multica/core/platform";
 import { useChatStore } from "@multica/core/chat";
 import { chatQuickActionsPendingOptions } from "@multica/core/chat/queries";
@@ -19,6 +19,7 @@ import { useRegenerateChatQuickActions } from "@multica/core/chat/mutations";
 import { useQuickActionsPendingTimeout } from "@multica/core/chat/use-quick-actions-pending-timeout";
 import { useQuickActionsFailureToast } from "./components/use-quick-actions-failure-toast";
 import { useQuery } from "@tanstack/react-query";
+import { multikaOptions } from "@multica/core/streams";
 import type { Agent, ChatSession } from "@multica/core/types";
 import { PageHeader } from "../layout/page-header";
 import { useNavigation } from "../navigation";
@@ -37,6 +38,7 @@ import { ArchivedAgentBanner } from "./components/archived-agent-banner";
 import { AgentAccessRevokedBanner } from "./components/agent-access-revoked-banner";
 import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
 import { useRegisterCommandBarContext } from "../search/register-context";
+import { VoiceButton } from "../streams/components/voice-button";
 
 /**
  * Chat tab — the first-class two-pane surface (thread list on the left,
@@ -81,6 +83,12 @@ export function ChatPage() {
   // Toast when an accepted refresh later fails in the daemon (async half).
   useQuickActionsFailureToast(c.activeSessionId ?? null);
   const regenerateQuickActions = useRegenerateChatQuickActions();
+  // Fabrika: voice input only in Мультика's chat, and only when the server
+  // has a transcription service.
+  const wsId = useCurrentWorkspace()?.id ?? "";
+  const { data: multika } = useQuery({ ...multikaOptions(wsId), enabled: !!wsId });
+  const voiceOn =
+    multika?.voice === true && !!multika.agent_id && c.activeAgent?.id === multika.agent_id;
   const urlSession = searchParams.get("session") || null;
   const urlAgent = searchParams.get("agent") || null;
 
@@ -379,6 +387,7 @@ export function ChatPage() {
         onProjectChange={changeProjectContext}
         isProjectUpdating={c.isProjectUpdating}
         focusRequest={c.focusInputRequest}
+        rightAdornment={voiceOn ? (insert) => <VoiceButton onText={insert} /> : undefined}
       />
     </div>
   );

@@ -7,5 +7,14 @@
   "clear_focus": "Retirer le focus",
   "set_focus": "Focus",
   "empty": "Aucun flux pour l’instant.",
-  "unavailable": "Les flux ne sont pas disponibles sur ce serveur."
+  "unavailable": "Les flux ne sont pas disponibles sur ce serveur.",
+  "voice": {
+    "record": "Dicter",
+    "stop": "Arrêter l’enregistrement",
+    "transcribing": "Transcription…",
+    "unsupported": "Ce navigateur ne peut pas enregistrer l’audio.",
+    "no_microphone": "Pas d’accès au micro.",
+    "empty": "Rien n’a été reconnu.",
+    "failed": "Impossible de transcrire l’enregistrement."
+  }
 }

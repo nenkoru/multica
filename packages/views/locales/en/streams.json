@@ -7,5 +7,14 @@
   "clear_focus": "Clear focus",
   "set_focus": "Focus",
   "empty": "No streams yet.",
-  "unavailable": "Streams are not available on this server."
+  "unavailable": "Streams are not available on this server.",
+  "voice": {
+    "record": "Dictate",
+    "stop": "Stop recording",
+    "transcribing": "Transcribing…",
+    "unsupported": "This browser cannot record audio.",
+    "no_microphone": "No access to the microphone.",
+    "empty": "Nothing was recognized.",
+    "failed": "Could not transcribe the recording."
+  }
 }
