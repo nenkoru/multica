@@ -726,9 +726,13 @@ func main() {
 	}
 	// Screens in Мультика's chat (§10): on with FABRIKA_SCREENS=1.
 	if v := strings.TrimSpace(os.Getenv("FABRIKA_SCREENS")); v == "1" || v == "true" || v == "on" {
-		hosts := []string{"github.com", "git.bayfut.net"}
-		if v := strings.TrimSpace(os.Getenv("FABRIKA_GENUI_LINK_HOSTS")); v != "" {
-			hosts = strings.Split(v, ",")
+		// Links a screen may carry: GitHub, the app itself and the hosts
+		// listed in FABRIKA_GENUI_LINK_HOSTS (comma-separated).
+		hosts := []string{"github.com"}
+		for _, h := range strings.Split(os.Getenv("FABRIKA_GENUI_LINK_HOSTS"), ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				hosts = append(hosts, h)
+			}
 		}
 		appURL := appURLFromEnv()
 		if u, err := url.Parse(appURL); err == nil && u.Hostname() != "" {
