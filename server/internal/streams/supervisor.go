@@ -906,8 +906,16 @@ func (s *Supervisor) applyManage(ctx context.Context, st sdb.Stream, step sdb.St
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(out.Summary) != "" {
-			if err := q.SetStreamSummary(ctx, sdb.SetStreamSummaryParams{ID: st.ID, Summary: out.Summary}); err != nil {
+		summary := strings.TrimSpace(out.Summary)
+		if summary == "" && strings.TrimSpace(out.SummaryPatch) != "" {
+			// The manager wrote a patch instead of the full summary: apply it,
+			// rebuilding an empty summary from the earlier steps' patches.
+			if summary, err = patchedSummary(ctx, q, locked, step, out.SummaryPatch); err != nil {
+				return err
+			}
+		}
+		if summary != "" {
+			if err := q.SetStreamSummary(ctx, sdb.SetStreamSummaryParams{ID: st.ID, Summary: summary}); err != nil {
 				return err
 			}
 		}
@@ -1172,7 +1180,7 @@ func (s *Supervisor) settleAsks(ctx context.Context, st sdb.Stream, now time.Tim
 				continue // answered meanwhile
 			}
 			s.journal(ctx, st.ID, a.OriginStepID, "ask_dropped", map[string]any{"text": a.Text})
-		case a.Zone == "normal" && a.DefaultOption.Valid:
+		case a.Zone == "normal" && a.DefaultOption.Valid && redTopic(a.Text) == "":
 			ans, _ := json.Marshal(map[string]any{"choice": a.DefaultOption.Int32, "channel": "default", "at": now})
 			n, err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "defaulted", Answer: ans})
 			if err != nil {
@@ -1243,4 +1251,28 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// patchedSummary appends patch to the stream's summary. An empty summary is
+// first rebuilt from the summary_patch of the stream's earlier done steps, so
+// a manager that only ever writes patches still leaves a summary behind.
+func patchedSummary(ctx context.Context, q *sdb.Queries, st sdb.Stream, step sdb.StreamStep, patch string) (string, error) {
+	base := strings.TrimSpace(st.Summary)
+	if base == "" {
+		steps, err := q.ListStepsSince(ctx, sdb.ListStepsSinceParams{StreamID: st.ID, Seq: 0})
+		if err != nil {
+			return "", err
+		}
+		var parts []string
+		for _, x := range steps {
+			if x.Seq >= step.Seq || x.Status != StepDone {
+				continue
+			}
+			if o, err := decodeOutput(x.Output); err == nil && strings.TrimSpace(o.SummaryPatch) != "" {
+				parts = append(parts, strings.TrimSpace(o.SummaryPatch))
+			}
+		}
+		base = strings.Join(parts, "\n")
+	}
+	return strings.TrimSpace(base + "\n" + strings.TrimSpace(patch)), nil
 }

@@ -47,6 +47,30 @@ var selfDecideTopics = []struct {
 	{regexp.MustCompile(`(?i)(можно ли (смерджить|слить|задеплоить|выкатить)|merge\?|deploy\?)`), "a reversible merge or deploy"},
 }
 
+// redTopics are the mandate's categories kept for Ruslan (RUSL-2514): a
+// question about them is red, never answered by silence.
+var redTopics = []struct {
+	re  *regexp.Regexp
+	why string
+}{
+	// No \b here: in RE2 it is ASCII-only and never matches before Cyrillic.
+	{regexp.MustCompile(`(?i)(личн\S* доступ|personal access)`), "personal access"},
+	{regexp.MustCompile(`(?i)(люди вне круга|мандат:[^.]*люд|от (его|имени руслана|своего) имени|on his behalf)`), "people outside the circle"},
+	{regexp.MustCompile(`(?i)((сверх|больше|выше|поднять) (бюджет|лимит|потол)|мандат:[^.]*деньг|over budget)`), "money over budget"},
+	{regexp.MustCompile(`(?i)(необратим|безвозвратн|без (бэкапа|копии|резервн)|мандат:[^.]*необрат|irreversible)`), "irreversible without a backup"},
+	{regexp.MustCompile(`(?i)(зон\S* наташ|мандат:[^.]*наташ|natasha's zone)`), "Natasha's zone"},
+}
+
+// redTopic names the mandate category a question text touches, or "".
+func redTopic(text string) string {
+	for _, t := range redTopics {
+		if t.re.MatchString(text) {
+			return t.why
+		}
+	}
+	return ""
+}
+
 // ValidateAsk applies the form check of §7.2 and the self-decide screen of
 // §7.3. A rejected question goes back to the step as a contract error.
 func ValidateAsk(h HumanAction, now time.Time) (AskDraft, error) {
@@ -80,6 +104,11 @@ func ValidateAsk(h HumanAction, now time.Time) (AskDraft, error) {
 		problems = append(problems, "deadline is in the past")
 	} else {
 		d.Deadline = t
+	}
+	if d.Zone == "normal" {
+		if why := redTopic(d.Text); why != "" {
+			problems = append(problems, "red zone (mandate: "+why+"): set \"zone\": \"red\" and no default")
+		}
 	}
 	if d.Zone == "red" && h.Default != nil {
 		problems = append(problems, "red-zone question must not have a default")
