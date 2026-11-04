@@ -147,6 +147,9 @@ type upsertRequest struct {
 	MaxParallel      int32   `json:"max_parallel"`
 	ManagerAgentID   string  `json:"manager_agent_id"`
 	CarrierProjectID string  `json:"carrier_project_id"`
+	// Migrate: old board issues (in_progress, blocked) for the first turn to
+	// fold into summary and a step queue (§12). Empty: a plain first turn.
+	Migrate []string `json:"migrate"`
 }
 
 // reservedSlugs are fixed routes under /api/streams that a stream slug
@@ -176,6 +179,11 @@ func (h *HTTP) Upsert(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title, charter.goal, charter.metric and charter.done are required")
 		return
 	}
+	migrate, err := NormalizeMigrate(req.Migrate)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	charter, _ := json.Marshal(req.Charter)
 	if req.Weight <= 0 {
 		req.Weight = 1
@@ -187,15 +195,29 @@ func (h *HTTP) Upsert(w http.ResponseWriter, r *http.Request) {
 	proj, _ := parseUUID(req.CarrierProjectID)
 	var share pgtype.Numeric
 	_ = share.Scan("0")
-	st, err := h.Sup.Q.UpsertStream(r.Context(), sdb.UpsertStreamParams{
+	params := sdb.UpsertStreamParams{
 		WorkspaceID: ws, Slug: chi.URLParam(r, "slug"), Title: req.Title, Charter: charter, Summary: req.Summary,
 		Weight: req.Weight, MinShare: share, MaxParallel: req.MaxParallel, ManagerAgentID: mgr, CarrierProjectID: proj,
+	}
+	var st sdb.Stream
+	// One transaction: a tick between the stream and its migration turn
+	// would see an empty stream and queue a plain first turn as well.
+	err = pgx.BeginFunc(r.Context(), h.Sup.Pool, func(tx pgx.Tx) error {
+		q := h.Sup.Q.WithTx(tx)
+		var err error
+		if st, err = q.UpsertStream(r.Context(), params); err != nil {
+			return err
+		}
+		if len(migrate) > 0 {
+			_, err = insertStepTx(r.Context(), q, st.ID, KindSummarize, MigrationBrief(migrate), "", "S", OriginMigration, false)
+		}
+		return err
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	h.Sup.journal(r.Context(), st.ID, pgtype.UUID{}, "charter", map[string]any{"title": st.Title})
+	h.Sup.journal(r.Context(), st.ID, pgtype.UUID{}, "charter", map[string]any{"title": st.Title, "migrate": migrate})
 	h.Sup.Kick()
 	writeJSON(w, http.StatusOK, view(st))
 }

@@ -132,6 +132,26 @@ microphone next to Send in Мультика's chat only: a note of up to a minut
 lands in the draft and is sent only by Руслан. Without the URL the endpoint
 answers 404 and the button is not shown. Rollback: unset the variable.
 
+## Moving a stream off the board (§12, day 10)
+
+The old board keeps working; streams move one at a time.
+
+1. Charter from the interview: `PUT /api/streams/{slug}` as usual, plus
+   `"migrate": ["RUSL-1768", …]` — the stream's in_progress and blocked
+   issues (≤ 40, backlog does not move). In the same transaction the stream
+   gets one `summarize` turn with origin `migration` instead of the plain
+   first turn.
+2. That turn reads only the listed issues and returns the summary, a step
+   queue in `next` (or a `wait` of kind `issue` for work still running), and
+   in `result` the lists `перенесены: …` and `migrated: …`.
+3. The mover then labels the listed issues `migrated` and closes those that
+   did not become steps; the turn itself never touches them.
+4. The stream's autopilots are turned off (`multica autopilot update <id>
+   --status paused`).
+
+Rollback: `deactivate` the stream and resume the autopilots; the old issues
+are only labelled, never deleted.
+
 ## Operations
 
 - **Watchdog fired.** `curl $FABRIKA_API/api/streams/health`. Unreachable → server down, follow the server runbook. Stale tick → check the server log for `fabrika_streams_supervisor` and `sys_cron_executions` for the job; a restart re-registers the job.

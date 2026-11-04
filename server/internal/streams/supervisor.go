@@ -371,24 +371,29 @@ func (s *Supervisor) enqueueManage(ctx context.Context, st sdb.Stream, trigger s
 func (s *Supervisor) insertStep(ctx context.Context, streamID pgtype.UUID, kind, brief, moves, cost, origin string, reserved bool) (sdb.StreamStep, error) {
 	var step sdb.StreamStep
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		q := s.Q.WithTx(tx)
-		if _, err := q.LockStream(ctx, streamID); err != nil {
-			return err
-		}
-		seq, err := q.AllocStepSeq(ctx, streamID)
-		if err != nil {
-			return err
-		}
-		step, err = q.InsertStep(ctx, sdb.InsertStepParams{
-			StreamID: streamID, Seq: seq, Kind: kind, Brief: brief, Moves: moves, CostClass: cost,
-			Origin: origin, ReservedSlot: reserved, MaxAttempts: MaxStepAttempts,
-		})
-		if err != nil {
-			return err
-		}
-		return appendJournal(ctx, q, streamID, step.ID, "step_queued", map[string]any{"seq": seq, "kind": kind, "brief": firstLine(brief, 200)})
+		var err error
+		step, err = insertStepTx(ctx, s.Q.WithTx(tx), streamID, kind, brief, moves, cost, origin, reserved)
+		return err
 	})
 	return step, err
+}
+
+func insertStepTx(ctx context.Context, q *sdb.Queries, streamID pgtype.UUID, kind, brief, moves, cost, origin string, reserved bool) (sdb.StreamStep, error) {
+	if _, err := q.LockStream(ctx, streamID); err != nil {
+		return sdb.StreamStep{}, err
+	}
+	seq, err := q.AllocStepSeq(ctx, streamID)
+	if err != nil {
+		return sdb.StreamStep{}, err
+	}
+	step, err := q.InsertStep(ctx, sdb.InsertStepParams{
+		StreamID: streamID, Seq: seq, Kind: kind, Brief: brief, Moves: moves, CostClass: cost,
+		Origin: origin, ReservedSlot: reserved, MaxAttempts: MaxStepAttempts,
+	})
+	if err != nil {
+		return sdb.StreamStep{}, err
+	}
+	return step, appendJournal(ctx, q, streamID, step.ID, "step_queued", map[string]any{"seq": seq, "kind": kind, "brief": firstLine(brief, 200)})
 }
 
 func (s *Supervisor) executorStates(ctx context.Context) (map[string]ExecutorState, error) {
