@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
 func newUUID(t *testing.T) pgtype.UUID {
@@ -118,5 +120,31 @@ func TestMultikaExitAndWebFocus(t *testing.T) {
 	}
 	if _, err := h.sup.SetMultikaFocus(ctx, ws, sid, "no-such-stream"); err == nil {
 		t.Fatal("unknown slug accepted")
+	}
+}
+
+// The focus belongs to the one chat: a turn from another web session of
+// Мультика moves the focus the header and Telegram see.
+func TestMultikaFocusKeyedByTheOneChat(t *testing.T) {
+	h := newHarness(t, "mk-key")
+	ctx := context.Background()
+	multika := h.f.Agent(t, "mk-key-multika", h.f.Runtime(t, "rt-mk-key-multika"))
+	h.sup.MultikaAgentID, _ = parseUUID(multika)
+	old, _ := parseUUID(h.f.ChatSession(t, multika, testutil.Cols{"updated_at": "2026-11-01T00:00:00Z"}))
+	one, _ := parseUUID(h.f.ChatSession(t, multika))
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(ctx, `DELETE FROM chat_focus WHERE chat_session_id = ANY($1)`, []pgtype.UUID{old, one})
+		_, _ = testPool.Exec(ctx, `DELETE FROM multika_turn WHERE chat_session_id = ANY($1)`, []pgtype.UUID{old, one})
+	})
+	ws := h.stream.WorkspaceID
+	if got, err := h.sup.MultikaSession(ctx, ws); err != nil || got.Bytes != one.Bytes {
+		t.Fatalf("one chat = latest session, got %v %v", got, err)
+	}
+	h.sup.OnMultikaClaim(ctx, newUUID(t), old, h.sup.MultikaAgentID, "давай про key")
+	if f := h.sup.MultikaFocusOf(ctx, ws, one); f.Stream == nil || f.Stream.Slug != "mk-key" {
+		t.Fatalf("focus not on the one chat: %+v", f)
+	}
+	if f := h.sup.MultikaFocusOf(ctx, ws, old); f.Stream != nil {
+		t.Fatalf("focus leaked onto the other session: %+v", f)
 	}
 }

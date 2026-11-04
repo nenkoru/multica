@@ -54,9 +54,12 @@ web chat Руслан uses. Unset keeps everything below off.
   chat the Telegram binding points to (else the agent's latest web chat).
 - **Focus.** Each claimed chat turn of Мультика passes through `OnMultikaClaim`
   (migration 9002, table `multika_turn` makes it idempotent):
+  - the focus belongs to the one chat (`GET /multika`), whichever session the turn came from;
   - «давай про Терн», «переключись на buvg01» → focus on that stream for 30 min;
     «всё», «назад» or 30 min of silence → focus off, the manager folds the
-    decisions into the summary;
+    decisions into the summary. The silence exit is applied on the next turn
+    (or `GET /multika`, which already hides an expired focus), so the manager
+    hears about it only when Руслан writes again;
   - while focused, remarks go to the stream's manager in the reserved slot; remarks
     sent before that turn starts join its brief;
   - a line like «1 а, 2 да» with shown questions is applied as answers;

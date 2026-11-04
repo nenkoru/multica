@@ -54,6 +54,10 @@ func TestParseFocusLeavesPlainSpeechAlone(t *testing.T) {
 		"всё понятно, а что с деньгами?", // not a bare exit
 		"Терн сегодня как?",              // a mention does not move the focus
 		"про это потом",                  // "про" + unknown word is plain speech
+		"давай о том, что сделано",
+		"давай по порядку",
+		"перейдём к делу",
+		"поговорим о погоде",
 		"1 а, 2 да",
 		"",
 	} {

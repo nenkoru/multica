@@ -68,6 +68,14 @@ var exitWords = map[string]bool{
 	"все, спасибо": true, "всё спасибо": true, "все спасибо": true,
 }
 
+// explicitPrefixes name a stream for sure, so a miss is reported back to
+// Мультика ("потока X нет"). After softer ones («давай по порядку»,
+// «перейдём к делу») a miss is plain speech.
+var explicitPrefixes = map[string]bool{
+	"давай поговорим про": true, "давай про": true, "поговорим про": true,
+	"переключись на": true, "переключимся на": true, "что с потоком": true, "что по потоку": true,
+}
+
 // enterPrefixes open a focus; longest first so "давай про" wins over "про".
 var enterPrefixes = []string{
 	"давай поговорим про", "давай поговорим о", "давай про", "давай о", "давай по",
@@ -95,8 +103,9 @@ func ParseFocus(text string, streams []sdb.Stream) FocusIntent {
 		if len(words) == 0 {
 			return FocusIntent{}
 		}
+		explicit := explicitPrefixes[p]
 		if words[0] == "поток" || words[0] == "потоку" || words[0] == "потоке" {
-			words = words[1:]
+			words, explicit = words[1:], true
 		}
 		if len(words) == 0 {
 			return FocusIntent{}
@@ -112,8 +121,7 @@ func ParseFocus(text string, streams []sdb.Stream) FocusIntent {
 			st := hits[0]
 			return FocusIntent{Kind: FocusEnter, Stream: &st}
 		case 0:
-			// "про" alone is too common in plain speech to report a miss.
-			if p == "про" {
+			if !explicit {
 				return FocusIntent{}
 			}
 			return FocusIntent{Target: words[0]}
@@ -195,8 +203,15 @@ func (s *Supervisor) OnMultikaClaim(ctx context.Context, taskID, sessionID, agen
 		slog.Warn("streams: multika streams lookup failed", "error", err)
 		return ""
 	}
+	// The focus belongs to the one chat, not to whichever session the turn
+	// came from: a web session without the Telegram binding must see the
+	// same focus as the header and Telegram.
+	focusKey := sessionID
+	if canon, err := s.MultikaSession(ctx, owner.WorkspaceID); err == nil && canon.Valid {
+		focusKey = canon
+	}
 	now := s.now()
-	acts, focus := s.applyMultikaTurn(ctx, taskID, sessionID, owner.WorkspaceID, text, streams, now)
+	acts, focus := s.applyMultikaTurn(ctx, taskID, sessionID, focusKey, owner.WorkspaceID, text, streams, now)
 	return MultikaContext(streams, focus, acts, now)
 }
 
@@ -206,17 +221,23 @@ type MultikaFocus struct {
 	Until  time.Time
 }
 
-func (s *Supervisor) applyMultikaTurn(ctx context.Context, taskID, sessionID, ws pgtype.UUID, text string, streams []sdb.Stream, now time.Time) (MultikaTurnActions, MultikaFocus) {
+func (s *Supervisor) applyMultikaTurn(ctx context.Context, taskID, sessionID, focusKey, ws pgtype.UUID, text string, streams []sdb.Stream, now time.Time) (MultikaTurnActions, MultikaFocus) {
 	var acts MultikaTurnActions
-	focus := s.currentFocus(ctx, sessionID, streams)
+	focus := s.currentFocus(ctx, focusKey, streams)
 	// A redelivered claim reuses what the first claim did.
-	if prev, err := s.Q.GetMultikaTurn(ctx, taskID); err == nil {
+	prev, err := s.Q.GetMultikaTurn(ctx, taskID)
+	if err == nil {
 		_ = json.Unmarshal(prev.Actions, &acts)
+		return acts, s.liveFocus(focus, now)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		// Unknown whether this turn was applied: act on nothing rather than twice.
+		slog.Warn("streams: multika turn lookup failed", "error", err)
 		return acts, s.liveFocus(focus, now)
 	}
 	if focus.Stream != nil && !focus.Until.After(now) {
 		acts.IdleExit = focus.Stream.Title
-		s.leaveFocus(ctx, sessionID, *focus.Stream, "30 мин тишины")
+		s.leaveFocus(ctx, focusKey, *focus.Stream, "30 мин тишины")
 		focus = MultikaFocus{}
 	}
 
@@ -241,12 +262,12 @@ func (s *Supervisor) applyMultikaTurn(ctx context.Context, taskID, sessionID, ws
 	case intent.Kind == FocusExit:
 		if focus.Stream != nil {
 			acts.Exited = focus.Stream.Title
-			s.leaveFocus(ctx, sessionID, *focus.Stream, "Руслан вынырнул")
+			s.leaveFocus(ctx, focusKey, *focus.Stream, "Руслан вынырнул")
 		}
 		focus = MultikaFocus{}
 	case intent.Kind == FocusEnter:
 		if focus.Stream != nil && focus.Stream.ID.Bytes != intent.Stream.ID.Bytes {
-			s.leaveFocus(ctx, sessionID, *focus.Stream, "фокус перешёл на "+intent.Stream.Title)
+			s.leaveFocus(ctx, focusKey, *focus.Stream, "фокус перешёл на "+intent.Stream.Title)
 		}
 		focus = MultikaFocus{Stream: intent.Stream, Until: now.Add(FocusIdle)}
 		acts.Entered = intent.Stream.Title
@@ -271,7 +292,7 @@ func (s *Supervisor) applyMultikaTurn(ctx context.Context, taskID, sessionID, ws
 		}
 	}
 	if focus.Stream != nil {
-		if err := s.Q.SetChatFocus(ctx, sdb.SetChatFocusParams{ChatSessionID: sessionID, FocusStreamID: focus.Stream.ID, FocusUntil: ts(focus.Until)}); err != nil {
+		if err := s.Q.SetChatFocus(ctx, sdb.SetChatFocusParams{ChatSessionID: focusKey, FocusStreamID: focus.Stream.ID, FocusUntil: ts(focus.Until)}); err != nil {
 			slog.Warn("streams: multika set focus failed", "error", err)
 		}
 	}
