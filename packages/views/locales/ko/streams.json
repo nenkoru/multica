@@ -1,0 +1,11 @@
+{
+  "title": "스트림",
+  "multika": "Multika",
+  "open_chat": "채팅 열기",
+  "focus_on": "포커스: {{title}}",
+  "no_focus": "포커스 없음",
+  "clear_focus": "포커스 해제",
+  "set_focus": "포커스",
+  "empty": "아직 스트림이 없습니다.",
+  "unavailable": "이 서버에서는 스트림을 사용할 수 없습니다."
+}

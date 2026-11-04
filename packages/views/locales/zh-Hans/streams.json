@@ -1,0 +1,11 @@
+{
+  "title": "流",
+  "multika": "Multika",
+  "open_chat": "打开对话",
+  "focus_on": "焦点：{{title}}",
+  "no_focus": "无焦点",
+  "clear_focus": "清除焦点",
+  "set_focus": "设为焦点",
+  "empty": "还没有流。",
+  "unavailable": "此服务器不支持流。"
+}

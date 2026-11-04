@@ -7,6 +7,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { AppLink, useNavigation } from "../navigation";
 import { HelpLauncher } from "./help-launcher";
+import { StreamsSidebarGroup } from "../streams";
 import { JoinDiscordCard } from "./join-discord-card";
 import {
   DndContext,
@@ -883,6 +884,8 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          <StreamsSidebarGroup itemClassName={NAV_ITEM_CLASS_NAME} />
 
           <SidebarGroup>
             <SidebarGroupLabel>{t(($) => $.sidebar.ai_team_group)}</SidebarGroupLabel>

@@ -26,6 +26,7 @@ export type RouteIconName =
   | "ListTodo"
   | "FolderKanban"
   | "Zap"
+  | "Workflow"
   | "Bot"
   | "Users"
   | "BarChart3"
@@ -55,6 +56,7 @@ export type NavLabelKey =
   | "usage"
   | "runtimes"
   | "skills"
+  | "streams"
   | "settings";
 
 /** Stable identifier for each workspace navigation page. */
@@ -70,6 +72,7 @@ export type WorkspacePageKey =
   | "usage"
   | "runtimes"
   | "skills"
+  | "streams"
   | "settings";
 
 export interface WorkspacePage {
@@ -97,6 +100,7 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   usage: { segment: "usage", icon: "BarChart3", navKey: "usage" },
   runtimes: { segment: "runtimes", icon: "Monitor", navKey: "runtimes" },
   skills: { segment: "skills", icon: "BookOpenText", navKey: "skills" },
+  streams: { segment: "streams", icon: "Workflow", navKey: "streams" },
   settings: { segment: "settings", icon: "Settings", navKey: "settings" },
 };
 

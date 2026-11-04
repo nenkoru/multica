@@ -1,0 +1,11 @@
+{
+  "title": "ストリーム",
+  "multika": "Multika",
+  "open_chat": "チャットを開く",
+  "focus_on": "フォーカス: {{title}}",
+  "no_focus": "フォーカスなし",
+  "clear_focus": "フォーカスを解除",
+  "set_focus": "フォーカス",
+  "empty": "ストリームはまだありません。",
+  "unavailable": "このサーバーではストリームを利用できません。"
+}
