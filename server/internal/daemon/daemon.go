@@ -5695,6 +5695,13 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 	}
 	provider := rt.Provider
 
+	// RUSL-2266: mask this task's own secrets (its MULTICA_TOKEN and the
+	// agent's secret-named custom_env values) in everything reported while it
+	// runs. Registered before the agent starts and dropped only when
+	// handleTask returns, i.e. after the terminal report was sent or persisted
+	// (reportTerminalTask masks before persisting, so a later replay is safe).
+	defer registerTaskSecretValues(task)()
+
 	// Task-scoped logger. The task id goes in whole: it is the key every
 	// other surface prints (task JSON, env-root ownership manifest, server
 	// logs), so a full id is what lets a log line be joined to them. An
@@ -5853,6 +5860,7 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 		// …) rather than the coarse legacy "agent_error" bucket.
 		failureReason := taskRunFailureReason(err)
 		errorMessage := err.Error()
+		shutdownSessionID := ""
 		// RUSL-2266: under systemd's KillMode=control-group the agent receives
 		// the same SIGTERM as the daemon and can die (and surface as an error)
 		// before the root context is observed as cancelled — but by the time
@@ -5864,12 +5872,15 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 				"classified_as", failureReason, "failure_reason", reason)
 			failureReason = reason
 			errorMessage = daemonShutdownErrorMessage(errorMessage)
+			// Only a shutdown interruption pins the session for the retry;
+			// other errors keep the v0.7.2 behaviour (no session on fail).
+			shutdownSessionID = result.SessionID
 		}
 		if failErr := d.reportTerminalTask(ctx, terminalTaskReport{
 			kind:             terminalTaskReportFail,
 			taskID:           task.ID,
 			errorMessage:     errorMessage,
-			sessionID:        result.SessionID,
+			sessionID:        shutdownSessionID,
 			branchName:       result.BranchName,
 			workDir:          result.WorkDir,
 			durableWorkDir:   result.DurableWorkDir,
@@ -6441,6 +6452,10 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 // 30-second drain, but terminal callbacks must still use that remaining window.
 // The explicit timeout keeps this detached work bounded during normal runs.
 func (d *Daemon) reportTerminalTask(parentCtx context.Context, report terminalTaskReport) error {
+	// Mask before persisting: the queued copy may be replayed after the
+	// task's own secret values have been unregistered (RUSL-2266).
+	report.output = scrubSecretValues(report.output)
+	report.errorMessage = scrubSecretValues(report.errorMessage)
 	if _, err := persistedTerminalReport(report, time.Now()); err != nil {
 		return err
 	}
@@ -10014,7 +10029,9 @@ func (d *Daemon) executeAndDrain(ctx context.Context, backend agent.Backend, pro
 							break
 						}
 					}
-					output, outputTruncated := toolOutputPreview(msg.Output)
+					// Mask known secret values before the preview cut, so a
+					// value straddling the budget boundary cannot leak a prefix.
+					output, outputTruncated := toolOutputPreview(scrubSecretValues(msg.Output))
 					mu.Lock()
 					sealPendingLocked()
 					toolName := msg.Tool

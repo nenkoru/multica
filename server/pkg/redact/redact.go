@@ -92,10 +92,16 @@ const depthLimitPlaceholder = "[REDACTED DEPTH LIMIT]"
 // inside a patch body — or the full contents of a deleted .env — untouched on
 // its way to the database and the WebSocket broadcast.
 func InputMap(m map[string]any) map[string]any {
-	return redactMap(m, 0)
+	return redactMap(m, 0, Text)
 }
 
-func redactMap(m map[string]any, depth int) map[string]any {
+// InputMapFunc is InputMap with a caller-supplied string scrubber (same nested
+// walk, copy semantics and depth bound). InputMap is InputMapFunc(m, Text).
+func InputMapFunc(m map[string]any, scrub func(string) string) map[string]any {
+	return redactMap(m, 0, scrub)
+}
+
+func redactMap(m map[string]any, depth int, scrub func(string) string) map[string]any {
 	if m == nil {
 		return nil
 	}
@@ -104,7 +110,7 @@ func redactMap(m map[string]any, depth int) map[string]any {
 	}
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		out[k] = redactValue(v, depth+1)
+		out[k] = redactValue(v, depth+1, scrub)
 	}
 	return out
 }
@@ -117,31 +123,31 @@ func redactMap(m map[string]any, depth int) map[string]any {
 // the original map and keeps using it after redaction (the daemon handler logs
 // and re-reads it), so mutating through the shared reference would be a
 // surprise at a distance.
-func redactValue(v any, depth int) any {
+func redactValue(v any, depth int, scrub func(string) string) any {
 	if depth >= maxRedactDepth {
 		return depthLimitPlaceholder
 	}
 	switch t := v.(type) {
 	case string:
-		return Text(t)
+		return scrub(t)
 	case map[string]any:
-		return redactMap(t, depth)
+		return redactMap(t, depth, scrub)
 	case []any:
 		out := make([]any, len(t))
 		for i, e := range t {
-			out[i] = redactValue(e, depth+1)
+			out[i] = redactValue(e, depth+1, scrub)
 		}
 		return out
 	case []string:
 		out := make([]string, len(t))
 		for i, e := range t {
-			out[i] = Text(e)
+			out[i] = scrub(e)
 		}
 		return out
 	case map[string]string:
 		out := make(map[string]string, len(t))
 		for k, e := range t {
-			out[k] = Text(e)
+			out[k] = scrub(e)
 		}
 		return out
 	default:
