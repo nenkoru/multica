@@ -713,7 +713,7 @@ func main() {
 		}
 	}
 	// Voice for Мультика's composer: an OpenAI-compatible transcription service.
-	if c := streams.NewWhisperClient(os.Getenv("FABRIKA_WHISPER_URL"), strings.TrimSpace(os.Getenv("FABRIKA_WHISPER_MODEL"))); c != nil {
+	if c := streams.NewWhisperClient(os.Getenv("FABRIKA_WHISPER_URL"), strings.TrimSpace(os.Getenv("FABRIKA_WHISPER_MODEL")), os.Getenv("FABRIKA_WHISPER_TOKEN")); c != nil {
 		streamsSup.Voice = c
 	}
 	if v := strings.TrimSpace(os.Getenv("FABRIKA_API_MONTHLY_USD")); v != "" {

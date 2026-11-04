@@ -15,6 +15,9 @@ import (
 func fakeWhisper(t *testing.T, reply string, status int) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != wantAuth {
+			t.Errorf("auth %q, want %q", got, wantAuth)
+		}
 		if r.URL.Path != "/v1/audio/transcriptions" {
 			t.Errorf("path %s", r.URL.Path)
 		}
@@ -35,27 +38,38 @@ func fakeWhisper(t *testing.T, reply string, status int) *httptest.Server {
 	}))
 }
 
+// wantAuth is the Authorization header fakeWhisper expects.
+var wantAuth string
+
 func TestWhisperClient(t *testing.T) {
-	if NewWhisperClient(" ", "") != nil {
+	wantAuth = ""
+	if NewWhisperClient(" ", "", "") != nil {
 		t.Fatal("empty url must keep voice off")
 	}
-	if c := NewWhisperClient("http://w.svc/v1/audio/transcriptions/", ""); c.BaseURL != "http://w.svc" {
+	if c := NewWhisperClient("http://w.svc/v1/audio/transcriptions/", "", ""); c.BaseURL != "http://w.svc" {
 		t.Fatalf("endpoint url kept as %q", c.BaseURL)
 	}
 	srv := fakeWhisper(t, `{"text": " давай про Терн "}`, 200)
 	defer srv.Close()
-	got, err := NewWhisperClient(srv.URL+"/", "").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS"))
+	got, err := NewWhisperClient(srv.URL+"/", "", "").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS"))
 	if err != nil || got != "давай про Терн" {
 		t.Fatalf("%q %v", got, err)
 	}
 	bad := fakeWhisper(t, `{"error": "busy"}`, 503)
 	defer bad.Close()
-	if _, err := NewWhisperClient(bad.URL, "").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS")); err == nil || !strings.Contains(err.Error(), "503") {
+	if _, err := NewWhisperClient(bad.URL, "", "").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS")); err == nil || !strings.Contains(err.Error(), "503") {
 		t.Fatalf("err %v", err)
 	}
+	wantAuth = "Bearer tok"
+	authed := fakeWhisper(t, `{"text": "да"}`, 200)
+	defer authed.Close()
+	if got, err := NewWhisperClient(authed.URL, "", " tok\n").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS")); err != nil || got != "да" {
+		t.Fatalf("with token: %q %v", got, err)
+	}
+	wantAuth = ""
 	empty := fakeWhisper(t, `{"text": ""}`, 200)
 	defer empty.Close()
-	if _, err := NewWhisperClient(empty.URL, "").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS")); err == nil {
+	if _, err := NewWhisperClient(empty.URL, "", "").Transcribe(context.Background(), "v.webm", strings.NewReader("OPUS")); err == nil {
 		t.Fatal("empty text accepted")
 	}
 }
@@ -99,5 +113,11 @@ func TestMultikaVoiceHandlerOffAndOn(t *testing.T) {
 	h.MultikaVoice(rec, req(make([]byte, MaxVoiceBytes+1)...))
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("too large: %d %s", rec.Code, rec.Body)
+	}
+	// Far above it: MaxBytesReader cuts the body, still 413, not 400.
+	rec = httptest.NewRecorder()
+	h.MultikaVoice(rec, req(make([]byte, 2*MaxVoiceBytes)...))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("far too large: %d %s", rec.Code, rec.Body)
 	}
 }

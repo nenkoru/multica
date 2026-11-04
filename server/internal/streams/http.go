@@ -466,7 +466,12 @@ func (h *HTTP) MultikaVoice(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxVoiceBytes+1<<16)
 	if err := r.ParseMultipartForm(MaxVoiceBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "voice note too large or not multipart")
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeError(w, http.StatusRequestEntityTooLarge, "voice note too large")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "voice note is not multipart")
 		return
 	}
 	f, hdr, err := r.FormFile("file")
