@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { ListStreamsResponseSchema, MultikaSchema } from "./schemas";
+import { ListStreamsResponseSchema, MultikaSchema, TranscriptionSchema } from "./schemas";
 import { parseWithFallback } from "../api/schema";
 
 describe("streams schemas", () => {
@@ -33,5 +33,15 @@ describe("streams schemas", () => {
       chat_session_id: "c",
       focus_slug: "tern",
     });
+  });
+
+  it("reads voice as off unless the server says so", () => {
+    expect(MultikaSchema.parse({ enabled: true }).voice).toBe(false);
+    expect(MultikaSchema.parse({ enabled: true, voice: true }).voice).toBe(true);
+  });
+
+  it("reads a transcription without text as empty", () => {
+    expect(TranscriptionSchema.parse({}).text).toBe("");
+    expect(TranscriptionSchema.parse({ text: "привет", extra: 1 }).text).toBe("привет");
   });
 });

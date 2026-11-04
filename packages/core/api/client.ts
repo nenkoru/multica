@@ -8,6 +8,8 @@ import {
   MultikaSchema,
   EMPTY_LIST_STREAMS_RESPONSE,
   EMPTY_MULTIKA,
+  TranscriptionSchema,
+  EMPTY_TRANSCRIPTION,
   type ListStreamsResponse,
   type Multika,
 } from "../streams/schemas";
@@ -4167,6 +4169,28 @@ export class ApiClient {
     return parseWithFallback(raw, MultikaSchema, EMPTY_MULTIKA, {
       endpoint: "GET /api/streams/multika",
     });
+  }
+
+  /** Speech to text for Мультика's composer. Multipart, so not routed
+   *  through `this.fetch`: the browser sets the boundary. */
+  async transcribeMultikaVoice(audio: Blob, filename: string): Promise<string> {
+    const formData = new FormData();
+    formData.append("file", audio, filename);
+    const credentialUsed = this.getToken();
+    const res = await fetch(`${this.baseUrl}/api/streams/multika/voice`, {
+      method: "POST",
+      headers: this.authHeaders(),
+      body: formData,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      if (res.status === 401) this.handleUnauthorized(credentialUsed);
+      throw new Error(await this.parseErrorMessage(res, `Voice failed: ${res.status}`));
+    }
+    const raw = (await res.json()) as unknown;
+    return parseWithFallback(raw, TranscriptionSchema, EMPTY_TRANSCRIPTION, {
+      endpoint: "POST /api/streams/multika/voice",
+    }).text;
   }
 
   async setMultikaFocus(slug: string): Promise<void> {

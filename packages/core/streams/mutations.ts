@@ -14,3 +14,11 @@ export function useSetMultikaFocus() {
     },
   });
 }
+
+/** Turns a recorded voice note into text for the composer. */
+export function useTranscribeMultikaVoice() {
+  return useMutation({
+    mutationFn: ({ audio, filename }: { audio: Blob; filename: string }) =>
+      api.transcribeMultikaVoice(audio, filename),
+  });
+}

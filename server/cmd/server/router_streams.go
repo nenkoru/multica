@@ -46,6 +46,7 @@ func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor) {
 	r.Group(func(r chi.Router) {
 		r.Use(handler.RequireHumanActor)
 		r.Put("/api/streams/multika/focus", h.MultikaFocus)
+		r.Post("/api/streams/multika/voice", h.MultikaVoice)
 		r.Put("/api/streams/{slug}", h.Upsert)
 		r.Post("/api/streams/{slug}/pause", h.Pause)
 		r.Post("/api/streams/{slug}/resume", h.Resume)

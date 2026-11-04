@@ -121,6 +121,17 @@ All off until set on the server:
   provider-reported API cost this month vs the pace (share ÷ days of month).
   Shown, never enforced.
 
+## Voice (§13 day 9)
+
+Off until `FABRIKA_WHISPER_URL` points at an OpenAI-compatible transcription
+service (its root; `/v1/audio/transcriptions` is appended).
+`FABRIKA_WHISPER_MODEL` defaults to `whisper-1`. With it set, `GET
+/api/streams/multika` reports `"voice": true` and the web chat shows a
+microphone next to Send in Мультика's chat only: a note of up to a minute
+(5 MB) goes to `POST /api/streams/multika/voice` (multipart `file`), the text
+lands in the draft and is sent only by Руслан. Without the URL the endpoint
+answers 404 and the button is not shown. Rollback: unset the variable.
+
 ## Operations
 
 - **Watchdog fired.** `curl $FABRIKA_API/api/streams/health`. Unreachable → server down, follow the server runbook. Stale tick → check the server log for `fabrika_streams_supervisor` and `sys_cron_executions` for the job; a restart re-registers the job.

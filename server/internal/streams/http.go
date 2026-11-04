@@ -376,13 +376,15 @@ type multikaView struct {
 	FocusSlug     string     `json:"focus_slug,omitempty"`
 	FocusTitle    string     `json:"focus_title,omitempty"`
 	FocusUntil    *time.Time `json:"focus_until,omitempty"`
+	// Voice: the composer may offer a microphone (POST /multika/voice).
+	Voice bool `json:"voice"`
 }
 
 func (h *HTTP) multikaView(r *http.Request, ws pgtype.UUID) (multikaView, error) {
 	if !h.Sup.MultikaEnabled() {
 		return multikaView{}, nil
 	}
-	v := multikaView{Enabled: true, AgentID: uuidString(h.Sup.MultikaAgentID)}
+	v := multikaView{Enabled: true, AgentID: uuidString(h.Sup.MultikaAgentID), Voice: h.Sup.Voice != nil}
 	sid, err := h.Sup.MultikaSession(r.Context(), ws)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, nil
@@ -445,4 +447,42 @@ func (h *HTTP) MultikaFocus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// MaxVoiceBytes bounds one voice note: the transcription service's own limit,
+// several minutes of opus.
+const MaxVoiceBytes = 5 << 20
+
+// MultikaVoice: POST /api/streams/multika/voice, multipart "file" — speech to
+// text for Мультика's composer (§13 day 9). The text goes back to the
+// composer for Руслан to read and send; nothing is posted to the chat here.
+func (h *HTTP) MultikaVoice(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.workspace(w, r); !ok {
+		return
+	}
+	if !h.Sup.MultikaEnabled() || h.Sup.Voice == nil {
+		writeError(w, http.StatusNotFound, "voice is off")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, MaxVoiceBytes+1<<16)
+	if err := r.ParseMultipartForm(MaxVoiceBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "voice note too large or not multipart")
+		return
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer f.Close()
+	if hdr.Size > MaxVoiceBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, "voice note too large")
+		return
+	}
+	text, err := h.Sup.Voice.Transcribe(r.Context(), hdr.Filename, f)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "распознавание не удалось: "+firstLine(err.Error(), 200))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"text": text})
 }
