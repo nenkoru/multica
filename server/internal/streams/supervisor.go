@@ -35,6 +35,19 @@ type Supervisor struct {
 	// StreamTemplate is the slug of the stream whose executor chains and
 	// manager a stream from the interview copies (FABRIKA_STREAM_TEMPLATE).
 	StreamTemplate string
+	// Slots caps concurrent steps per executor over all streams
+	// (FABRIKA_EXECUTOR_SLOTS); unlisted executors are unlimited. budget.go.
+	Slots map[string]int
+	// GPUExecutors are the executors a "gpu" charter window takes over
+	// (FABRIKA_GPU_EXECUTORS).
+	GPUExecutors map[string]bool
+	// APIMonthlyUSD is the monthly API ceiling the charters' budget_share
+	// divides (FABRIKA_API_MONTHLY_USD); 0 hides the cost line.
+	APIMonthlyUSD float64
+	// Per-tick resource view, set by Tick (tickResources).
+	alloc     *slotAlloc
+	gpuUntil  time.Time
+	gpuOwners map[[16]byte]bool
 	// AskButtons sends shown questions with inline buttons to Мультика's
 	// Telegram chat. Nil: questions go out as digest text only.
 	AskButtons AskButtonSender
@@ -93,6 +106,7 @@ func (s *Supervisor) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.tickResources(ctx, streams, s.now())
 	var errs []error
 	for _, st := range streams {
 		if err := s.reconcile(ctx, st); err != nil {
@@ -207,6 +221,8 @@ func (s *Supervisor) reconcile(ctx context.Context, st sdb.Stream) error {
 		return s.setState(ctx, st, StateRunning, fmt.Sprintf("идёт шагов: %d", running), time.Time{})
 	case queued > 0 && !budgetUntil.IsZero():
 		return s.setState(ctx, st, StateBudget, "цепочка исполнителей исчерпана", budgetUntil)
+	case queued > 0 && s.alloc != nil && s.alloc.waited[st.ID.Bytes]:
+		return s.setState(ctx, st, StateRunning, "шаг ждёт свободный слот исполнителя", time.Time{})
 	case queued > 0:
 		// Dispatch failed for a non-budget reason this tick; the error is
 		// journaled and the next tick retries.
@@ -251,6 +267,9 @@ func (s *Supervisor) reconcile(ctx context.Context, st sdb.Stream) error {
 	}
 	if !budgetUntil.IsZero() {
 		return s.setState(ctx, st, StateBudget, "цепочка управляющего исчерпана", budgetUntil)
+	}
+	if s.alloc != nil && s.alloc.waited[st.ID.Bytes] {
+		return s.setState(ctx, st, StateRunning, "ход управляющего ждёт свободный слот исполнителя", time.Time{})
 	}
 	return s.setState(ctx, st, StateRunning, "ход управляющего", time.Time{})
 }
@@ -448,7 +467,13 @@ func (s *Supervisor) dispatchQueued(ctx context.Context, st sdb.Stream, c Charte
 			}
 		}
 		avoid := s.avoidFor(step)
-		ex, until, ok := PickExecutor(chain, states, avoid, now)
+		avail, view, full := s.resourceView(st, chain, states)
+		ex, until, ok := PickExecutor(avail, view, avoid, now)
+		if !ok && full {
+			// A link is busy with other streams' steps: wait for a slot,
+			// not for a budget reset.
+			continue
+		}
 		if !ok {
 			if until.IsZero() {
 				// No chain at all is a charter defect, not a budget state:
@@ -473,6 +498,9 @@ func (s *Supervisor) dispatchQueued(ctx context.Context, st sdb.Stream, c Charte
 			_ = s.Q.UpsertExecutorStatus(ctx, sdb.UpsertExecutorStatusParams{Executor: ex.Name, ExhaustedUntil: ts(until), Reason: "dispatch: " + firstLine(err.Error(), 200), ProbeLevel: int32(level)})
 			states[ex.Name] = ExecutorState{Executor: ex.Name, ExhaustedUntil: until, ProbeLevel: level}
 			continue
+		}
+		if s.alloc != nil {
+			s.alloc.take(st.ID.Bytes, ex.Name)
 		}
 		if isManage && !step.ReservedSlot {
 			runningManage++
