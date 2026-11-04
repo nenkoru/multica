@@ -8,14 +8,15 @@ export const streamKeys = {
 };
 
 // The streams API exists only on the Fabrika fork; elsewhere it 404s and the
-// UI simply shows nothing, so failures are not retried.
+// UI simply shows nothing, so failures are neither retried nor polled.
+const pollUnlessFailed = (q: { state: { status: string } }) => (q.state.status === "error" ? false : 60_000);
 export function streamListOptions(wsId: string) {
   return queryOptions({
     queryKey: streamKeys.list(wsId),
     queryFn: () => api.listStreams(),
     select: (d) => d.streams,
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessFailed,
   });
 }
 
@@ -24,6 +25,6 @@ export function multikaOptions(wsId: string) {
     queryKey: streamKeys.multika(wsId),
     queryFn: () => api.getMultika(),
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessFailed,
   });
 }

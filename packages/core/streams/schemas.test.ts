@@ -11,6 +11,14 @@ describe("streams schemas", () => {
     ).toEqual([]);
   });
 
+  it("reads a missing or malformed state as unknown, not running", () => {
+    const [a, b] = ListStreamsResponseSchema.parse({
+      streams: [{ id: "1", slug: "a" }, { id: "2", slug: "b", state: 7 }],
+    }).streams;
+    expect(a?.state).toBe("unknown");
+    expect(b?.state).toBe("unknown");
+  });
+
   it("keeps unknown stream states and fills missing fields", () => {
     const [s] = ListStreamsResponseSchema.parse({
       streams: [{ id: "1", slug: "tern", state: "hibernating" }],

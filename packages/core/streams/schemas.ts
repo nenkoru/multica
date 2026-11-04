@@ -3,17 +3,19 @@ import { z } from "zod";
 // Fabrika streams (fork-owned, server/internal/streams). Kept in its own
 // module so upstream merges of api/schemas.ts stay conflict-free.
 
+// A missing or malformed state reads as "unknown" (a neutral dot), never as
+// a healthy "running".
 export const StreamStateSchema = z
   .enum(["running", "waiting", "asking", "budget", "paused", "broken"])
   .or(z.string())
-  .catch("running");
+  .catch("unknown");
 
 export const StreamSchema = z
   .object({
     id: z.string(),
     slug: z.string(),
     title: z.string().default(""),
-    state: StreamStateSchema,
+    state: StreamStateSchema.default("unknown"),
     state_label: z.string().default(""),
     reason: z.string().default(""),
     until: z.string().nullish(),
