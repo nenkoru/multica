@@ -214,7 +214,8 @@ func (s *Supervisor) streamPulse(ctx context.Context, st sdb.Stream, since, now 
 		return "", 0, err
 	}
 	counts := map[string]int{}
-	silent := 0
+	runs := errorRuns(journal, now)
+	silent := len(runs)
 	for _, j := range journal {
 		counts[j.Event]++
 		if j.Event == "orphan" {
@@ -242,6 +243,13 @@ func (s *Supervisor) streamPulse(ctx context.Context, st sdb.Stream, since, now 
 	if len(parts) > 0 {
 		fmt.Fprintf(&b, "  за сутки: %s\n", strings.Join(parts, ", "))
 	}
+	if len(runs) > 0 {
+		var stood time.Duration
+		for _, r := range runs {
+			stood += r.Duration
+		}
+		fmt.Fprintf(&b, "  стоял на ошибке супервизора %s, последняя: %s\n", fmtStood(stood), runs[len(runs)-1].LastError)
+	}
 	if counts["no_ideas"] > 0 {
 		fmt.Fprintf(&b, "  %s: нет идей, поговорим?\n", st.Title)
 	}
@@ -253,6 +261,57 @@ func (s *Supervisor) streamPulse(ctx context.Context, st sdb.Stream, since, now 
 		fmt.Fprintf(&b, "  вехи нет %d дн.\n", int(d/(24*time.Hour)))
 	}
 	return b.String(), silent, nil
+}
+
+// errorRun is a series of reconcile_error events with nothing else from the
+// stream in between: the supervisor kept failing on it, so it stood still.
+type errorRun struct {
+	Duration  time.Duration
+	LastError string
+}
+
+// errorRuns returns the series that count as silent stops: longer than
+// SilentStopGap, or still going at now. Journal must be ordered by id.
+func errorRuns(journal []sdb.StreamJournal, now time.Time) []errorRun {
+	var runs []errorRun
+	var first, last time.Time
+	var lastErr string
+	open := false
+	closeRun := func(end time.Time, ongoing bool) {
+		if d := end.Sub(first); ongoing || d > SilentStopGap {
+			runs = append(runs, errorRun{Duration: d, LastError: lastErr})
+		}
+		open = false
+	}
+	for _, j := range journal {
+		if j.Event != "reconcile_error" {
+			if open {
+				closeRun(last, false)
+			}
+			continue
+		}
+		if !open {
+			first, open = j.CreatedAt.Time, true
+		}
+		last = j.CreatedAt.Time
+		var d struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(j.Detail, &d)
+		lastErr = firstLine(d.Error, 160)
+	}
+	if open {
+		closeRun(now, true)
+	}
+	return runs
+}
+
+func fmtStood(d time.Duration) string {
+	m := int(d.Round(time.Minute) / time.Minute)
+	if m >= 60 {
+		return fmt.Sprintf("%d ч %d мин", m/60, m%60)
+	}
+	return fmt.Sprintf("%d мин", m)
 }
 
 func (s *Supervisor) exhaustedLine(ctx context.Context, now time.Time) string {
