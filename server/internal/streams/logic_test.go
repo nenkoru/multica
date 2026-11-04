@@ -269,6 +269,8 @@ func TestInferVerdictLeavesAmbiguityToValidation(t *testing.T) {
 		{"не rework, а разбор", "", ""},
 		{"шаг сделан", "verdict: accept? нет, verdict: rework", ""},
 		{"шаг сделан", "", ""},
+		{"Accept criteria не выполнены: тестов нет", "", ""},
+		{"Rework не требуется, тесты зелёные", "", ""},
 		{"Accept: тесты зелёные", "", "accept"},
 		{"«rework» — цифр нет", "", "rework"},
 	} {
@@ -292,7 +294,7 @@ func TestInferVerdictLeavesAmbiguityToValidation(t *testing.T) {
 
 // RUSL-2621: the 27B worker writes {"done", "links", "next": ["..."]}.
 func TestExtractContract27BReportShape(t *testing.T) {
-	out := "## Разбор\n\n```json\n{\n  \"done\": \"Разбор завершён: 21.7 tok/s = предел карт.\",\n  \"links\": [\"gpu-host:journal.jsonl\"],\n  \"next\": [\"Замер 16 сессий в окне GPU\", \"Профиль decode step\"],\n  \"rollback\": \"только чтение\"\n}\n```"
+	out := "## Разбор\n\n```json\n{\n  \"done\": \"Разбор завершён: 21.7 tok/s = предел карт.\",\n  \"links\": [\"gpu-host:journal.jsonl\"],\n  \"next\": [\"Замер 16 сессий в окне GPU\", null, \"Профиль decode step\"],\n  \"rollback\": \"только чтение\"\n}\n```"
 	c, err := ExtractContract(out)
 	if err != nil {
 		t.Fatal(err)
