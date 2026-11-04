@@ -1,0 +1,11 @@
+{
+  "title": "Flux",
+  "multika": "Multika",
+  "open_chat": "Ouvrir le chat",
+  "focus_on": "Focus : {{title}}",
+  "no_focus": "Pas de focus",
+  "clear_focus": "Retirer le focus",
+  "set_focus": "Focus",
+  "empty": "Aucun flux pour l’instant.",
+  "unavailable": "Les flux ne sont pas disponibles sur ce serveur."
+}

@@ -98,6 +98,7 @@
     "./plugins/queries": "./plugins/queries.ts",
     "./plugins/mutations": "./plugins/mutations.ts",
     "./labels": "./labels/index.ts",
+    "./streams": "./streams/index.ts",
     "./labels/queries": "./labels/queries.ts",
     "./labels/mutations": "./labels/mutations.ts",
     "./properties": "./properties/index.ts",

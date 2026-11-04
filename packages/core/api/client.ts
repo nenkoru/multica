@@ -3,6 +3,14 @@ import { AgentRuntimeSchema, EMPTY_RUNTIME } from "../runtimes/schema";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
 import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSchema, PausedWakeupSchema, SystemWakeupSchema, WakeupRunSchema, WorkspaceSystemWakeupSchema } from "./schemas";
+import {
+  ListStreamsResponseSchema,
+  MultikaSchema,
+  EMPTY_LIST_STREAMS_RESPONSE,
+  EMPTY_MULTIKA,
+  type ListStreamsResponse,
+  type Multika,
+} from "../streams/schemas";
 import type { ArchivedInboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { parseQoderConnection, parseQoderCatalog, type QoderInput } from "../runtimes/qoder-schema";
@@ -4143,6 +4151,28 @@ export class ApiClient {
   ): Promise<void> {
     await this.fetch(`/api/projects/${projectId}/resources/${resourceId}`, {
       method: "DELETE",
+    });
+  }
+
+  // Fabrika streams (fork-owned)
+  async listStreams(): Promise<ListStreamsResponse> {
+    const raw = await this.fetch<unknown>(`/api/streams`);
+    return parseWithFallback(raw, ListStreamsResponseSchema, EMPTY_LIST_STREAMS_RESPONSE, {
+      endpoint: "GET /api/streams",
+    });
+  }
+
+  async getMultika(): Promise<Multika> {
+    const raw = await this.fetch<unknown>(`/api/streams/multika`);
+    return parseWithFallback(raw, MultikaSchema, EMPTY_MULTIKA, {
+      endpoint: "GET /api/streams/multika",
+    });
+  }
+
+  async setMultikaFocus(slug: string): Promise<void> {
+    await this.fetch(`/api/streams/multika/focus`, {
+      method: "PUT",
+      body: JSON.stringify({ slug }),
     });
   }
 

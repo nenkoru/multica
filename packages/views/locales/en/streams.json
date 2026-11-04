@@ -1,0 +1,11 @@
+{
+  "title": "Streams",
+  "multika": "Multika",
+  "open_chat": "Open chat",
+  "focus_on": "Focus: {{title}}",
+  "no_focus": "No focus",
+  "clear_focus": "Clear focus",
+  "set_focus": "Focus",
+  "empty": "No streams yet.",
+  "unavailable": "Streams are not available on this server."
+}
