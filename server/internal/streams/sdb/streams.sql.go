@@ -2586,11 +2586,17 @@ func (q *Queries) StreamCardStats(ctx context.Context, arg StreamCardStatsParams
 	return i, err
 }
 
-const streamCostSince = `-- name: StreamCostSince :one
-SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+const streamCostSince = `-- name: StreamCostSince :many
+SELECT u.model,
+       COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks,
+       COALESCE(SUM(u.input_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS input_tokens,
+       COALESCE(SUM(u.output_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS output_tokens,
+       COALESCE(SUM(u.cache_read_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_read_tokens,
+       COALESCE(SUM(u.cache_write_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_write_tokens
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
 WHERE q.context->>'stream_id' = $1::text AND u.created_at >= $2::timestamptz
+GROUP BY u.model
 `
 
 type StreamCostSinceParams struct {
@@ -2598,24 +2604,59 @@ type StreamCostSinceParams struct {
 	Since    pgtype.Timestamptz `json:"since"`
 }
 
-// Provider-reported cost of a stream's tasks since a moment, in 1e-10 USD.
-// Rows without a reported cost are not estimated here.
-func (q *Queries) StreamCostSince(ctx context.Context, arg StreamCostSinceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, streamCostSince, arg.StreamID, arg.Since)
-	var ticks int64
-	err := row.Scan(&ticks)
-	return ticks, err
+type StreamCostSinceRow struct {
+	Model            string `json:"model"`
+	Ticks            int64  `json:"ticks"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheWriteTokens int64  `json:"cache_write_tokens"`
+}
+
+// Usage of a stream's tasks since a moment, per model: provider-reported
+// cost (1e-10 USD) and the tokens of rows without one, for the rate table
+// (metrics.UsageCostUSD).
+func (q *Queries) StreamCostSince(ctx context.Context, arg StreamCostSinceParams) ([]StreamCostSinceRow, error) {
+	rows, err := q.db.Query(ctx, streamCostSince, arg.StreamID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StreamCostSinceRow{}
+	for rows.Next() {
+		var i StreamCostSinceRow
+		if err := rows.Scan(
+			&i.Model,
+			&i.Ticks,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const streamDailyCost = `-- name: StreamDailyCost :many
 SELECT (q.context->>'stream_id')::text AS stream_id,
        to_char(u.created_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD')::text AS day,
-       SUM(u.cost_usd_ticks)::bigint AS ticks
+       u.model,
+       COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks,
+       COALESCE(SUM(u.input_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS input_tokens,
+       COALESCE(SUM(u.output_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS output_tokens,
+       COALESCE(SUM(u.cache_read_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_read_tokens,
+       COALESCE(SUM(u.cache_write_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_write_tokens
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
 WHERE q.context->>'stream_id' = ANY($1::text[])
-  AND u.created_at >= $2::timestamptz AND u.cost_usd_ticks IS NOT NULL
-GROUP BY 1, 2
+  AND u.created_at >= $2::timestamptz
+GROUP BY 1, 2, 3
 `
 
 type StreamDailyCostParams struct {
@@ -2624,12 +2665,18 @@ type StreamDailyCostParams struct {
 }
 
 type StreamDailyCostRow struct {
-	StreamID string `json:"stream_id"`
-	Day      string `json:"day"`
-	Ticks    int64  `json:"ticks"`
+	StreamID         string `json:"stream_id"`
+	Day              string `json:"day"`
+	Model            string `json:"model"`
+	Ticks            int64  `json:"ticks"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheWriteTokens int64  `json:"cache_write_tokens"`
 }
 
-// Provider-reported cost per stream and Moscow day since a moment, 1e-10 USD.
+// Usage per stream, Moscow day and model since a moment; priced in code
+// like StreamCostSince.
 func (q *Queries) StreamDailyCost(ctx context.Context, arg StreamDailyCostParams) ([]StreamDailyCostRow, error) {
 	rows, err := q.db.Query(ctx, streamDailyCost, arg.StreamIds, arg.Since)
 	if err != nil {
@@ -2639,7 +2686,16 @@ func (q *Queries) StreamDailyCost(ctx context.Context, arg StreamDailyCostParams
 	items := []StreamDailyCostRow{}
 	for rows.Next() {
 		var i StreamDailyCostRow
-		if err := rows.Scan(&i.StreamID, &i.Day, &i.Ticks); err != nil {
+		if err := rows.Scan(
+			&i.StreamID,
+			&i.Day,
+			&i.Model,
+			&i.Ticks,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -2837,12 +2893,18 @@ func (q *Queries) UpsertStream(ctx context.Context, arg UpsertStreamParams) (Str
 	return i, err
 }
 
-const workspaceCostSince = `-- name: WorkspaceCostSince :one
-SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+const workspaceCostSince = `-- name: WorkspaceCostSince :many
+SELECT u.model,
+       COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks,
+       COALESCE(SUM(u.input_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS input_tokens,
+       COALESCE(SUM(u.output_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS output_tokens,
+       COALESCE(SUM(u.cache_read_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_read_tokens,
+       COALESCE(SUM(u.cache_write_tokens) FILTER (WHERE u.cost_usd_ticks IS NULL), 0)::bigint AS cache_write_tokens
 FROM task_usage u
 JOIN agent_task_queue q ON q.id = u.task_id
 JOIN agent a ON a.id = q.agent_id
 WHERE a.workspace_id = $1 AND u.created_at >= $2::timestamptz
+GROUP BY u.model
 `
 
 type WorkspaceCostSinceParams struct {
@@ -2850,12 +2912,42 @@ type WorkspaceCostSinceParams struct {
 	Since       pgtype.Timestamptz `json:"since"`
 }
 
-// All provider-reported cost of the workspace's agents since a moment.
-func (q *Queries) WorkspaceCostSince(ctx context.Context, arg WorkspaceCostSinceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, workspaceCostSince, arg.WorkspaceID, arg.Since)
-	var ticks int64
-	err := row.Scan(&ticks)
-	return ticks, err
+type WorkspaceCostSinceRow struct {
+	Model            string `json:"model"`
+	Ticks            int64  `json:"ticks"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheWriteTokens int64  `json:"cache_write_tokens"`
+}
+
+// All usage of the workspace's agents since a moment, per model; priced in
+// code like StreamCostSince.
+func (q *Queries) WorkspaceCostSince(ctx context.Context, arg WorkspaceCostSinceParams) ([]WorkspaceCostSinceRow, error) {
+	rows, err := q.db.Query(ctx, workspaceCostSince, arg.WorkspaceID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkspaceCostSinceRow{}
+	for rows.Next() {
+		var i WorkspaceCostSinceRow
+		if err := rows.Scan(
+			&i.Model,
+			&i.Ticks,
+			&i.InputTokens,
+			&i.OutputTokens,
+			&i.CacheReadTokens,
+			&i.CacheWriteTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const workspaceSlug = `-- name: WorkspaceSlug :one
