@@ -104,8 +104,11 @@ func ManagePrompt(st sdb.Stream, c Charter, step sdb.StreamStep, in ManageInput)
 	var b strings.Builder
 	b.WriteString(charterBlock(st, c))
 	b.WriteString("\n" + managerInstructions)
-	if in.Summarize {
+	if in.Summarize && step.Origin != OriginMigration {
 		b.WriteString("\n**Это ход сжатия (`summarize`):** перепиши summary короче, сохранив решения, открытые хвосты и метрику. `next` можно не давать.\n")
+	}
+	if step.Origin == OriginMigration {
+		b.WriteString(migrationInstructions)
 	}
 	fmt.Fprintf(&b, "\n## Почему ход\n\n%s\n", step.Brief)
 	if step.RecoveryNote != "" {
