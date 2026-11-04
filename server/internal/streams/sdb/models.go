@@ -1797,13 +1797,21 @@ type UiAction struct {
 }
 
 type UiBlock struct {
-	ID           pgtype.UUID        `json:"id"`
-	MessageID    pgtype.UUID        `json:"message_id"`
-	OpenuiSource string             `json:"openui_source"`
-	A2ui         []byte             `json:"a2ui"`
-	Status       string             `json:"status"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID            pgtype.UUID        `json:"id"`
+	MessageID     pgtype.UUID        `json:"message_id"`
+	OpenuiSource  string             `json:"openui_source"`
+	A2ui          []byte             `json:"a2ui"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	ChatSessionID pgtype.UUID        `json:"chat_session_id"`
+	TaskID        pgtype.UUID        `json:"task_id"`
+	Seq           int32              `json:"seq"`
+	Kind          string             `json:"kind"`
+	Issues        []byte             `json:"issues"`
+	Repairs       int32              `json:"repairs"`
+	TextVersion   string             `json:"text_version"`
 }
 
 type User struct {

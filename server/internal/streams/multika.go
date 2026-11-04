@@ -214,7 +214,14 @@ func (s *Supervisor) OnMultikaClaim(ctx context.Context, taskID, sessionID, agen
 	}
 	now := s.now()
 	acts, focus := s.applyMultikaTurn(ctx, taskID, sessionID, focusKey, owner.WorkspaceID, text, streams, now)
-	return MultikaContext(streams, focus, acts, now)
+	out := MultikaContext(streams, focus, acts, now)
+	if s.Screens != nil {
+		if acts.Entered != "" && focus.Stream != nil {
+			s.showStreamCard(ctx, owner.WorkspaceID, sessionID, taskID, *focus.Stream)
+		}
+		out = strings.Replace(out, multikaContextEnd, s.screenContext(ctx, owner.WorkspaceID, streams, acts, now)+multikaContextEnd, 1)
+	}
+	return out
 }
 
 // MultikaFocus is the current focus of the chat, if any.
@@ -491,6 +498,6 @@ func MultikaContext(streams []sdb.Stream, focus MultikaFocus, acts MultikaTurnAc
 	if len(done) > 0 {
 		b.WriteString("Код уже сделал: " + strings.Join(done, "; ") + ". Подтверди Руслану коротко.\n")
 	}
-	b.WriteString("[Конец контекста. Ниже — сообщение Руслана.]")
+	b.WriteString(multikaContextEnd)
 	return b.String()
 }

@@ -41,12 +41,16 @@ func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor) {
 	r.Post("/api/streams/asks/push", h.PushAsks)
 	r.Post("/api/streams/waits/{id}/fire", h.FireWait)
 	r.Get("/api/streams/multika", h.Multika)
+	r.Get("/api/streams/ui/blocks", h.ScreenBlocks)
 	r.Get("/api/streams/{slug}", h.Get)
 	r.Post("/api/streams/{slug}/manage", h.Manage)
 	r.Group(func(r chi.Router) {
 		r.Use(handler.RequireHumanActor)
 		r.Put("/api/streams/multika/focus", h.MultikaFocus)
 		r.Post("/api/streams/multika/voice", h.MultikaVoice)
+		// Screen buttons are Руслан's presses; agents may not press them (§10.4).
+		r.Post("/api/streams/ui/actions/{id}", h.PressScreenAction)
+		r.Post("/api/streams/ui/actions/{id}/cancel", h.CancelScreenAction)
 		r.Put("/api/streams/{slug}", h.Upsert)
 		r.Post("/api/streams/{slug}/pause", h.Pause)
 		r.Post("/api/streams/{slug}/resume", h.Resume)
@@ -120,4 +124,13 @@ func wireMultikaAskButtons(sup *streams.Supervisor, s *telegram.ButtonSender) {
 		return
 	}
 	sup.AskButtons = askButtonSender{s: s}
+}
+
+// multikaTelegramReplyText sends screens to Telegram as text plus a link to
+// open them live (§10.5). Nil without screens.
+func multikaTelegramReplyText(sup *streams.Supervisor) (telegram.ReplyTextFunc, func(string) string) {
+	if sup == nil || sup.Screens == nil || !sup.MultikaEnabled() {
+		return nil, nil
+	}
+	return sup.TelegramReplyText, streams.TelegramPartialText
 }

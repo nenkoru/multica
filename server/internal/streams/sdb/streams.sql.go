@@ -62,6 +62,29 @@ func (q *Queries) AppendQueuedStepBrief(ctx context.Context, arg AppendQueuedSte
 	return result.RowsAffected(), nil
 }
 
+const cancelUIActionConfirm = `-- name: CancelUIActionConfirm :execrows
+UPDATE ui_action SET status = 'pending' WHERE id = $1 AND status = 'confirming'
+`
+
+func (q *Queries) CancelUIActionConfirm(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelUIActionConfirm, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const chatSessionCreator = `-- name: ChatSessionCreator :one
+SELECT creator_id FROM chat_session WHERE id = $1
+`
+
+func (q *Queries) ChatSessionCreator(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, chatSessionCreator, id)
+	var creator_id pgtype.UUID
+	err := row.Scan(&creator_id)
+	return creator_id, err
+}
+
 const claimMultikaCharter = `-- name: ClaimMultikaCharter :one
 INSERT INTO multika_charter (task_id, chat_session_id, workspace_id)
 VALUES ($1, $2, $3)
@@ -109,6 +132,19 @@ WHERE executor = $1 AND (exhausted_until IS NOT NULL OR probe_level <> 0)
 func (q *Queries) ClearExecutorStatus(ctx context.Context, executor string) error {
 	_, err := q.db.Exec(ctx, clearExecutorStatus, executor)
 	return err
+}
+
+const confirmUIAction = `-- name: ConfirmUIAction :execrows
+UPDATE ui_action SET status = 'confirming' WHERE id = $1 AND status = 'pending'
+`
+
+// A red action waits for the app's own confirmation window (§10.4).
+func (q *Queries) ConfirmUIAction(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmUIAction, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const countAskActions = `-- name: CountAskActions :one
@@ -329,6 +365,26 @@ type FinishUIActionParams struct {
 // Claims a pending action; 0 rows means another press got there first.
 func (q *Queries) FinishUIAction(ctx context.Context, arg FinishUIActionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, finishUIAction, arg.Status, arg.Result, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const finishUIActionAny = `-- name: FinishUIActionAny :execrows
+UPDATE ui_action SET status = $1, result = $2, done_at = now()
+WHERE id = $3 AND status IN ('pending', 'confirming')
+`
+
+type FinishUIActionAnyParams struct {
+	Status string      `json:"status"`
+	Result []byte      `json:"result"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+// Claims a pending or confirming action; 0 rows: another press won.
+func (q *Queries) FinishUIActionAny(ctx context.Context, arg FinishUIActionAnyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishUIActionAny, arg.Status, arg.Result, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -582,6 +638,52 @@ func (q *Queries) GetSupervisorState(ctx context.Context) (StreamSupervisorState
 	return i, err
 }
 
+const getUIAction = `-- name: GetUIAction :one
+SELECT id, ui_block_id, ask_id, token, action, zone, idempotency_key, status, result, created_at, done_at FROM ui_action WHERE id = $1
+`
+
+func (q *Queries) GetUIAction(ctx context.Context, id pgtype.UUID) (UiAction, error) {
+	row := q.db.QueryRow(ctx, getUIAction, id)
+	var i UiAction
+	err := row.Scan(
+		&i.ID,
+		&i.UiBlockID,
+		&i.AskID,
+		&i.Token,
+		&i.Action,
+		&i.Zone,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.Result,
+		&i.CreatedAt,
+		&i.DoneAt,
+	)
+	return i, err
+}
+
+const getUIActionByKey = `-- name: GetUIActionByKey :one
+SELECT id, ui_block_id, ask_id, token, action, zone, idempotency_key, status, result, created_at, done_at FROM ui_action WHERE idempotency_key = $1
+`
+
+func (q *Queries) GetUIActionByKey(ctx context.Context, idempotencyKey pgtype.Text) (UiAction, error) {
+	row := q.db.QueryRow(ctx, getUIActionByKey, idempotencyKey)
+	var i UiAction
+	err := row.Scan(
+		&i.ID,
+		&i.UiBlockID,
+		&i.AskID,
+		&i.Token,
+		&i.Action,
+		&i.Zone,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.Result,
+		&i.CreatedAt,
+		&i.DoneAt,
+	)
+	return i, err
+}
+
 const getUIActionByToken = `-- name: GetUIActionByToken :one
 SELECT id, ui_block_id, ask_id, token, action, zone, idempotency_key, status, result, created_at, done_at FROM ui_action WHERE token = $1
 `
@@ -601,6 +703,33 @@ func (q *Queries) GetUIActionByToken(ctx context.Context, token string) (UiActio
 		&i.Result,
 		&i.CreatedAt,
 		&i.DoneAt,
+	)
+	return i, err
+}
+
+const getUIBlock = `-- name: GetUIBlock :one
+SELECT id, message_id, openui_source, a2ui, status, created_at, updated_at, workspace_id, chat_session_id, task_id, seq, kind, issues, repairs, text_version FROM ui_block WHERE id = $1
+`
+
+func (q *Queries) GetUIBlock(ctx context.Context, id pgtype.UUID) (UiBlock, error) {
+	row := q.db.QueryRow(ctx, getUIBlock, id)
+	var i UiBlock
+	err := row.Scan(
+		&i.ID,
+		&i.MessageID,
+		&i.OpenuiSource,
+		&i.A2ui,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.WorkspaceID,
+		&i.ChatSessionID,
+		&i.TaskID,
+		&i.Seq,
+		&i.Kind,
+		&i.Issues,
+		&i.Repairs,
+		&i.TextVersion,
 	)
 	return i, err
 }
@@ -682,6 +811,48 @@ func (q *Queries) InsertAsk(ctx context.Context, arg InsertAskParams) (Ask, erro
 		&i.RemindedAt,
 		&i.CreatedAt,
 		&i.ResolvedAt,
+	)
+	return i, err
+}
+
+const insertBlockUIAction = `-- name: InsertBlockUIAction :one
+INSERT INTO ui_action (ui_block_id, ask_id, token, action, zone, idempotency_key)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (idempotency_key) DO NOTHING
+RETURNING id, ui_block_id, ask_id, token, action, zone, idempotency_key, status, result, created_at, done_at
+`
+
+type InsertBlockUIActionParams struct {
+	UiBlockID      pgtype.UUID `json:"ui_block_id"`
+	AskID          pgtype.UUID `json:"ask_id"`
+	Token          string      `json:"token"`
+	Action         []byte      `json:"action"`
+	Zone           string      `json:"zone"`
+	IdempotencyKey pgtype.Text `json:"idempotency_key"`
+}
+
+func (q *Queries) InsertBlockUIAction(ctx context.Context, arg InsertBlockUIActionParams) (UiAction, error) {
+	row := q.db.QueryRow(ctx, insertBlockUIAction,
+		arg.UiBlockID,
+		arg.AskID,
+		arg.Token,
+		arg.Action,
+		arg.Zone,
+		arg.IdempotencyKey,
+	)
+	var i UiAction
+	err := row.Scan(
+		&i.ID,
+		&i.UiBlockID,
+		&i.AskID,
+		&i.Token,
+		&i.Action,
+		&i.Zone,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.Result,
+		&i.CreatedAt,
+		&i.DoneAt,
 	)
 	return i, err
 }
@@ -852,6 +1023,68 @@ func (q *Queries) InsertUIAction(ctx context.Context, arg InsertUIActionParams) 
 		&i.Result,
 		&i.CreatedAt,
 		&i.DoneAt,
+	)
+	return i, err
+}
+
+const insertUIBlock = `-- name: InsertUIBlock :one
+INSERT INTO ui_block (id, message_id, workspace_id, chat_session_id, task_id, seq, kind, openui_source, a2ui, status, issues, repairs, text_version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+ON CONFLICT (id) DO NOTHING
+RETURNING id, message_id, openui_source, a2ui, status, created_at, updated_at, workspace_id, chat_session_id, task_id, seq, kind, issues, repairs, text_version
+`
+
+type InsertUIBlockParams struct {
+	ID            pgtype.UUID `json:"id"`
+	MessageID     pgtype.UUID `json:"message_id"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	ChatSessionID pgtype.UUID `json:"chat_session_id"`
+	TaskID        pgtype.UUID `json:"task_id"`
+	Seq           int32       `json:"seq"`
+	Kind          string      `json:"kind"`
+	OpenuiSource  string      `json:"openui_source"`
+	A2ui          []byte      `json:"a2ui"`
+	Status        string      `json:"status"`
+	Issues        []byte      `json:"issues"`
+	Repairs       int32       `json:"repairs"`
+	TextVersion   string      `json:"text_version"`
+}
+
+// The id is derived from (task_id, seq) in code: a redelivered reply finds
+// the stored block instead of storing a second one.
+func (q *Queries) InsertUIBlock(ctx context.Context, arg InsertUIBlockParams) (UiBlock, error) {
+	row := q.db.QueryRow(ctx, insertUIBlock,
+		arg.ID,
+		arg.MessageID,
+		arg.WorkspaceID,
+		arg.ChatSessionID,
+		arg.TaskID,
+		arg.Seq,
+		arg.Kind,
+		arg.OpenuiSource,
+		arg.A2ui,
+		arg.Status,
+		arg.Issues,
+		arg.Repairs,
+		arg.TextVersion,
+	)
+	var i UiBlock
+	err := row.Scan(
+		&i.ID,
+		&i.MessageID,
+		&i.OpenuiSource,
+		&i.A2ui,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.WorkspaceID,
+		&i.ChatSessionID,
+		&i.TaskID,
+		&i.Seq,
+		&i.Kind,
+		&i.Issues,
+		&i.Repairs,
+		&i.TextVersion,
 	)
 	return i, err
 }
@@ -1728,6 +1961,95 @@ func (q *Queries) ListStreams(ctx context.Context, workspaceID pgtype.UUID) ([]S
 	return items, nil
 }
 
+const listUIBlocksBySession = `-- name: ListUIBlocksBySession :many
+SELECT id, message_id, openui_source, a2ui, status, created_at, updated_at, workspace_id, chat_session_id, task_id, seq, kind, issues, repairs, text_version FROM ui_block
+WHERE chat_session_id = $1 AND workspace_id = $2 AND status <> 'failed'
+ORDER BY created_at DESC LIMIT $3
+`
+
+type ListUIBlocksBySessionParams struct {
+	ChatSessionID pgtype.UUID `json:"chat_session_id"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	Limit         int32       `json:"limit"`
+}
+
+// Newest first; failed screens are not shown.
+func (q *Queries) ListUIBlocksBySession(ctx context.Context, arg ListUIBlocksBySessionParams) ([]UiBlock, error) {
+	rows, err := q.db.Query(ctx, listUIBlocksBySession, arg.ChatSessionID, arg.WorkspaceID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UiBlock{}
+	for rows.Next() {
+		var i UiBlock
+		if err := rows.Scan(
+			&i.ID,
+			&i.MessageID,
+			&i.OpenuiSource,
+			&i.A2ui,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.WorkspaceID,
+			&i.ChatSessionID,
+			&i.TaskID,
+			&i.Seq,
+			&i.Kind,
+			&i.Issues,
+			&i.Repairs,
+			&i.TextVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUIBlocksByTask = `-- name: ListUIBlocksByTask :many
+SELECT id, message_id, openui_source, a2ui, status, created_at, updated_at, workspace_id, chat_session_id, task_id, seq, kind, issues, repairs, text_version FROM ui_block WHERE task_id = $1 ORDER BY seq
+`
+
+func (q *Queries) ListUIBlocksByTask(ctx context.Context, taskID pgtype.UUID) ([]UiBlock, error) {
+	rows, err := q.db.Query(ctx, listUIBlocksByTask, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UiBlock{}
+	for rows.Next() {
+		var i UiBlock
+		if err := rows.Scan(
+			&i.ID,
+			&i.MessageID,
+			&i.OpenuiSource,
+			&i.A2ui,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.WorkspaceID,
+			&i.ChatSessionID,
+			&i.TaskID,
+			&i.Seq,
+			&i.Kind,
+			&i.Issues,
+			&i.Repairs,
+			&i.TextVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockStream = `-- name: LockStream :one
 SELECT id, workspace_id, slug, title, charter, summary, state, reason, until, weight, min_share, max_parallel, manager_agent_id, carrier_project_id, next_seq, fail_streak, last_milestone_at, active, created_at, updated_at FROM stream WHERE id = $1 FOR UPDATE
 `
@@ -2121,6 +2443,21 @@ func (q *Queries) SetStreamMaxParallel(ctx context.Context, arg SetStreamMaxPara
 	return err
 }
 
+const setStreamShare = `-- name: SetStreamShare :exec
+UPDATE stream SET charter = $2, min_share = $3, updated_at = now() WHERE id = $1
+`
+
+type SetStreamShareParams struct {
+	ID       pgtype.UUID    `json:"id"`
+	Charter  []byte         `json:"charter"`
+	MinShare pgtype.Numeric `json:"min_share"`
+}
+
+func (q *Queries) SetStreamShare(ctx context.Context, arg SetStreamShareParams) error {
+	_, err := q.db.Exec(ctx, setStreamShare, arg.ID, arg.Charter, arg.MinShare)
+	return err
+}
+
 const setStreamState = `-- name: SetStreamState :exec
 UPDATE stream SET state = $2, reason = $3, until = $4, updated_at = now() WHERE id = $1
 `
@@ -2156,6 +2493,74 @@ func (q *Queries) SetStreamSummary(ctx context.Context, arg SetStreamSummaryPara
 	return err
 }
 
+const setUIActionResult = `-- name: SetUIActionResult :exec
+UPDATE ui_action SET result = $2 WHERE id = $1
+`
+
+type SetUIActionResultParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Result []byte      `json:"result"`
+}
+
+func (q *Queries) SetUIActionResult(ctx context.Context, arg SetUIActionResultParams) error {
+	_, err := q.db.Exec(ctx, setUIActionResult, arg.ID, arg.Result)
+	return err
+}
+
+const setUIBlockA2UI = `-- name: SetUIBlockA2UI :exec
+UPDATE ui_block SET a2ui = $2, updated_at = now() WHERE id = $1
+`
+
+type SetUIBlockA2UIParams struct {
+	ID   pgtype.UUID `json:"id"`
+	A2ui []byte      `json:"a2ui"`
+}
+
+func (q *Queries) SetUIBlockA2UI(ctx context.Context, arg SetUIBlockA2UIParams) error {
+	_, err := q.db.Exec(ctx, setUIBlockA2UI, arg.ID, arg.A2ui)
+	return err
+}
+
+const setUIBlocksMessage = `-- name: SetUIBlocksMessage :exec
+UPDATE ui_block SET message_id = $1, updated_at = now()
+WHERE task_id = $2 AND message_id IS NULL
+`
+
+type SetUIBlocksMessageParams struct {
+	MessageID pgtype.UUID `json:"message_id"`
+	TaskID    pgtype.UUID `json:"task_id"`
+}
+
+func (q *Queries) SetUIBlocksMessage(ctx context.Context, arg SetUIBlocksMessageParams) error {
+	_, err := q.db.Exec(ctx, setUIBlocksMessage, arg.MessageID, arg.TaskID)
+	return err
+}
+
+const streamCardStats = `-- name: StreamCardStats :one
+SELECT
+    (SELECT count(*) FROM stream_step s WHERE s.stream_id = $1 AND s.status = 'done' AND s.finished_at >= $2::timestamptz)::int AS steps_done,
+    (SELECT count(*) FROM milestone m WHERE m.stream_id = $1 AND m.created_at >= $2::timestamptz)::int AS milestones,
+    (SELECT count(*) FROM ask a WHERE a.stream_id = $1 AND a.status IN ('queued', 'shown'))::int AS open_asks
+`
+
+type StreamCardStatsParams struct {
+	StreamID pgtype.UUID        `json:"stream_id"`
+	Since    pgtype.Timestamptz `json:"since"`
+}
+
+type StreamCardStatsRow struct {
+	StepsDone  int32 `json:"steps_done"`
+	Milestones int32 `json:"milestones"`
+	OpenAsks   int32 `json:"open_asks"`
+}
+
+func (q *Queries) StreamCardStats(ctx context.Context, arg StreamCardStatsParams) (StreamCardStatsRow, error) {
+	row := q.db.QueryRow(ctx, streamCardStats, arg.StreamID, arg.Since)
+	var i StreamCardStatsRow
+	err := row.Scan(&i.StepsDone, &i.Milestones, &i.OpenAsks)
+	return i, err
+}
+
 const streamCostSince = `-- name: StreamCostSince :one
 SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
 FROM task_usage u
@@ -2175,6 +2580,49 @@ func (q *Queries) StreamCostSince(ctx context.Context, arg StreamCostSinceParams
 	var ticks int64
 	err := row.Scan(&ticks)
 	return ticks, err
+}
+
+const streamDailyCost = `-- name: StreamDailyCost :many
+SELECT (q.context->>'stream_id')::text AS stream_id,
+       to_char(u.created_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD')::text AS day,
+       SUM(u.cost_usd_ticks)::bigint AS ticks
+FROM task_usage u
+JOIN agent_task_queue q ON q.id = u.task_id
+WHERE q.context->>'stream_id' = ANY($1::text[])
+  AND u.created_at >= $2::timestamptz AND u.cost_usd_ticks IS NOT NULL
+GROUP BY 1, 2
+`
+
+type StreamDailyCostParams struct {
+	StreamIds []string           `json:"stream_ids"`
+	Since     pgtype.Timestamptz `json:"since"`
+}
+
+type StreamDailyCostRow struct {
+	StreamID string `json:"stream_id"`
+	Day      string `json:"day"`
+	Ticks    int64  `json:"ticks"`
+}
+
+// Provider-reported cost per stream and Moscow day since a moment, 1e-10 USD.
+func (q *Queries) StreamDailyCost(ctx context.Context, arg StreamDailyCostParams) ([]StreamDailyCostRow, error) {
+	rows, err := q.db.Query(ctx, streamDailyCost, arg.StreamIds, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StreamDailyCostRow{}
+	for rows.Next() {
+		var i StreamDailyCostRow
+		if err := rows.Scan(&i.StreamID, &i.Day, &i.Ticks); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const tagTaskContext = `-- name: TagTaskContext :exec
@@ -2228,6 +2676,22 @@ func (q *Queries) TakeMultikaCharters(ctx context.Context, workspaceID pgtype.UU
 		return nil, err
 	}
 	return items, nil
+}
+
+const taskChatAgent = `-- name: TaskChatAgent :one
+SELECT agent_id, chat_session_id FROM agent_task_queue WHERE id = $1
+`
+
+type TaskChatAgentRow struct {
+	AgentID       pgtype.UUID `json:"agent_id"`
+	ChatSessionID pgtype.UUID `json:"chat_session_id"`
+}
+
+func (q *Queries) TaskChatAgent(ctx context.Context, id pgtype.UUID) (TaskChatAgentRow, error) {
+	row := q.db.QueryRow(ctx, taskChatAgent, id)
+	var i TaskChatAgentRow
+	err := row.Scan(&i.AgentID, &i.ChatSessionID)
+	return i, err
 }
 
 const taskLastProgress = `-- name: TaskLastProgress :one
@@ -2346,4 +2810,36 @@ func (q *Queries) UpsertStream(ctx context.Context, arg UpsertStreamParams) (Str
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const workspaceCostSince = `-- name: WorkspaceCostSince :one
+SELECT COALESCE(SUM(u.cost_usd_ticks), 0)::bigint AS ticks
+FROM task_usage u
+JOIN agent_task_queue q ON q.id = u.task_id
+JOIN agent a ON a.id = q.agent_id
+WHERE a.workspace_id = $1 AND u.created_at >= $2::timestamptz
+`
+
+type WorkspaceCostSinceParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Since       pgtype.Timestamptz `json:"since"`
+}
+
+// All provider-reported cost of the workspace's agents since a moment.
+func (q *Queries) WorkspaceCostSince(ctx context.Context, arg WorkspaceCostSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, workspaceCostSince, arg.WorkspaceID, arg.Since)
+	var ticks int64
+	err := row.Scan(&ticks)
+	return ticks, err
+}
+
+const workspaceSlug = `-- name: WorkspaceSlug :one
+SELECT slug FROM workspace WHERE id = $1
+`
+
+func (q *Queries) WorkspaceSlug(ctx context.Context, id pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, workspaceSlug, id)
+	var slug string
+	err := row.Scan(&slug)
+	return slug, err
 }

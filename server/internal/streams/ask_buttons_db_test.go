@@ -218,8 +218,29 @@ func TestAskButtonsLosingPressOfCrashQuestionChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, rows[0][0].Data); done != "✓ а) продлить" {
-		t.Fatalf("first press: %q", done)
+	// Red zone: the press asks for confirmation in a separate message;
+	// «Отмена» leaves the question open, «Подтвердить» answers it.
+	if toast, done := h.sup.PressAskButton(ctx, inst, chat, chat, rows[0][0].Data); toast != pressConfirmSent || done != "" {
+		t.Fatalf("red press: %q %q", toast, done)
+	}
+	if len(fake.sent) != 2 || len(fake.sent[1].rows[0]) != 2 || !strings.Contains(fake.sent[1].text, "а) продлить") {
+		t.Fatalf("confirm message %+v", fake.sent)
+	}
+	if toast, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[1].rows[0][1].Data); toast != pressCancelled || done == "" {
+		t.Fatalf("cancel: %q %q", toast, done)
+	}
+	if h.askStatus() != "shown" {
+		t.Fatalf("cancel answered the question: %s", h.askStatus())
+	}
+	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, rows[0][0].Data); done != "" || len(fake.sent) != 3 {
+		t.Fatalf("second red press: %q sent=%d", done, len(fake.sent))
+	}
+	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[2].rows[0][0].Data); done != "✓ а) продлить" {
+		t.Fatalf("confirmed press: %q", done)
+	}
+	// A stale confirm button of the first round changes nothing.
+	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[1].rows[0][0].Data); strings.HasPrefix(done, "✓") {
+		t.Fatalf("stale confirm applied: %q", done)
 	}
 	out, err := h.sup.applyReply(ctx, stale, Reply{Choice: 1}, askButtonsChan, time.Now())
 	if err != nil || out != replyClosed {

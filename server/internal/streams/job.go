@@ -30,6 +30,7 @@ func Subscribe(bus *events.Bus, s *Supervisor) {
 	kick := func(events.Event) { s.Kick() }
 	bus.Subscribe(protocol.EventTaskCompleted, kick)
 	bus.Subscribe(protocol.EventTaskFailed, kick)
+	s.subscribeScreens(bus)
 	if s.MultikaEnabled() {
 		bus.Subscribe(protocol.EventChatDone, func(e events.Event) {
 			p, ok := e.Payload.(protocol.ChatDonePayload)

@@ -1224,6 +1224,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			var telegramMedia engine.MediaResolver
 			telegramOutbound := telegram.NewOutbound(queries, box.Open, "", nil, slog.Default())
 			telegramOutbound.SetNotices(multikaTelegramNotices(opts.Streams))
+			if final, partial := multikaTelegramReplyText(opts.Streams); final != nil {
+				telegramOutbound.SetReplyText(final, partial)
+			}
 			if store != nil {
 				telegramMedia = telegram.NewMediaResolver(box.Open, store, engine.NewDBMediaIntentLedger(queries), "", nil, slog.Default())
 				telegramOutbound.EnableFileDelivery(store)

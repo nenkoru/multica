@@ -3,6 +3,7 @@ package streams
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -306,6 +307,15 @@ func (h *HTTP) Digest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// The same digest as a screen in Мультика's chat; Telegram gets the
+	// text with a link to it (§10.5). A failed screen never holds the text.
+	if slot == SlotMorning && text != "" {
+		if link, err := h.Sup.DigestScreen(r.Context(), ws, slot); err != nil {
+			slog.Warn("streams: digest screen failed", "error", err)
+		} else if link != "" {
+			text += "\n\nОткрыть вживую: " + link
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"slot": slot, "text": text})
 }
 
@@ -415,13 +425,15 @@ type multikaView struct {
 	FocusUntil    *time.Time `json:"focus_until,omitempty"`
 	// Voice: the composer may offer a microphone (POST /multika/voice).
 	Voice bool `json:"voice"`
+	// Screens: replies may carry screens (chat:ui_line / chat:ui_final).
+	Screens bool `json:"screens"`
 }
 
 func (h *HTTP) multikaView(r *http.Request, ws pgtype.UUID) (multikaView, error) {
 	if !h.Sup.MultikaEnabled() {
 		return multikaView{}, nil
 	}
-	v := multikaView{Enabled: true, AgentID: uuidString(h.Sup.MultikaAgentID), Voice: h.Sup.Voice != nil}
+	v := multikaView{Enabled: true, AgentID: uuidString(h.Sup.MultikaAgentID), Voice: h.Sup.Voice != nil, Screens: h.Sup.Screens != nil}
 	sid, err := h.Sup.MultikaSession(r.Context(), ws)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, nil
@@ -527,4 +539,78 @@ func (h *HTTP) MultikaVoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"text": text})
+}
+
+// ScreenBlocks: GET /api/streams/ui/blocks?session=<id> — the stored screens
+// of a chat, newest first (§10.2: only A2UI is stored and sent on).
+func (h *HTTP) ScreenBlocks(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	sid, err := parseUUID(r.URL.Query().Get("session"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "session is required")
+		return
+	}
+	blocks, err := h.Sup.ScreenBlocks(r.Context(), ws, sid, 200)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"blocks": blocks})
+}
+
+// PressScreenAction: POST /api/streams/ui/actions/{id} {"confirm": false} —
+// a screen button. A red action answers {"status":"confirm"} with the text
+// of the app's confirmation window; the window posts again with confirm.
+func (h *HTTP) PressScreenAction(w http.ResponseWriter, r *http.Request) {
+	h.screenAction(w, r, func(ws, id pgtype.UUID) (PressResult, error) {
+		var req struct {
+			Confirm bool `json:"confirm"`
+		}
+		if r.ContentLength != 0 {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				return PressResult{}, errBadRequest
+			}
+		}
+		return h.Sup.PressScreenAction(r.Context(), ws, id, req.Confirm)
+	})
+}
+
+// CancelScreenAction: POST /api/streams/ui/actions/{id}/cancel — the
+// confirmation window was closed.
+func (h *HTTP) CancelScreenAction(w http.ResponseWriter, r *http.Request) {
+	h.screenAction(w, r, func(ws, id pgtype.UUID) (PressResult, error) {
+		return h.Sup.CancelScreenAction(r.Context(), ws, id)
+	})
+}
+
+var errBadRequest = errors.New("bad request")
+
+func (h *HTTP) screenAction(w http.ResponseWriter, r *http.Request, run func(ws, id pgtype.UUID) (PressResult, error)) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	if h.Sup.Screens == nil {
+		writeError(w, http.StatusNotFound, "screens are off")
+		return
+	}
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "action id is required")
+		return
+	}
+	res, err := run(ws, id)
+	switch {
+	case errors.Is(err, errBadRequest):
+		writeError(w, http.StatusBadRequest, "body must be {\"confirm\": bool}")
+	case errors.Is(err, ErrActionStale):
+		writeError(w, http.StatusGone, err.Error())
+	case err != nil:
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+	default:
+		writeJSON(w, http.StatusOK, res)
+	}
 }
