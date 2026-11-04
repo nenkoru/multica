@@ -29,8 +29,8 @@ export function usePressScreenAction() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
-    mutationFn: ({ actionId, confirm }: { actionId: string; confirm: boolean }) =>
-      api.pressScreenAction(actionId, confirm),
+    mutationFn: ({ actionId, confirm, window }: { actionId: string; confirm: boolean; window?: string }) =>
+      api.pressScreenAction(actionId, confirm, window),
     // Shares, pauses and focus show in the streams list and Мультика's state.
     onSuccess: (res) => {
       if (res.status !== "done") return;

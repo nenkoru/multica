@@ -74,6 +74,6 @@ describe("streams schemas", () => {
     expect(parseWithFallback({}, ScreenPressResultSchema, FAILED_SCREEN_PRESS, { endpoint: "x" }).status).toBe("failed");
     expect(
       ScreenPressResultSchema.parse({ status: "confirm", confirm: { title: "Поднять бюджет?", text: "на $20" } }).confirm,
-    ).toEqual({ title: "Поднять бюджет?", text: "на $20" });
+    ).toEqual({ window: "", title: "Поднять бюджет?", text: "на $20" });
   });
 });

@@ -51,8 +51,11 @@ type askButtonAction struct {
 	Choice *int   `json:"choice,omitempty"`
 	Yes    *bool  `json:"yes,omitempty"`
 	Label  string `json:"label"`
-	// Target is the red answer an ask_confirm button confirms or cancels.
+	// Target is the red answer an ask_confirm button confirms or cancels;
+	// Window is the confirmation message it belongs to. Only the latest
+	// window of the target confirms: a cancelled or superseded one is stale.
 	Target string `json:"target,omitempty"`
+	Window string `json:"window,omitempty"`
 }
 
 func newAskToken() (string, error) {
@@ -266,7 +269,13 @@ func (s *Supervisor) askRedConfirm(ctx context.Context, installationID pgtype.UU
 	if s.AskButtons == nil {
 		return pressFailed, ""
 	}
-	n, err := s.Q.ConfirmUIAction(ctx, ua.ID)
+	window, err := newAskToken()
+	if err != nil {
+		return pressFailed, ""
+	}
+	text := fmt.Sprintf("Красная зона. Подтверди ответ на вопрос «%s»: %s", firstLine(a.Text, 160), act.Label)
+	rawWindow, _ := json.Marshal(confirmWindow{Window: window, Text: text})
+	n, err := s.Q.ConfirmUIAction(ctx, sdb.ConfirmUIActionParams{ID: ua.ID, ConfirmWindow: rawWindow})
 	if err != nil {
 		return pressFailed, ""
 	}
@@ -285,14 +294,13 @@ func (s *Supervisor) askRedConfirm(ctx context.Context, installationID pgtype.UU
 			_, _ = s.Q.CancelUIActionConfirm(ctx, ua.ID)
 			return pressFailed, ""
 		}
-		raw, _ := json.Marshal(askButtonAction{Kind: "ask_confirm", AskID: act.AskID, Yes: c.yes, Label: c.label, Target: target})
+		raw, _ := json.Marshal(askButtonAction{Kind: "ask_confirm", AskID: act.AskID, Yes: c.yes, Label: c.label, Target: target, Window: window})
 		if _, err := s.Q.InsertUIAction(ctx, sdb.InsertUIActionParams{AskID: a.ID, Token: tok, Action: raw, Zone: "normal"}); err != nil {
 			_, _ = s.Q.CancelUIActionConfirm(ctx, ua.ID)
 			return pressFailed, ""
 		}
 		row = append(row, AskButton{Text: c.label, Data: tok})
 	}
-	text := fmt.Sprintf("Красная зона. Подтверди ответ на вопрос «%s»: %s", firstLine(a.Text, 160), act.Label)
 	if err := s.AskButtons.SendButtons(ctx, installationID, chatID, text, [][]AskButton{row}); err != nil {
 		_, _ = s.Q.CancelUIActionConfirm(ctx, ua.ID)
 		return pressFailed, ""
@@ -307,6 +315,10 @@ func (s *Supervisor) pressAskConfirm(ctx context.Context, a sdb.Ask, ua sdb.UiAc
 	}
 	target, err := s.Q.GetUIAction(ctx, targetID)
 	if err != nil || target.AskID != a.ID || target.Status != "confirming" {
+		return pressStale, ""
+	}
+	var open confirmWindow
+	if err := json.Unmarshal(target.Result, &open); err != nil || act.Window == "" || open.Window != act.Window {
 		return pressStale, ""
 	}
 	var orig askButtonAction

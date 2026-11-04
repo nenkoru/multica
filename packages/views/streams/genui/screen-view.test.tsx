@@ -80,14 +80,14 @@ it("presses a stored button once", async () => {
   renderScreen("valid");
   const cut = screen.getByRole("button", { name: /Урезать долю вдвое/ });
   fireEvent.click(cut);
-  await waitFor(() => expect(press).toHaveBeenCalledWith("a-cut", false));
+  await waitFor(() => expect(press).toHaveBeenCalledWith("a-cut", false, undefined));
   await waitFor(() => expect(cut.hasAttribute("disabled")).toBe(true));
   fireEvent.click(cut);
   expect(press).toHaveBeenCalledTimes(1);
 });
 
 it("asks in the confirmation window before a red action and cancels on close", async () => {
-  press.mockResolvedValueOnce({ status: "confirm", confirm: { title: "Красная зона: подтверди", text: "Поднять бюджет на $20.00" } });
+  press.mockResolvedValueOnce({ status: "confirm", confirm: { window: "w1", title: "Красная зона: подтверди", text: "Поднять бюджет на $20.00" } });
   cancel.mockResolvedValue({ status: "cancelled" });
   renderScreen("valid");
   fireEvent.click(screen.getByRole("button", { name: /Поднять на \$20/ }));
@@ -95,11 +95,11 @@ it("asks in the confirmation window before a red action and cancels on close", a
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(cancel).toHaveBeenCalledWith("a-raise"));
 
-  press.mockResolvedValueOnce({ status: "confirm", confirm: { title: "Красная зона: подтверди", text: "Поднять бюджет на $20.00" } });
+  press.mockResolvedValueOnce({ status: "confirm", confirm: { window: "w2", title: "Красная зона: подтверди", text: "Поднять бюджет на $20.00" } });
   press.mockResolvedValueOnce({ status: "done", result: {} });
   fireEvent.click(screen.getByRole("button", { name: /Поднять на \$20/ }));
   fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
-  await waitFor(() => expect(press).toHaveBeenLastCalledWith("a-raise", true));
+  await waitFor(() => expect(press).toHaveBeenLastCalledWith("a-raise", true, "w2"));
   expect(cancel).toHaveBeenCalledTimes(1);
 });
 

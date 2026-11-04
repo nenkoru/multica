@@ -553,6 +553,12 @@ func (h *HTTP) ScreenBlocks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "session is required")
 		return
 	}
+	// Screens are private to the chat, like chat:ui_* events: only the
+	// chat's own creator reads them.
+	if !h.Sup.ownsChat(r.Context(), ws, requestUser(r), sid) {
+		writeError(w, http.StatusNotFound, "chat not found")
+		return
+	}
 	blocks, err := h.Sup.ScreenBlocks(r.Context(), ws, sid, 200)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -562,19 +568,21 @@ func (h *HTTP) ScreenBlocks(w http.ResponseWriter, r *http.Request) {
 }
 
 // PressScreenAction: POST /api/streams/ui/actions/{id} {"confirm": false} —
-// a screen button. A red action answers {"status":"confirm"} with the text
-// of the app's confirmation window; the window posts again with confirm.
+// a screen button of the caller's own chat. A red action answers
+// {"status":"confirm"} with the app's confirmation window; the window posts
+// again with {"confirm": true, "window": <its id>}.
 func (h *HTTP) PressScreenAction(w http.ResponseWriter, r *http.Request) {
 	h.screenAction(w, r, func(ws, id pgtype.UUID) (PressResult, error) {
 		var req struct {
-			Confirm bool `json:"confirm"`
+			Confirm bool   `json:"confirm"`
+			Window  string `json:"window"`
 		}
 		if r.ContentLength != 0 {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				return PressResult{}, errBadRequest
 			}
 		}
-		return h.Sup.PressScreenAction(r.Context(), ws, id, req.Confirm)
+		return h.Sup.PressScreenAction(r.Context(), ws, requestUser(r), id, req.Confirm, req.Window)
 	})
 }
 
@@ -582,11 +590,18 @@ func (h *HTTP) PressScreenAction(w http.ResponseWriter, r *http.Request) {
 // confirmation window was closed.
 func (h *HTTP) CancelScreenAction(w http.ResponseWriter, r *http.Request) {
 	h.screenAction(w, r, func(ws, id pgtype.UUID) (PressResult, error) {
-		return h.Sup.CancelScreenAction(r.Context(), ws, id)
+		return h.Sup.CancelScreenAction(r.Context(), ws, requestUser(r), id)
 	})
 }
 
 var errBadRequest = errors.New("bad request")
+
+// requestUser is the authenticated user set by the auth middleware; invalid
+// when absent, which no chat matches.
+func requestUser(r *http.Request) pgtype.UUID {
+	u, _ := parseUUID(r.Header.Get("X-User-ID"))
+	return u
+}
 
 func (h *HTTP) screenAction(w http.ResponseWriter, r *http.Request, run func(ws, id pgtype.UUID) (PressResult, error)) {
 	ws, ok := h.workspace(w, r)

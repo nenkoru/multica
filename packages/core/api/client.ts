@@ -4213,10 +4213,11 @@ export class ApiClient {
     });
   }
 
-  async pressScreenAction(actionId: string, confirm: boolean): Promise<ScreenPressResult> {
+  /** `window` is the id of the confirmation window being confirmed. */
+  async pressScreenAction(actionId: string, confirm: boolean, window = ""): Promise<ScreenPressResult> {
     const raw = await this.fetch<unknown>(`/api/streams/ui/actions/${actionId}`, {
       method: "POST",
-      body: JSON.stringify({ confirm }),
+      body: JSON.stringify({ confirm, window }),
     });
     return parseWithFallback(raw, ScreenPressResultSchema, FAILED_SCREEN_PRESS, {
       endpoint: "POST /api/streams/ui/actions/:id",

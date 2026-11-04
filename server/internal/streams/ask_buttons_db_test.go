@@ -235,6 +235,11 @@ func TestAskButtonsLosingPressOfCrashQuestionChangesNothing(t *testing.T) {
 	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, rows[0][0].Data); done != "" || len(fake.sent) != 3 {
 		t.Fatalf("second red press: %q sent=%d", done, len(fake.sent))
 	}
+	// While the second window is open, «Подтвердить» of the cancelled first
+	// window does not answer: it belongs to a closed window.
+	if toast, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[1].rows[0][0].Data); toast != pressStale || done != "" || h.askStatus() != "shown" {
+		t.Fatalf("old window confirmed: %q %q %s", toast, done, h.askStatus())
+	}
 	if _, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[2].rows[0][0].Data); done != "✓ а) продлить" {
 		t.Fatalf("confirmed press: %q", done)
 	}

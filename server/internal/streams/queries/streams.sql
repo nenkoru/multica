@@ -444,8 +444,10 @@ SELECT * FROM ui_action WHERE id = $1;
 SELECT * FROM ui_action WHERE idempotency_key = $1;
 
 -- name: ConfirmUIAction :execrows
--- A red action waits for the app's own confirmation window (§10.4).
-UPDATE ui_action SET status = 'confirming' WHERE id = $1 AND status = 'pending';
+-- A red action waits for the app's own confirmation window (§10.4). The
+-- window (its id and text) is kept in result; a new press opens a new one.
+UPDATE ui_action SET status = 'confirming', result = @confirm_window
+WHERE id = @id AND status IN ('pending', 'confirming');
 
 -- name: FinishUIActionAny :execrows
 -- Claims a pending or confirming action; 0 rows: another press won.
@@ -453,7 +455,7 @@ UPDATE ui_action SET status = @status, result = @result, done_at = now()
 WHERE id = @id AND status IN ('pending', 'confirming');
 
 -- name: CancelUIActionConfirm :execrows
-UPDATE ui_action SET status = 'pending' WHERE id = $1 AND status = 'confirming';
+UPDATE ui_action SET status = 'pending', result = NULL WHERE id = $1 AND status = 'confirming';
 
 -- name: SetUIActionResult :exec
 UPDATE ui_action SET result = $2 WHERE id = $1;
@@ -501,3 +503,7 @@ SELECT slug FROM workspace WHERE id = $1;
 
 -- name: ChatSessionCreator :one
 SELECT creator_id FROM chat_session WHERE id = $1;
+
+-- name: ChatSessionOfUser :one
+-- A chat of this user in this workspace: screens are private to the chat.
+SELECT id FROM chat_session WHERE id = @id AND workspace_id = @workspace_id AND creator_id = @user_id;

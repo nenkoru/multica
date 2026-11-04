@@ -63,7 +63,7 @@ func (q *Queries) AppendQueuedStepBrief(ctx context.Context, arg AppendQueuedSte
 }
 
 const cancelUIActionConfirm = `-- name: CancelUIActionConfirm :execrows
-UPDATE ui_action SET status = 'pending' WHERE id = $1 AND status = 'confirming'
+UPDATE ui_action SET status = 'pending', result = NULL WHERE id = $1 AND status = 'confirming'
 `
 
 func (q *Queries) CancelUIActionConfirm(ctx context.Context, id pgtype.UUID) (int64, error) {
@@ -83,6 +83,24 @@ func (q *Queries) ChatSessionCreator(ctx context.Context, id pgtype.UUID) (pgtyp
 	var creator_id pgtype.UUID
 	err := row.Scan(&creator_id)
 	return creator_id, err
+}
+
+const chatSessionOfUser = `-- name: ChatSessionOfUser :one
+SELECT id FROM chat_session WHERE id = $1 AND workspace_id = $2 AND creator_id = $3
+`
+
+type ChatSessionOfUserParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	UserID      pgtype.UUID `json:"user_id"`
+}
+
+// A chat of this user in this workspace: screens are private to the chat.
+func (q *Queries) ChatSessionOfUser(ctx context.Context, arg ChatSessionOfUserParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, chatSessionOfUser, arg.ID, arg.WorkspaceID, arg.UserID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const claimMultikaCharter = `-- name: ClaimMultikaCharter :one
@@ -135,12 +153,19 @@ func (q *Queries) ClearExecutorStatus(ctx context.Context, executor string) erro
 }
 
 const confirmUIAction = `-- name: ConfirmUIAction :execrows
-UPDATE ui_action SET status = 'confirming' WHERE id = $1 AND status = 'pending'
+UPDATE ui_action SET status = 'confirming', result = $1
+WHERE id = $2 AND status IN ('pending', 'confirming')
 `
 
-// A red action waits for the app's own confirmation window (§10.4).
-func (q *Queries) ConfirmUIAction(ctx context.Context, id pgtype.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, confirmUIAction, id)
+type ConfirmUIActionParams struct {
+	ConfirmWindow []byte      `json:"confirm_window"`
+	ID            pgtype.UUID `json:"id"`
+}
+
+// A red action waits for the app's own confirmation window (§10.4). The
+// window (its id and text) is kept in result; a new press opens a new one.
+func (q *Queries) ConfirmUIAction(ctx context.Context, arg ConfirmUIActionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmUIAction, arg.ConfirmWindow, arg.ID)
 	if err != nil {
 		return 0, err
 	}

@@ -126,8 +126,12 @@ func TestScreenStoreAndPress(t *testing.T) {
 	}
 	cut, _ := parseUUID(buttons[0].ActionID)
 	raise, _ := parseUUID(buttons[1].ActionID)
+	var owner pgtype.UUID
+	if err := testPool.QueryRow(ctx, `SELECT creator_id FROM chat_session WHERE id = $1`, sid).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
 
-	res, err := h.sup.PressScreenAction(ctx, ws, cut, false)
+	res, err := h.sup.PressScreenAction(ctx, ws, owner, cut, false, "")
 	if err != nil || res.Status != PressDone {
 		t.Fatalf("cut: %+v %v", res, err)
 	}
@@ -137,49 +141,90 @@ func TestScreenStoreAndPress(t *testing.T) {
 	if c.BudgetShare != 0.2 || minF.Float64 != 0.25 || !strings.Contains(string(st.Charter), `"keep"`) {
 		t.Fatalf("after cut: share %v min %v charter %s", c.BudgetShare, minF.Float64, st.Charter)
 	}
-	if res, _ := h.sup.PressScreenAction(ctx, ws, cut, false); res.Status != PressAlready {
+	if res, _ := h.sup.PressScreenAction(ctx, ws, owner, cut, false, ""); res.Status != PressAlready {
 		t.Fatalf("second press: %+v", res)
 	}
 	if h.journalCount("share_set") != 1 {
 		t.Fatalf("share_set journaled %d times", h.journalCount("share_set"))
 	}
 
-	// Red: confirming without the window is refused; the window's text comes
-	// from the record; cancel re-arms; confirm applies once.
-	if _, err := h.sup.PressScreenAction(ctx, ws, raise, true); err == nil {
-		t.Fatal("confirm without the window must fail")
-	}
-	res, err = h.sup.PressScreenAction(ctx, ws, raise, false)
-	if err != nil || res.Status != PressConfirm || !strings.Contains(res.Confirm.Text, "$20.00") {
+	// Red: a confirm without the server's window only opens one; cancel
+	// closes it and its id no longer confirms; confirm applies once.
+	res, err = h.sup.PressScreenAction(ctx, ws, owner, raise, true, "")
+	if err != nil || res.Status != PressConfirm || res.Confirm == nil || res.Confirm.Window == "" || !strings.Contains(res.Confirm.Text, "$20.00") {
 		t.Fatalf("red press: %+v %v", res, err)
 	}
-	if res, _ := h.sup.CancelScreenAction(ctx, ws, raise); res.Status != PressCancelled {
+	first := res.Confirm.Window
+	if res, _ := h.sup.CancelScreenAction(ctx, ws, owner, raise); res.Status != PressCancelled {
 		t.Fatalf("cancel: %+v", res)
+	}
+	if res, _ := h.sup.PressScreenAction(ctx, ws, owner, raise, true, first); res.Status != PressConfirm || res.Confirm.Window == first {
+		t.Fatalf("cancelled window confirmed: %+v", res)
 	}
 	if c, _ := ParseCharter(h.reload().Charter); c.BudgetShare != 0.2 {
 		t.Fatalf("cancel changed the budget: %v", c.BudgetShare)
 	}
-	_, _ = h.sup.PressScreenAction(ctx, ws, raise, false)
-	res, err = h.sup.PressScreenAction(ctx, ws, raise, true)
+	// The window's numbers no longer hold: a new window, nothing applied.
+	res, _ = h.sup.PressScreenAction(ctx, ws, owner, raise, false, "")
+	h.f.Exec(t, `UPDATE stream SET charter = charter || '{"budget_share": 0.3}'::jsonb WHERE id = $1`, h.stream.ID)
+	res2, err := h.sup.PressScreenAction(ctx, ws, owner, raise, true, res.Confirm.Window)
+	if err != nil || res2.Status != PressConfirm || !strings.Contains(res2.Confirm.Text, "$30.00 → $50.00") {
+		t.Fatalf("changed stream: %+v %v", res2, err)
+	}
+	res, err = h.sup.PressScreenAction(ctx, ws, owner, raise, true, res2.Confirm.Window)
 	if err != nil || res.Status != PressDone {
 		t.Fatalf("confirmed: %+v %v", res, err)
 	}
-	if c, _ := ParseCharter(h.reload().Charter); c.BudgetShare != 0.4 {
+	if c, _ := ParseCharter(h.reload().Charter); c.BudgetShare != 0.5 {
 		t.Fatalf("raise: share %v", c.BudgetShare)
 	}
 
-	// Another workspace or a made-up id is stale.
-	if _, err := h.sup.PressScreenAction(ctx, ws, randomTask(), false); err != ErrActionStale {
+	// Another user, another workspace or a made-up id is stale.
+	if _, err := h.sup.PressScreenAction(ctx, ws, owner, randomTask(), false, ""); err != ErrActionStale {
 		t.Fatalf("unknown action: %v", err)
 	}
 	other, _ := parseUUID("00000000-0000-4000-8000-00000000abcd")
-	if _, err := h.sup.PressScreenAction(ctx, other, cut, false); err != ErrActionStale {
+	if _, err := h.sup.PressScreenAction(ctx, other, owner, cut, false, ""); err != ErrActionStale {
 		t.Fatalf("foreign workspace: %v", err)
+	}
+	if _, err := h.sup.PressScreenAction(ctx, ws, randomTask(), cut, false, ""); err != ErrActionStale {
+		t.Fatalf("foreign user: %v", err)
+	}
+	if h.sup.ownsChat(ctx, ws, randomTask(), sid) || !h.sup.ownsChat(ctx, ws, owner, sid) {
+		t.Fatal("chat ownership")
 	}
 
 	blocks, err := h.sup.ScreenBlocks(ctx, ws, sid, 10)
 	if err != nil || len(blocks) != 1 || blocks[0].ID != uuidString(b.ID) {
 		t.Fatalf("blocks %+v %v", blocks, err)
+	}
+}
+
+// TestScreenShareRollsBack: a share change that fails leaves the button
+// pressable and the stream untouched — never done-but-not-applied.
+func TestScreenShareRollsBack(t *testing.T) {
+	h, ws, sid, _ := screensHarness(t, "scrtx")
+	ctx := context.Background()
+	src := fmt.Sprintf("root = Actions([Button(\"Урезать\", set_share(\"%s\", 0.5))])", h.stream.Slug)
+	b, err := h.sup.storeModelScreen(ctx, ws, sid, randomTask(), pgtype.UUID{}, modelBlockSeq, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id, owner pgtype.UUID
+	if err := testPool.QueryRow(ctx, `SELECT id FROM ui_action WHERE ui_block_id = $1`, b.ID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(ctx, `SELECT creator_id FROM chat_session WHERE id = $1`, sid).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	// A charter that is not an object cannot be rewritten.
+	h.f.Exec(t, `UPDATE stream SET charter = '[]'::jsonb WHERE id = $1`, h.stream.ID)
+	if _, err := h.sup.PressScreenAction(ctx, ws, owner, id, false, ""); err == nil {
+		t.Fatal("press on an unreadable charter must fail")
+	}
+	ua, err := h.sup.Q.GetUIAction(ctx, id)
+	if err != nil || ua.Status != "pending" || h.journalCount("share_set") != 0 {
+		t.Fatalf("after failure: status %s journal %d", ua.Status, h.journalCount("share_set"))
 	}
 }
 

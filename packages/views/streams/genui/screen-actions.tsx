@@ -47,7 +47,7 @@ export function ScreenActionButton({
   const press = usePressScreenAction();
   const cancel = useCancelScreenAction();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [confirm, setConfirm] = useState<{ title: string; text: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ window: string; title: string; text: string } | null>(null);
 
   const finish = (res: ScreenPressResult) => {
     switch (res.status) {
@@ -65,7 +65,7 @@ export function ScreenActionButton({
       }
       case "confirm":
         setPhase("idle");
-        setConfirm({ title: res.confirm?.title || label, text: res.confirm?.text ?? "" });
+        setConfirm({ window: res.confirm?.window ?? "", title: res.confirm?.title || label, text: res.confirm?.text ?? "" });
         return;
       case "cancelled":
         setPhase("idle");
@@ -80,10 +80,10 @@ export function ScreenActionButton({
     setPhase(stale ? "done" : "idle");
     toast.error(stale ? t(($) => $.screen.stale) : t(($) => $.screen.action_failed));
   };
-  const run = (withConfirm: boolean) => {
+  const run = (window?: string) => {
     if (!actionId) return;
     setPhase("busy");
-    press.mutateAsync({ actionId, confirm: withConfirm }).then(finish, fail);
+    press.mutateAsync({ actionId, confirm: window !== undefined, window }).then(finish, fail);
   };
 
   const onClick = () => {
@@ -91,7 +91,7 @@ export function ScreenActionButton({
     // the press only records it.
     const url = openUrl(action);
     if (url) window.open(url, "_blank", "noopener,noreferrer");
-    run(false);
+    run();
   };
   const onConfirmOpenChange = (open: boolean) => {
     if (open || !confirm) return;
@@ -125,8 +125,9 @@ export function ScreenActionButton({
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
+                const open = confirm;
                 setConfirm(null);
-                run(true);
+                if (open) run(open.window);
               }}
             >
               {t(($) => $.screen.confirm)}

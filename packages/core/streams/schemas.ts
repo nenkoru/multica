@@ -78,7 +78,9 @@ export const ListScreenBlocksResponseSchema = z.object({ blocks: z.array(ScreenB
 export const ScreenPressResultSchema = z
   .object({
     status: z.string(),
-    confirm: z.object({ title: z.string().default(""), text: z.string().default("") }).nullish(),
+    confirm: z
+      .object({ window: z.string().default(""), title: z.string().default(""), text: z.string().default("") })
+      .nullish(),
     result: z.record(z.string(), z.unknown()).nullish(),
   })
   .loose();
