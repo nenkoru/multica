@@ -114,8 +114,8 @@ func decodeContract(s string) (StepOutput, bool) {
 // done → result, links → evidence, plain-string next → briefs. A good
 // result must not be thrown away over field names.
 func normalizeContract(raw map[string]json.RawMessage) map[string]json.RawMessage {
-	var str string
 	if _, ok := raw["result"]; !ok {
+		var str string
 		if v, ok := raw["done"]; ok && json.Unmarshal(v, &str) == nil {
 			raw["result"] = v
 		}
@@ -130,21 +130,27 @@ func normalizeContract(raw map[string]json.RawMessage) map[string]json.RawMessag
 	}
 	var items []json.RawMessage
 	if v, ok := raw["next"]; ok && json.Unmarshal(v, &items) == nil {
-		for i, it := range items {
-			if json.Unmarshal(it, &str) == nil {
-				items[i], _ = json.Marshal(NextStep{Brief: str})
+		kept := items[:0]
+		for _, it := range items {
+			if string(it) == "null" {
+				continue
 			}
+			var str string
+			if json.Unmarshal(it, &str) == nil {
+				it, _ = json.Marshal(NextStep{Brief: str})
+			}
+			kept = append(kept, it)
 		}
-		raw["next"], _ = json.Marshal(items)
+		raw["next"], _ = json.Marshal(kept)
 	}
 	return raw
 }
 
 var verdictWord = regexp.MustCompile(`(?i)(?:verdict|вердикт)["'*\s:=—–-]{0,8}(accept|rework)\b`)
-var verdictPrefix = regexp.MustCompile(`(?i)^[\s*"'«(\[]{0,3}(accept|rework)\b`)
+var verdictPrefix = regexp.MustCompile(`(?i)^[\s*"'«(\[]{0,3}(accept|rework)[»"'*)\]]{0,2}\s*[:—–-]`)
 
 // InferVerdict fills a missing verdict of a verify turn from the result
-// prefix ("rework: …") or a "verdict: rework" line in the text around the
+// prefix followed by a separator ("rework: …", not "Accept criteria …") or a "verdict: rework" line in the text around the
 // block (RUSL-2625, RUSL-2626). It only sets the verdict when the text
 // names exactly one; otherwise validation rejects the turn as before.
 func InferVerdict(out *StepOutput, text string) {
