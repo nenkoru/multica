@@ -16,5 +16,29 @@
     "no_microphone": "マイクにアクセスできません。",
     "empty": "音声を認識できませんでした。",
     "failed": "録音を文字起こしできませんでした。"
+  },
+  "screen": {
+    "confirm": "確認",
+    "cancel": "キャンセル",
+    "failed": "この画面を作成できませんでした。",
+    "action_failed": "操作を完了できませんでした。",
+    "stale": "このボタンは無効になりました。",
+    "done": "完了",
+    "already": "実行済み",
+    "digest": "ダイジェスト",
+    "from_screen": "画面から: {{text}}",
+    "evidence": "根拠",
+    "goal": "目標",
+    "now": "現在",
+    "next": "次",
+    "state": {
+      "running": "実行中",
+      "waiting": "待機中",
+      "asking": "対応待ち",
+      "budget": "予算",
+      "paused": "一時停止",
+      "broken": "障害",
+      "milestone": "マイルストーン"
+    }
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
@@ -78,6 +78,8 @@ interface ChatMessageListProps {
   onLoadOlderMessages?: () => void;
   /** Transform assistant task text for embedded chat protocols before render/copy. */
   transformContent?: (content: string) => string;
+  /** Extra content under an assistant turn, e.g. Fabrika screens (fork). */
+  renderTaskExtras?: (taskId: string) => ReactNode;
   /** Send the full hidden prompt behind an assistant follow-up chip. */
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled?: boolean;
@@ -187,6 +189,7 @@ export function ChatMessageList({
   isFetchingOlderMessages = false,
   onLoadOlderMessages,
   transformContent,
+  renderTaskExtras,
   onQuickAction,
   quickActionsDisabled = false,
   onRegenerateQuickActions,
@@ -385,6 +388,7 @@ export function ChatMessageList({
               item={item}
               isPending={!!pendingTaskId && item.taskId === pendingTaskId}
               transformContent={transformContent}
+              renderTaskExtras={renderTaskExtras}
               onQuickAction={onQuickAction}
               quickActionsDisabled={quickActionsDisabled}
               onRegenerateQuickActions={onRegenerateQuickActions}
@@ -450,6 +454,7 @@ const MessageBubble = memo(function MessageBubble({
   item,
   isPending,
   transformContent,
+  renderTaskExtras,
   onQuickAction,
   quickActionsDisabled,
   onRegenerateQuickActions,
@@ -460,6 +465,7 @@ const MessageBubble = memo(function MessageBubble({
   item: ChatRenderItem;
   isPending: boolean;
   transformContent?: (content: string) => string;
+  renderTaskExtras?: (taskId: string) => ReactNode;
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled: boolean;
   onRegenerateQuickActions?: (message: ChatMessage) => void | Promise<unknown>;
@@ -476,6 +482,7 @@ const MessageBubble = memo(function MessageBubble({
         taskId={item.taskId}
         isPending={isPending}
         transformContent={transformContent}
+        renderTaskExtras={renderTaskExtras}
         onQuickAction={onQuickAction}
         quickActionsDisabled={quickActionsDisabled}
       />
@@ -515,6 +522,7 @@ const MessageBubble = memo(function MessageBubble({
       message={message}
       isPending={isPending}
       transformContent={transformContent}
+      renderTaskExtras={renderTaskExtras}
       onQuickAction={onQuickAction}
       quickActionsDisabled={quickActionsDisabled}
       onRegenerateQuickActions={onRegenerateQuickActions}
@@ -547,6 +555,7 @@ function AssistantMessage({
   message,
   isPending,
   transformContent,
+  renderTaskExtras,
   onQuickAction,
   quickActionsDisabled,
   onRegenerateQuickActions,
@@ -558,6 +567,7 @@ function AssistantMessage({
   message?: ChatMessage;
   isPending: boolean;
   transformContent?: (content: string) => string;
+  renderTaskExtras?: (taskId: string) => ReactNode;
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled: boolean;
   onRegenerateQuickActions?: (message: ChatMessage) => void | Promise<unknown>;
@@ -638,6 +648,7 @@ function AssistantMessage({
           className="leading-relaxed"
         />
       ) : null}
+      {renderTaskExtras && taskId ? renderTaskExtras(taskId) : null}
       {message && (
         <>
           <AttachmentList

@@ -10,8 +10,14 @@ import {
   EMPTY_MULTIKA,
   TranscriptionSchema,
   EMPTY_TRANSCRIPTION,
+  ListScreenBlocksResponseSchema,
+  EMPTY_LIST_SCREEN_BLOCKS,
+  ScreenPressResultSchema,
+  FAILED_SCREEN_PRESS,
   type ListStreamsResponse,
   type Multika,
+  type ListScreenBlocksResponse,
+  type ScreenPressResult,
 } from "../streams/schemas";
 import type { ArchivedInboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
@@ -4197,6 +4203,30 @@ export class ApiClient {
     await this.fetch(`/api/streams/multika/focus`, {
       method: "PUT",
       body: JSON.stringify({ slug }),
+    });
+  }
+
+  async listScreenBlocks(sessionId: string): Promise<ListScreenBlocksResponse> {
+    const raw = await this.fetch<unknown>(`/api/streams/ui/blocks?session=${encodeURIComponent(sessionId)}`);
+    return parseWithFallback(raw, ListScreenBlocksResponseSchema, EMPTY_LIST_SCREEN_BLOCKS, {
+      endpoint: "GET /api/streams/ui/blocks",
+    });
+  }
+
+  async pressScreenAction(actionId: string, confirm: boolean): Promise<ScreenPressResult> {
+    const raw = await this.fetch<unknown>(`/api/streams/ui/actions/${actionId}`, {
+      method: "POST",
+      body: JSON.stringify({ confirm }),
+    });
+    return parseWithFallback(raw, ScreenPressResultSchema, FAILED_SCREEN_PRESS, {
+      endpoint: "POST /api/streams/ui/actions/:id",
+    });
+  }
+
+  async cancelScreenAction(actionId: string): Promise<ScreenPressResult> {
+    const raw = await this.fetch<unknown>(`/api/streams/ui/actions/${actionId}/cancel`, { method: "POST" });
+    return parseWithFallback(raw, ScreenPressResultSchema, FAILED_SCREEN_PRESS, {
+      endpoint: "POST /api/streams/ui/actions/:id/cancel",
     });
   }
 

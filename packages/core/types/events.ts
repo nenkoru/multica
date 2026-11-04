@@ -58,6 +58,8 @@ export type WSEventType =
   | "issue_reaction:removed"
   | "chat:message"
   | "chat:done"
+  | "chat:ui_line"
+  | "chat:ui_final"
   | "chat:quick_actions"
   | "chat:cancel_finalized"
   | "chat:session_created"
@@ -623,6 +625,9 @@ export interface WSEventPayloadMap {
   "activity:created": ActivityCreatedPayload;
   "chat:message": ChatMessageEventPayload;
   "chat:done": ChatDonePayload;
+  // Fabrika screens: shapes live in streams/schemas (parsed on receipt).
+  "chat:ui_line": unknown;
+  "chat:ui_final": unknown;
   "chat:quick_actions": ChatQuickActionsPayload;
   "chat:cancel_finalized": ChatCancelFinalizedPayload;
   "chat:session_created": ChatSessionCreatedPayload;

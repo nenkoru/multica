@@ -16,5 +16,29 @@
     "no_microphone": "無法存取麥克風。",
     "empty": "未辨識到內容。",
     "failed": "無法轉寫錄音。"
+  },
+  "screen": {
+    "confirm": "確認",
+    "cancel": "取消",
+    "failed": "無法產生此畫面。",
+    "action_failed": "操作未能完成。",
+    "stale": "此按鈕已失效。",
+    "done": "已完成",
+    "already": "已執行",
+    "digest": "摘要",
+    "from_screen": "來自畫面：{{text}}",
+    "evidence": "依據",
+    "goal": "目標",
+    "now": "目前",
+    "next": "下一步",
+    "state": {
+      "running": "進行中",
+      "waiting": "等待中",
+      "asking": "等你處理",
+      "budget": "預算",
+      "paused": "已暫停",
+      "broken": "故障",
+      "milestone": "里程碑"
+    }
   }
 }
