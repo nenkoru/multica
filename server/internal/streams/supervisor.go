@@ -516,7 +516,7 @@ func (s *Supervisor) dispatch(ctx context.Context, st sdb.Stream, c Charter, ste
 		return err
 	}
 	if err := s.Q.MarkStepDispatched(ctx, sdb.MarkStepDispatchedParams{
-		ID: step.ID, Executor: ex.Name, ExecutorAgentID: agentID, CarrierIssueID: res.IssueID, TaskID: res.TaskID, LeaseUntil: ts(now.Add(LeaseDuration)),
+		ID: step.ID, Executor: ex.Name, ExecutorAgentID: agentID, CarrierIssueID: res.IssueID, TaskID: res.TaskID, LeaseUntil: ts(now.Add(LeaseFor(step.CostClass))),
 	}); err != nil {
 		return err
 	}
@@ -636,9 +636,10 @@ func (s *Supervisor) observe(ctx context.Context, st sdb.Stream, c Charter, step
 	if p, err := s.Q.TaskLastProgress(ctx, task.ID); err == nil && p.Time.After(base) {
 		base = p.Time
 	}
+	leaseFor := LeaseFor(step.CostClass)
 	lease := step.LeaseUntil.Time
-	if !base.IsZero() && base.Add(LeaseDuration).After(lease) {
-		lease = base.Add(LeaseDuration)
+	if !base.IsZero() && base.Add(leaseFor).After(lease) {
+		lease = base.Add(leaseFor)
 		if err := s.Q.ExtendStepLease(ctx, sdb.ExtendStepLeaseParams{ID: step.ID, LeaseUntil: ts(lease)}); err != nil {
 			return err
 		}
@@ -652,7 +653,7 @@ func (s *Supervisor) observe(ctx context.Context, st sdb.Stream, c Charter, step
 			}
 			step.HangCount++
 			s.journal(ctx, st.ID, step.ID, "hang", map[string]any{"seq": step.Seq, "hang_count": step.HangCount, "lease_until": lease})
-			return s.failStep(ctx, st, step, fmt.Sprintf("hang: no progress for %s (повисло %d раз)", LeaseDuration, step.HangCount), false, states, now)
+			return s.failStep(ctx, st, step, fmt.Sprintf("hang: no progress for %s (повисло %d раз)", leaseFor, step.HangCount), false, states, now)
 		}
 	case "queued", "dispatched", "deferred", "waiting_local_directory":
 		// Not taken within 10 min: the runtime is offline or the agent is busy
@@ -772,6 +773,9 @@ func (s *Supervisor) handleCompleted(ctx context.Context, st sdb.Stream, c Chart
 		out, err = s.contractFromComments(ctx, step, err)
 	}
 	if err == nil {
+		if step.Kind == KindVerify {
+			InferVerdict(&out, res.Output)
+		}
 		err = ValidateContract(step.Kind, out, now)
 	}
 	var ask *AskDraft

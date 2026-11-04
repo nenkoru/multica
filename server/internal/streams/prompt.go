@@ -79,7 +79,7 @@ func WorkPrompt(st sdb.Stream, c Charter, step sdb.StreamStep) string {
 		fmt.Fprintf(&b, "\n## Восстановление\n\n%s\n", step.RecoveryNote)
 	}
 	if step.Kind == KindVerify {
-		b.WriteString("\n## Ты — проверяющий\n\nТы видишь бриф, критерий и результат, но не рассуждения автора. Сначала детерминированные проверки (тесты, CI, бенчмарк, скриншот), потом мнение. Верни `\"verdict\": \"accept\"` или `\"verdict\": \"rework\"` и в `result` — что именно не так.\n")
+		b.WriteString("\n## Ты — проверяющий\n\nТы видишь бриф, критерий и результат, но не рассуждения автора. Сначала детерминированные проверки (тесты, CI, бенчмарк, скриншот), потом мнение. Верни `\"verdict\": \"accept\"` или `\"verdict\": \"rework\"` отдельным полем JSON-блока (не только словами в `result`), а в `result` — что именно не так.\n")
 	}
 	b.WriteString("\n" + contractInstructions)
 	return b.String()

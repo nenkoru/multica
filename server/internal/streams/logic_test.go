@@ -234,3 +234,91 @@ func TestParseQuotaReset(t *testing.T) {
 		t.Errorf("no reset: %v", got)
 	}
 }
+
+// RUSL-2625: the verdict is fenced in ```json but only spelled in result.
+func TestVerifyVerdictInFencedResult(t *testing.T) {
+	out := "```json\n{\n  \"result\": \"rework: шаг #13 не выполнен, цифр нет.\",\n  \"evidence\": [\"check:getent hosts gpu-host -> нет записи\"],\n  \"next\": [{\"brief\": \"Найти маршрут к /metrics\", \"kind\": \"work\", \"cost_class\": \"S\", \"moves\": \"ток/с\"}]\n}\n```"
+	c, err := ExtractContract(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	InferVerdict(&c, out)
+	if c.Verdict != "rework" {
+		t.Fatalf("verdict %q", c.Verdict)
+	}
+	if err := ValidateContract(KindVerify, c, t0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// RUSL-2626: the verdict is in the prose above the block.
+func TestVerifyVerdictInProse(t *testing.T) {
+	out := "Шаг #13 не выполнен. Вердикт — rework.\n\n```json\n{\"result\": \"Шаг #13 не выполнен: разбивки нет.\", \"done_check\": \"не выполнен\"}\n```"
+	c, err := ExtractContract(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	InferVerdict(&c, out)
+	if c.Verdict != "rework" {
+		t.Fatalf("verdict %q", c.Verdict)
+	}
+}
+
+func TestInferVerdictLeavesAmbiguityToValidation(t *testing.T) {
+	for _, tc := range []struct{ result, text, want string }{
+		{"не rework, а разбор", "", ""},
+		{"шаг сделан", "verdict: accept? нет, verdict: rework", ""},
+		{"шаг сделан", "", ""},
+		{"Accept: тесты зелёные", "", "accept"},
+		{"«rework» — цифр нет", "", "rework"},
+	} {
+		c := StepOutput{Result: tc.result}
+		InferVerdict(&c, tc.text)
+		if c.Verdict != tc.want {
+			t.Errorf("%q / %q: got %q, want %q", tc.result, tc.text, c.Verdict, tc.want)
+		}
+	}
+	c := StepOutput{Result: "ok", Verdict: " Accept "}
+	InferVerdict(&c, "")
+	if c.Verdict != "accept" {
+		t.Fatalf("normalised %q", c.Verdict)
+	}
+	c = StepOutput{Result: "rework: x", Verdict: "maybe"}
+	InferVerdict(&c, "")
+	if c.Verdict != "maybe" || ValidateContract(KindVerify, c, t0) == nil {
+		t.Fatal("an explicit unknown verdict must stay and fail validation")
+	}
+}
+
+// RUSL-2621: the 27B worker writes {"done", "links", "next": ["..."]}.
+func TestExtractContract27BReportShape(t *testing.T) {
+	out := "## Разбор\n\n```json\n{\n  \"done\": \"Разбор завершён: 21.7 tok/s = предел карт.\",\n  \"links\": [\"gpu-host:journal.jsonl\"],\n  \"next\": [\"Замер 16 сессий в окне GPU\", \"Профиль decode step\"],\n  \"rollback\": \"только чтение\"\n}\n```"
+	c, err := ExtractContract(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(c.Result, "Разбор завершён") || len(c.Evidence) != 1 || len(c.Next) != 2 || c.Next[0].Brief != "Замер 16 сессий в окне GPU" {
+		t.Fatalf("got %+v", c)
+	}
+	if err := ValidateContract(KindWork, c, t0); err != nil {
+		t.Fatal(err)
+	}
+	// result wins over done; evidence and links are merged.
+	c, err = ExtractContract("```json\n{\"result\": \"r\", \"done\": \"d\", \"evidence\": [\"a\"], \"links\": [\"b\"]}\n```")
+	if err != nil || c.Result != "r" || len(c.Evidence) != 2 {
+		t.Fatalf("got %+v %v", c, err)
+	}
+}
+
+func TestExtractContractUppercaseFence(t *testing.T) {
+	c, err := ExtractContract("итог\n```JSON\n{\"result\": \"ok\"}\n```")
+	if err != nil || c.Result != "ok" {
+		t.Fatalf("got %+v %v", c, err)
+	}
+}
+
+func TestLeaseForClassS(t *testing.T) {
+	if LeaseFor("S") != 25*time.Minute || LeaseFor("M") != LeaseDuration || LeaseFor("") != LeaseDuration {
+		t.Fatalf("S %s M %s", LeaseFor("S"), LeaseFor("M"))
+	}
+}

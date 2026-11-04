@@ -66,7 +66,7 @@ type MilestoneSpec struct {
 // ErrNoContract is returned when the output carries no contract block.
 var ErrNoContract = errors.New("step did not return the output contract")
 
-var fencedJSON = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*?\\})\\s*```")
+var fencedJSON = regexp.MustCompile("(?s)```(?i:json)?\\s*(\\{.*?\\})\\s*```")
 
 // ExtractContract finds the last JSON object in the agent's final output
 // that decodes into a StepOutput with a non-empty result. Fenced blocks are
@@ -94,15 +94,82 @@ func ExtractContract(output string) (StepOutput, error) {
 }
 
 func decodeContract(s string) (StepOutput, bool) {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(strings.NewReader(s)).Decode(&raw); err != nil {
+		return StepOutput{}, false
+	}
+	norm, _ := json.Marshal(normalizeContract(raw))
 	var out StepOutput
-	dec := json.NewDecoder(strings.NewReader(s))
-	if err := dec.Decode(&out); err != nil {
+	if err := json.Unmarshal(norm, &out); err != nil {
 		return StepOutput{}, false
 	}
 	if strings.TrimSpace(out.Result) == "" && !out.NoIdeas {
 		return StepOutput{}, false
 	}
 	return out, true
+}
+
+// normalizeContract accepts the report shape the 27B worker writes out of
+// habit ({"done", "links", "next": ["..."]}, RUSL-2621) as the contract:
+// done → result, links → evidence, plain-string next → briefs. A good
+// result must not be thrown away over field names.
+func normalizeContract(raw map[string]json.RawMessage) map[string]json.RawMessage {
+	var str string
+	if _, ok := raw["result"]; !ok {
+		if v, ok := raw["done"]; ok && json.Unmarshal(v, &str) == nil {
+			raw["result"] = v
+		}
+	}
+	var links []string
+	if v, ok := raw["links"]; ok && json.Unmarshal(v, &links) == nil && len(links) > 0 {
+		var ev []string
+		if e, ok := raw["evidence"]; ok {
+			_ = json.Unmarshal(e, &ev)
+		}
+		raw["evidence"], _ = json.Marshal(append(ev, links...))
+	}
+	var items []json.RawMessage
+	if v, ok := raw["next"]; ok && json.Unmarshal(v, &items) == nil {
+		for i, it := range items {
+			if json.Unmarshal(it, &str) == nil {
+				items[i], _ = json.Marshal(NextStep{Brief: str})
+			}
+		}
+		raw["next"], _ = json.Marshal(items)
+	}
+	return raw
+}
+
+var verdictWord = regexp.MustCompile(`(?i)(?:verdict|вердикт)["'*\s:=—–-]{0,8}(accept|rework)\b`)
+var verdictPrefix = regexp.MustCompile(`(?i)^[\s*"'«(\[]{0,3}(accept|rework)\b`)
+
+// InferVerdict fills a missing verdict of a verify turn from the result
+// prefix ("rework: …") or a "verdict: rework" line in the text around the
+// block (RUSL-2625, RUSL-2626). It only sets the verdict when the text
+// names exactly one; otherwise validation rejects the turn as before.
+func InferVerdict(out *StepOutput, text string) {
+	if v := strings.ToLower(strings.TrimSpace(out.Verdict)); v == "accept" || v == "rework" {
+		out.Verdict = v
+		return
+	}
+	if out.Verdict != "" {
+		return
+	}
+	if m := verdictPrefix.FindStringSubmatch(strings.TrimSpace(out.Result)); m != nil {
+		out.Verdict = strings.ToLower(m[1])
+		return
+	}
+	found := map[string]bool{}
+	for _, t := range []string{out.Result, out.DoneCheck, text} {
+		for _, m := range verdictWord.FindAllStringSubmatch(t, -1) {
+			found[strings.ToLower(m[1])] = true
+		}
+	}
+	if len(found) == 1 {
+		for v := range found {
+			out.Verdict = v
+		}
+	}
 }
 
 var validWaitKinds = map[string]bool{"ci": true, "git-tag": true, "http": true, "process": true, "time": true, "gpu-window": true, "issue": true}

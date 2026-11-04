@@ -53,7 +53,20 @@ const (
 	NoIdeasReview = 24 * time.Hour
 	// Rerouting to another runtime after this long without one (§6.3).
 	OfflineReroute = 10 * time.Minute
+	// Class S runs on the local 27B, which can stay silent for more than
+	// 10 min while it prefills behind other sessions or writes a long
+	// answer in one call (RUSL-2620, RUSL-2636).
+	LeaseDurationS = 25 * time.Minute
 )
+
+// LeaseFor is how long a step may go without progress before it counts
+// as hung.
+func LeaseFor(costClass string) time.Duration {
+	if costClass == "S" {
+		return LeaseDurationS
+	}
+	return LeaseDuration
+}
 
 // Charter is the stream's constitution (§4.2, §11). Stored as JSONB.
 type Charter struct {
