@@ -227,6 +227,9 @@ type Handler struct {
 	PluginService          *service.PluginService
 	IssueService           *service.IssueService
 	AutopilotService       *service.AutopilotService
+	// ChatClaimContext (Fabrika fork) returns a context block to put in front
+	// of a claimed chat turn's text; "" leaves the turn unchanged.
+	ChatClaimContext func(ctx context.Context, taskID, chatSessionID, agentID pgtype.UUID, text string) string
 	// Entitlements supplies workspace-scoped commercial gates. A nil provider
 	// preserves self-hosted behavior without extra reads.
 	Entitlements entitlement.Provider

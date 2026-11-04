@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/internal/auth"
@@ -684,6 +685,15 @@ func main() {
 	// router has built them.
 	streamsCarrier := &streams.MulticaCarrier{Queries: queries}
 	streamsSup := streams.NewSupervisor(pool, streamsCarrier)
+	// Мультика's one lifelong chat (week 2). Unset keeps the chat hooks off.
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_MULTIKA_AGENT_ID")); v != "" {
+		if err := streamsSup.MultikaAgentID.Scan(v); err != nil {
+			slog.Error("invalid FABRIKA_MULTIKA_AGENT_ID; multika chat hooks off", "error", err)
+			streamsSup.MultikaAgentID = pgtype.UUID{}
+		} else {
+			slog.Info("fabrika: multika chat hooks on", "agent_id", v)
+		}
+	}
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
 		Streams:             streamsSup,
 		HTTPMetrics:         httpMetrics,
@@ -700,6 +710,9 @@ func main() {
 		LLMMaxRetries:       llmMaxRetries,
 		LLMDisableThinking:  llmDisableThinking,
 	})
+	if streamsSup.MultikaEnabled() {
+		h.ChatClaimContext = streamsSup.OnMultikaClaim
+	}
 	// member_delegation_day exists only for self-host telemetry; DO_NOT_TRACK
 	// stops writing it as well as sending the snapshot.
 	h.TaskService.RecordMemberActivity = telemetryConfig.Enabled

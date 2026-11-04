@@ -3836,6 +3836,11 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		if strings.TrimSpace(resp.ThreadName) == "" && resp.ChatMessage != "" {
 			resp.ThreadName = resp.ChatMessage
 		}
+		if h.ChatClaimContext != nil && !resp.ChatIntro {
+			if block := h.ChatClaimContext(r.Context(), task.ID, cs.ID, task.AgentID, resp.ChatMessage); block != "" {
+				resp.ChatMessage = block + "\n\n" + resp.ChatMessage
+			}
+		}
 	}
 
 	// Autopilot run_only task: resolve workspace from autopilot_run →

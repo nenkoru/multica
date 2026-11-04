@@ -18,11 +18,11 @@ pg_isready -h localhost -U multica -d multica
 cd server
 if [ "${FABRIKA_FIX:-}" = 1 ]; then
   # Dev mode: regenerate sqlc and gofmt in place; fetch the tree with --artifact.
-  echo "== sqlc + gofmt -w"; go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate -f sqlc.streams.yaml && gofmt -w internal/streams cmd/server
+  echo "== sqlc + gofmt -w"; go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate -f sqlc.streams.yaml && gofmt -w internal/streams cmd/server internal/integrations/telegram internal/integrations/channel/engine internal/handler/daemon.go internal/handler/handler.go
 fi
-echo "== gofmt"; test -z "$(gofmt -l internal/streams cmd/server)" || { gofmt -l internal/streams cmd/server; exit 1; }
+echo "== gofmt"; test -z "$(gofmt -l internal/streams cmd/server internal/integrations/telegram internal/integrations/channel/engine internal/handler/daemon.go internal/handler/handler.go)" || { gofmt -l internal/streams cmd/server internal/integrations/telegram internal/integrations/channel/engine internal/handler/daemon.go internal/handler/handler.go; exit 1; }
 echo "== migrate up"; go run ./cmd/migrate up 2>&1 | tail -3
-echo "== migrate down/up 9001+9000"; for f in 9001_fabrika_wait_kind_issue.down 9000_fabrika_streams.down 9000_fabrika_streams.up 9001_fabrika_wait_kind_issue.up; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migrations/$f.sql || exit 1; done && echo ok
-echo "== vet"; go vet ./internal/streams/... ./cmd/server/
+echo "== migrate down/up 9002..9000"; for f in 9002_fabrika_multika.down 9001_fabrika_wait_kind_issue.down 9000_fabrika_streams.down 9000_fabrika_streams.up 9001_fabrika_wait_kind_issue.up 9002_fabrika_multika.up; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migrations/$f.sql || exit 1; done && echo ok
+echo "== vet"; go vet ./internal/streams/... ./cmd/server/ ./internal/integrations/telegram/ ./internal/integrations/channel/engine/ ./internal/handler/
 echo "== build"; go build -o /tmp/server ./cmd/server && echo ok
 echo "== test"; set +e; go test ./internal/streams/... ./internal/migrations/... "$@" > /tmp/test.log 2>&1; rc=$?; grep -E "^(--- |ok |FAIL)" /tmp/test.log | tail -60; echo "== failures"; grep -n "_test.go:[0-9]*:" /tmp/test.log | head -40; exit $rc

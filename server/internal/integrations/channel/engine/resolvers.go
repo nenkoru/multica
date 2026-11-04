@@ -35,6 +35,9 @@ const (
 	// refuses the same person at the same point; this is that verdict on the
 	// channel side.
 	OutcomeInvokeDenied Outcome = "invoke_denied"
+	// OutcomeNewChatDisabled — a bare /new on an installation whose agent keeps
+	// one lifelong chat (Fabrika fork, RouterConfig.DenyNewChat).
+	OutcomeNewChatDisabled Outcome = "new_chat_disabled"
 )
 
 // DropReason enumerates the drop-audit categories. Values match the legacy

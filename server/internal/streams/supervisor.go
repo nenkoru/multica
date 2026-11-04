@@ -29,6 +29,9 @@ type Supervisor struct {
 	Now     func() time.Time
 	// AskDailyCap overrides DefaultAskDailyCap (mandate: 1).
 	AskDailyCap int
+	// MultikaAgentID is the agent Руслан talks to (FABRIKA_MULTIKA_AGENT_ID).
+	// Unset keeps the chat hooks off (multika.go).
+	MultikaAgentID pgtype.UUID
 
 	kick chan struct{}
 }

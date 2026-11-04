@@ -4,6 +4,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/multica-ai/multica/server/internal/integrations/channel/engine"
+	"github.com/multica-ai/multica/server/internal/integrations/telegram"
 
 	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/middleware"
@@ -34,10 +38,12 @@ func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor) {
 	r.Post("/api/streams/digest", h.Digest)
 	r.Post("/api/streams/answer", h.Answer)
 	r.Post("/api/streams/waits/{id}/fire", h.FireWait)
+	r.Get("/api/streams/multika", h.Multika)
 	r.Get("/api/streams/{slug}", h.Get)
 	r.Post("/api/streams/{slug}/manage", h.Manage)
 	r.Group(func(r chi.Router) {
 		r.Use(handler.RequireHumanActor)
+		r.Put("/api/streams/multika/focus", h.MultikaFocus)
 		r.Put("/api/streams/{slug}", h.Upsert)
 		r.Post("/api/streams/{slug}/pause", h.Pause)
 		r.Post("/api/streams/{slug}/resume", h.Resume)
@@ -50,4 +56,30 @@ func streamsHTTP(sup *streams.Supervisor) *streams.HTTP {
 	return &streams.HTTP{Sup: sup, WorkspaceID: func(r *http.Request) string {
 		return middleware.WorkspaceIDFromContext(r.Context())
 	}}
+}
+
+// multikaDenyNewChat keeps Мультика's channel chat lifelong (§10.5: /new is
+// off). Nil when the feature flag is off.
+func multikaDenyNewChat(sup *streams.Supervisor) func(engine.ResolvedInstallation) bool {
+	if sup == nil || !sup.MultikaEnabled() {
+		return nil
+	}
+	return func(inst engine.ResolvedInstallation) bool { return sup.IsMultika(inst.AgentID) }
+}
+
+// multikaTelegramNotices gives Мультика honest Russian notices (§3.6).
+func multikaTelegramNotices(sup *streams.Supervisor) telegram.NoticesFunc {
+	if sup == nil || !sup.MultikaEnabled() {
+		return nil
+	}
+	return func(agentID pgtype.UUID) (telegram.Notices, bool) {
+		if !sup.IsMultika(agentID) {
+			return telegram.Notices{}, false
+		}
+		return telegram.Notices{
+			TaskFailed:      streams.MultikaUnavailableText,
+			AgentOffline:    streams.MultikaOfflineText,
+			NewChatDisabled: streams.MultikaNewChatDisabledText,
+		}, true
+	}
 }

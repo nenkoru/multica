@@ -1270,6 +1270,14 @@ type Milestone struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type MultikaTurn struct {
+	TaskID        pgtype.UUID        `json:"task_id"`
+	ChatSessionID pgtype.UUID        `json:"chat_session_id"`
+	FocusStreamID pgtype.UUID        `json:"focus_stream_id"`
+	Actions       []byte             `json:"actions"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
 type NotificationPreference struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`

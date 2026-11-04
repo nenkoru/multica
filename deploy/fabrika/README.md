@@ -22,6 +22,8 @@ All under `/api/streams`, workspace member auth and `X-Workspace-ID`.
 | POST | `/digest` | `{"slot":"morning\|evening\|preview"}` → `{"text": …}`; morning and evening promote asks within the daily cap |
 | POST | `/answer` | `{"line":"1 а, 2 да", "channel":"telegram"}` |
 | POST | `/waits/{id}/fire` | resolve a wait early (CI finished, process exited) |
+| GET | `/multika` | the one chat with Мультика: `chat_session_id`, current focus |
+| PUT | `/multika/focus` | `{"slug":"buvg01"}` sets the focus, `{"slug":""}` clears it (human only) |
 
 A charter needs `title`, `charter.goal`, `charter.metric`, `charter.done`.
 `charter.chains` maps a cost class (`S`, `M`, `L`, `manage`, `verify`, `*`) to an
@@ -41,6 +43,27 @@ one provider account share a name.
 
 `FABRIKA_NOTIFY` is any command that reads the message on stdin and takes the
 event (`digest`, `urgent`, `info`) as its first argument.
+
+## Мультика: one chat (week 2)
+
+Set `FABRIKA_MULTIKA_AGENT_ID` on the server to the agent whose Telegram bot and
+web chat Руслан uses. Unset keeps everything below off.
+
+- **One chat.** Telegram `/new` is off for that agent: a bare `/new` gets a notice,
+  `/new <text>` lands in the current chat. `GET /api/streams/multika` returns the
+  chat the Telegram binding points to (else the agent's latest web chat).
+- **Focus.** Each claimed chat turn of Мультика passes through `OnMultikaClaim`
+  (migration 9002, table `multika_turn` makes it idempotent):
+  - «давай про Терн», «переключись на buvg01» → focus on that stream for 30 min;
+    «всё», «назад» or 30 min of silence → focus off, the manager folds the
+    decisions into the summary;
+  - while focused, remarks go to the stream's manager in the reserved slot; remarks
+    sent before that turn starts join its brief;
+  - a line like «1 а, 2 да» with shown questions is applied as answers;
+  - Мультика gets a short context block (streams, focus, charter, summary, what code
+    did) in front of the message; it is not stored in the chat.
+- **Never silence.** A failed run or an offline runtime posts «Мультика недоступна,
+  потоки идут» in Telegram instead of the generic English notice.
 
 ## Operations
 

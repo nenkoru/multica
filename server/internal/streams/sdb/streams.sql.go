@@ -43,6 +43,35 @@ func (q *Queries) AppendJournal(ctx context.Context, arg AppendJournalParams) er
 	return err
 }
 
+const appendQueuedStepBrief = `-- name: AppendQueuedStepBrief :execrows
+UPDATE stream_step SET brief = brief || E'\n' || $1::text
+WHERE id = $2 AND status = 'queued' AND task_id IS NULL
+`
+
+type AppendQueuedStepBriefParams struct {
+	Line string      `json:"line"`
+	ID   pgtype.UUID `json:"id"`
+}
+
+// Coalesces chat remarks into a manager turn that has not started yet.
+func (q *Queries) AppendQueuedStepBrief(ctx context.Context, arg AppendQueuedStepBriefParams) (int64, error) {
+	result, err := q.db.Exec(ctx, appendQueuedStepBrief, arg.Line, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const clearChatFocus = `-- name: ClearChatFocus :exec
+UPDATE chat_focus SET focus_stream_id = NULL, focus_until = NULL, updated_at = now()
+WHERE chat_session_id = $1
+`
+
+func (q *Queries) ClearChatFocus(ctx context.Context, chatSessionID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearChatFocus, chatSessionID)
+	return err
+}
+
 const clearExecutorStatus = `-- name: ClearExecutorStatus :exec
 UPDATE executor_status SET exhausted_until = NULL, probe_level = 0, reason = '', updated_at = now()
 WHERE executor = $1 AND (exhausted_until IS NOT NULL OR probe_level <> 0)
@@ -171,6 +200,57 @@ func (q *Queries) GetAsk(ctx context.Context, id pgtype.UUID) (Ask, error) {
 		&i.RemindedAt,
 		&i.CreatedAt,
 		&i.ResolvedAt,
+	)
+	return i, err
+}
+
+const getChatFocus = `-- name: GetChatFocus :one
+
+SELECT chat_session_id, focus_stream_id, focus_until, updated_at FROM chat_focus WHERE chat_session_id = $1
+`
+
+// Мультика: one lifelong chat (§9.2, week 2).
+func (q *Queries) GetChatFocus(ctx context.Context, chatSessionID pgtype.UUID) (ChatFocu, error) {
+	row := q.db.QueryRow(ctx, getChatFocus, chatSessionID)
+	var i ChatFocu
+	err := row.Scan(
+		&i.ChatSessionID,
+		&i.FocusStreamID,
+		&i.FocusUntil,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getChatSessionOwner = `-- name: GetChatSessionOwner :one
+SELECT agent_id, workspace_id FROM chat_session WHERE id = $1
+`
+
+type GetChatSessionOwnerRow struct {
+	AgentID     pgtype.UUID `json:"agent_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) GetChatSessionOwner(ctx context.Context, id pgtype.UUID) (GetChatSessionOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getChatSessionOwner, id)
+	var i GetChatSessionOwnerRow
+	err := row.Scan(&i.AgentID, &i.WorkspaceID)
+	return i, err
+}
+
+const getMultikaTurn = `-- name: GetMultikaTurn :one
+SELECT task_id, chat_session_id, focus_stream_id, actions, created_at FROM multika_turn WHERE task_id = $1
+`
+
+func (q *Queries) GetMultikaTurn(ctx context.Context, taskID pgtype.UUID) (MultikaTurn, error) {
+	row := q.db.QueryRow(ctx, getMultikaTurn, taskID)
+	var i MultikaTurn
+	err := row.Scan(
+		&i.TaskID,
+		&i.ChatSessionID,
+		&i.FocusStreamID,
+		&i.Actions,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -457,6 +537,38 @@ func (q *Queries) InsertMilestone(ctx context.Context, arg InsertMilestoneParams
 	return i, err
 }
 
+const insertMultikaTurn = `-- name: InsertMultikaTurn :one
+INSERT INTO multika_turn (task_id, chat_session_id, focus_stream_id, actions)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (task_id) DO NOTHING
+RETURNING task_id, chat_session_id, focus_stream_id, actions, created_at
+`
+
+type InsertMultikaTurnParams struct {
+	TaskID        pgtype.UUID `json:"task_id"`
+	ChatSessionID pgtype.UUID `json:"chat_session_id"`
+	FocusStreamID pgtype.UUID `json:"focus_stream_id"`
+	Actions       []byte      `json:"actions"`
+}
+
+func (q *Queries) InsertMultikaTurn(ctx context.Context, arg InsertMultikaTurnParams) (MultikaTurn, error) {
+	row := q.db.QueryRow(ctx, insertMultikaTurn,
+		arg.TaskID,
+		arg.ChatSessionID,
+		arg.FocusStreamID,
+		arg.Actions,
+	)
+	var i MultikaTurn
+	err := row.Scan(
+		&i.TaskID,
+		&i.ChatSessionID,
+		&i.FocusStreamID,
+		&i.Actions,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertStep = `-- name: InsertStep :one
 INSERT INTO stream_step (stream_id, seq, kind, brief, moves, cost_class, origin, reserved_slot, max_attempts)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -631,6 +743,24 @@ func (q *Queries) LastStepOfKind(ctx context.Context, arg LastStepOfKindParams) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const latestAgentChatSession = `-- name: LatestAgentChatSession :one
+SELECT id FROM chat_session
+WHERE agent_id = $1 AND workspace_id = $2 AND status = 'active'
+ORDER BY updated_at DESC LIMIT 1
+`
+
+type LatestAgentChatSessionParams struct {
+	AgentID     pgtype.UUID `json:"agent_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) LatestAgentChatSession(ctx context.Context, arg LatestAgentChatSessionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, latestAgentChatSession, arg.AgentID, arg.WorkspaceID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const latestTaskForIssue = `-- name: LatestTaskForIssue :one
@@ -1408,6 +1538,27 @@ func (q *Queries) MarkStepDispatched(ctx context.Context, arg MarkStepDispatched
 	return err
 }
 
+const multikaChannelSession = `-- name: MultikaChannelSession :one
+SELECT b.chat_session_id FROM channel_chat_session_binding b
+JOIN channel_installation i ON i.id = b.installation_id
+WHERE i.agent_id = $1 AND i.workspace_id = $2 AND i.status = 'active'
+  AND b.retired_at IS NULL AND b.chat_type = 'p2p'
+ORDER BY b.created_at DESC LIMIT 1
+`
+
+type MultikaChannelSessionParams struct {
+	AgentID     pgtype.UUID `json:"agent_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// The chat the Telegram integration currently routes Мультика's direct chat to.
+func (q *Queries) MultikaChannelSession(ctx context.Context, arg MultikaChannelSessionParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, multikaChannelSession, arg.AgentID, arg.WorkspaceID)
+	var chat_session_id pgtype.UUID
+	err := row.Scan(&chat_session_id)
+	return chat_session_id, err
+}
+
 const recordSupervisorTick = `-- name: RecordSupervisorTick :exec
 INSERT INTO stream_supervisor_state (id, last_tick_at, last_error, ticks)
 VALUES (true, now(), $1, 1)
@@ -1494,6 +1645,24 @@ func (q *Queries) RuntimeLastSeen(ctx context.Context, id pgtype.UUID) (pgtype.T
 	var last_seen_at pgtype.Timestamptz
 	err := row.Scan(&last_seen_at)
 	return last_seen_at, err
+}
+
+const setChatFocus = `-- name: SetChatFocus :exec
+INSERT INTO chat_focus (chat_session_id, focus_stream_id, focus_until, updated_at)
+VALUES ($1, $2, $3, now())
+ON CONFLICT (chat_session_id) DO UPDATE
+SET focus_stream_id = EXCLUDED.focus_stream_id, focus_until = EXCLUDED.focus_until, updated_at = now()
+`
+
+type SetChatFocusParams struct {
+	ChatSessionID pgtype.UUID        `json:"chat_session_id"`
+	FocusStreamID pgtype.UUID        `json:"focus_stream_id"`
+	FocusUntil    pgtype.Timestamptz `json:"focus_until"`
+}
+
+func (q *Queries) SetChatFocus(ctx context.Context, arg SetChatFocusParams) error {
+	_, err := q.db.Exec(ctx, setChatFocus, arg.ChatSessionID, arg.FocusStreamID, arg.FocusUntil)
+	return err
 }
 
 const setStepTask = `-- name: SetStepTask :exec

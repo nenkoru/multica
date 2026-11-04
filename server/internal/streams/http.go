@@ -352,3 +352,81 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
+
+type multikaView struct {
+	Enabled       bool       `json:"enabled"`
+	AgentID       string     `json:"agent_id,omitempty"`
+	ChatSessionID string     `json:"chat_session_id,omitempty"`
+	FocusSlug     string     `json:"focus_slug,omitempty"`
+	FocusTitle    string     `json:"focus_title,omitempty"`
+	FocusUntil    *time.Time `json:"focus_until,omitempty"`
+}
+
+func (h *HTTP) multikaView(r *http.Request, ws pgtype.UUID) (multikaView, error) {
+	if !h.Sup.MultikaEnabled() {
+		return multikaView{}, nil
+	}
+	v := multikaView{Enabled: true, AgentID: uuidString(h.Sup.MultikaAgentID)}
+	sid, err := h.Sup.MultikaSession(r.Context(), ws)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, nil
+	}
+	if err != nil {
+		return v, err
+	}
+	v.ChatSessionID = uuidString(sid)
+	if f := h.Sup.MultikaFocusOf(r.Context(), ws, sid); f.Stream != nil {
+		until := f.Until
+		v.FocusSlug, v.FocusTitle, v.FocusUntil = f.Stream.Slug, f.Stream.Title, &until
+	}
+	return v, nil
+}
+
+// Multika: GET /api/streams/multika — the one chat and its focus (§9.2).
+func (h *HTTP) Multika(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	v, err := h.multikaView(r, ws)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// MultikaFocus: PUT /api/streams/multika/focus {"slug": "buvg01"} — the web
+// header's "сейчас про: … ×". An empty slug clears the focus.
+func (h *HTTP) MultikaFocus(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.workspace(w, r)
+	if !ok {
+		return
+	}
+	if !h.Sup.MultikaEnabled() {
+		writeError(w, http.StatusNotFound, "multika is off")
+		return
+	}
+	var req struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "slug is required (empty clears)")
+		return
+	}
+	sid, err := h.Sup.MultikaSession(r.Context(), ws)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "no chat with Мультика yet")
+		return
+	}
+	if _, err := h.Sup.SetMultikaFocus(r.Context(), ws, sid, strings.TrimSpace(req.Slug)); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	v, err := h.multikaView(r, ws)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}

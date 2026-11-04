@@ -45,6 +45,9 @@ type Outbound struct {
 	// exercising takeover after an owner dies means really waiting one out.
 	leaseTTL time.Duration
 
+	// notices (Fabrika fork) overrides the run-failed notice per agent.
+	notices NoticesFunc
+
 	mu                 sync.Mutex
 	streams            map[string]*streamState // key = task_id
 	chats              map[chatScheduleKey]*chatSchedule
@@ -155,14 +158,14 @@ type terminalReply struct {
 	fallbackFreshSend bool
 	plainTextFallback bool
 	plainTextEdit     bool
-	kind            terminalKind
-	settleReason    string
-	turn            replyTurn
-	turnResolved    bool
-	lease           *deliveryLease
-	acquireAttempts int
-	editAttempts    int
-	cleanupOnce     sync.Once
+	kind              terminalKind
+	settleReason      string
+	turn              replyTurn
+	turnResolved      bool
+	lease             *deliveryLease
+	acquireAttempts   int
+	editAttempts      int
+	cleanupOnce       sync.Once
 }
 
 // terminalKind is what a queued item delivers. All three take the turn's lease
@@ -1130,7 +1133,7 @@ func (o *Outbound) deliverFailureNotice(ctx context.Context, reply *terminalRepl
 		return terminalRequestResult{done: true}
 	}
 	sent, sendErr := api.SendMessage(ctx, sendMessageParams{
-		ChatID: target.chatID, Text: taskFailedText, MessageThreadID: target.threadID,
+		ChatID: target.chatID, Text: o.failedText(reply.target.agentID), MessageThreadID: target.threadID,
 		ReplyParameters: optionalReplyParameters(target.replyTo),
 	})
 	if o.recordSend(ctx, lease, true, sent.MessageID, 0, sendErr) == deliveryUnknown {
@@ -1156,7 +1159,7 @@ func (o *Outbound) deliverFailureNotice(ctx context.Context, reply *terminalRepl
 // Telegram confirms is gone justifies posting a second message.
 func (o *Outbound) editNoticeOntoPlaceholder(ctx context.Context, api *botAPI, reply *terminalReply, schedule *chatSchedule, messageID int64) terminalRequestResult {
 	err := api.EditMessageText(ctx, editMessageTextParams{
-		ChatID: reply.target.chatID, MessageID: messageID, Text: taskFailedText,
+		ChatID: reply.target.chatID, MessageID: messageID, Text: o.failedText(reply.target.agentID),
 	})
 	if retry, ok := retryAfter(err); ok {
 		retryAt := o.now().Add(retry)
@@ -1497,6 +1500,8 @@ type replyTarget struct {
 	bindingID      pgtype.UUID
 	installationID pgtype.UUID
 	channelChatID  string
+	// agentID picks per-agent notices (Fabrika fork).
+	agentID pgtype.UUID
 }
 
 // resolveTarget maps an event's immutable task delivery snapshot to Telegram
@@ -1544,6 +1549,7 @@ func (o *Outbound) resolveTarget(ctx context.Context, e events.Event, _ bool) (*
 		taskID:         taskID,
 		bindingID:      delivery.BindingID,
 		installationID: inst.ID,
+		agentID:        inst.AgentID,
 		channelChatID:  delivery.ChannelChatID,
 	}, nil
 }
@@ -1651,4 +1657,11 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// SetNotices (Fabrika fork) installs per-agent notices; call before Register.
+func (o *Outbound) SetNotices(f NoticesFunc) { o.notices = f }
+
+func (o *Outbound) failedText(agentID pgtype.UUID) string {
+	return pickNotice(o.notices, agentID, func(n Notices) string { return n.TaskFailed }, taskFailedText)
 }

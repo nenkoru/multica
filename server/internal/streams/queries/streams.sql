@@ -266,3 +266,48 @@ SELECT GREATEST(
     COALESCE((SELECT max(x.finished_at) FROM stream_step x WHERE x.stream_id = sqlc.arg(stream_id)::uuid), 'epoch'::timestamptz),
     COALESCE((SELECT max(j.created_at) FROM stream_journal j WHERE j.stream_id = sqlc.arg(stream_id)::uuid AND j.event NOT IN ('orphan', 'reconcile_error', 'ask_shown')), 'epoch'::timestamptz)
 )::timestamptz AS at;
+
+-- Мультика: one lifelong chat (§9.2, week 2).
+
+-- name: GetChatFocus :one
+SELECT * FROM chat_focus WHERE chat_session_id = $1;
+
+-- name: SetChatFocus :exec
+INSERT INTO chat_focus (chat_session_id, focus_stream_id, focus_until, updated_at)
+VALUES ($1, $2, $3, now())
+ON CONFLICT (chat_session_id) DO UPDATE
+SET focus_stream_id = EXCLUDED.focus_stream_id, focus_until = EXCLUDED.focus_until, updated_at = now();
+
+-- name: ClearChatFocus :exec
+UPDATE chat_focus SET focus_stream_id = NULL, focus_until = NULL, updated_at = now()
+WHERE chat_session_id = $1;
+
+-- name: GetChatSessionOwner :one
+SELECT agent_id, workspace_id FROM chat_session WHERE id = $1;
+
+-- name: MultikaChannelSession :one
+-- The chat the Telegram integration currently routes Мультика's direct chat to.
+SELECT b.chat_session_id FROM channel_chat_session_binding b
+JOIN channel_installation i ON i.id = b.installation_id
+WHERE i.agent_id = $1 AND i.workspace_id = $2 AND i.status = 'active'
+  AND b.retired_at IS NULL AND b.chat_type = 'p2p'
+ORDER BY b.created_at DESC LIMIT 1;
+
+-- name: LatestAgentChatSession :one
+SELECT id FROM chat_session
+WHERE agent_id = $1 AND workspace_id = $2 AND status = 'active'
+ORDER BY updated_at DESC LIMIT 1;
+
+-- name: InsertMultikaTurn :one
+INSERT INTO multika_turn (task_id, chat_session_id, focus_stream_id, actions)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (task_id) DO NOTHING
+RETURNING *;
+
+-- name: GetMultikaTurn :one
+SELECT * FROM multika_turn WHERE task_id = $1;
+
+-- name: AppendQueuedStepBrief :execrows
+-- Coalesces chat remarks into a manager turn that has not started yet.
+UPDATE stream_step SET brief = brief || E'\n' || @line::text
+WHERE id = @id AND status = 'queued' AND task_id IS NULL;

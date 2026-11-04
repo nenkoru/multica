@@ -50,6 +50,7 @@ type OutboundReplier struct {
 	apiBase     string
 	client      *http.Client
 	logger      *slog.Logger
+	notices     NoticesFunc
 }
 
 // OutboundReplierConfig configures the replier. Binding + AppURL are required
@@ -65,6 +66,8 @@ type OutboundReplierConfig struct {
 	APIBase     string
 	HTTPClient  *http.Client
 	Logger      *slog.Logger
+	// Notices (Fabrika fork) overrides notices per agent; nil keeps upstream text.
+	Notices NoticesFunc
 }
 
 var _ engine.OutboundReplier = (*OutboundReplier)(nil)
@@ -90,6 +93,7 @@ func NewOutboundReplier(cfg OutboundReplierConfig) *OutboundReplier {
 		apiBase:     cfg.APIBase,
 		client:      cfg.HTTPClient,
 		logger:      logger,
+		notices:     cfg.Notices,
 	}
 }
 
@@ -103,7 +107,7 @@ func (r *OutboundReplier) Reply(ctx context.Context, inst engine.ResolvedInstall
 				"installation_id", util.UUIDToString(inst.ID), "error", err)
 		}
 	case engine.OutcomeAgentOffline:
-		if err := r.post(ctx, inst, msg, msgAgentOffline); err != nil {
+		if err := r.post(ctx, inst, msg, pickNotice(r.notices, inst.AgentID, func(n Notices) string { return n.AgentOffline }, msgAgentOffline)); err != nil {
 			r.logger.WarnContext(ctx, "telegram replier: offline notice failed",
 				"installation_id", util.UUIDToString(inst.ID), "error", err)
 		}
@@ -115,6 +119,11 @@ func (r *OutboundReplier) Reply(ctx context.Context, inst engine.ResolvedInstall
 	case engine.OutcomeFreshPending:
 		if err := r.post(ctx, inst, msg, msgFreshPending); err != nil {
 			r.logger.WarnContext(ctx, "telegram replier: fresh-start confirmation failed",
+				"installation_id", util.UUIDToString(inst.ID), "error", err)
+		}
+	case engine.OutcomeNewChatDisabled:
+		if err := r.post(ctx, inst, msg, pickNotice(r.notices, inst.AgentID, func(n Notices) string { return n.NewChatDisabled }, msgNewChatDisabled)); err != nil {
+			r.logger.WarnContext(ctx, "telegram replier: new-chat-disabled notice failed",
 				"installation_id", util.UUIDToString(inst.ID), "error", err)
 		}
 	case engine.OutcomeChatStarted:
