@@ -25,6 +25,21 @@ func TestValidateAskRedTopicNeedsRedZone(t *testing.T) {
 	if _, err := ValidateAsk(red, t0); err != nil {
 		t.Fatalf("red version rejected: %v", err)
 	}
+	// Each category on its own, without the others in the same text.
+	for text, want := range map[string]string{
+		"Ответить рекрутеру? Мандат: люди.":           "people outside the circle",
+		"Мандат: люди, зона":                          "people outside the circle",
+		"Потратить больше лимита на API в ноябре?":    "money over budget",
+		"Поднять потолок до 120 $?":                   "money over budget",
+		"Удалить старые снапшоты без копии?":          "irreversible without a backup",
+		"Стереть ветку безвозвратно?":                 "irreversible without a backup",
+		"Ответить покупателю? Мандат: зона Наташи.":   "Natasha's zone",
+		"Нужен ключ от почты — личный доступ Руслана": "personal access",
+	} {
+		if got := redTopic(text); got != want {
+			t.Errorf("%q: got %q, want %q", text, got, want)
+		}
+	}
 	for _, text := range []string{"Продлить домен за 1200 ₽?", "Какой заголовок у сводки?", "Шорт-лист из 15 позиций — ок?"} {
 		if why := redTopic(text); why != "" {
 			t.Fatalf("%q flagged as %s", text, why)

@@ -53,11 +53,12 @@ var redTopics = []struct {
 	re  *regexp.Regexp
 	why string
 }{
+	// No \b here: in RE2 it is ASCII-only and never matches before Cyrillic.
 	{regexp.MustCompile(`(?i)(личн\S* доступ|personal access)`), "personal access"},
-	{regexp.MustCompile(`(?i)(люди вне круга|мандат:[^.]*\bлюди|от (его|имени руслана|своего) имени|on his behalf)`), "people outside the circle"},
-	{regexp.MustCompile(`(?i)(сверх бюджет|мандат:[^.]*деньги|over budget)`), "money over budget"},
-	{regexp.MustCompile(`(?i)(необратим|без бэкапа|irreversible)`), "irreversible without a backup"},
-	{regexp.MustCompile(`(?i)(зон\S* наташ|natasha's zone)`), "Natasha's zone"},
+	{regexp.MustCompile(`(?i)(люди вне круга|мандат:[^.]*люд|от (его|имени руслана|своего) имени|on his behalf)`), "people outside the circle"},
+	{regexp.MustCompile(`(?i)((сверх|больше|выше|поднять) (бюджет|лимит|потол)|мандат:[^.]*деньг|over budget)`), "money over budget"},
+	{regexp.MustCompile(`(?i)(необратим|безвозвратн|без (бэкапа|копии|резервн)|мандат:[^.]*необрат|irreversible)`), "irreversible without a backup"},
+	{regexp.MustCompile(`(?i)(зон\S* наташ|мандат:[^.]*наташ|natasha's zone)`), "Natasha's zone"},
 }
 
 // redTopic names the mandate category a question text touches, or "".
