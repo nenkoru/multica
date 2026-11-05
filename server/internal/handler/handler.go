@@ -25,6 +25,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/dbreader"
 	"github.com/multica-ai/multica/server/internal/entitlement"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/integrations/channel"
 	"github.com/multica-ai/multica/server/internal/integrations/channel/engine"
 	composio "github.com/multica-ai/multica/server/internal/integrations/composio"
 	"github.com/multica-ai/multica/server/internal/integrations/dingtalk"
@@ -66,6 +67,7 @@ type dbExecutor interface {
 }
 
 type Config struct {
+	PlanningEnabled     bool
 	AllowSignup         bool
 	AllowedEmails       []string
 	AllowedEmailDomains []string
@@ -167,6 +169,10 @@ type Config struct {
 	// handed to daemons with the workspace repos so their git can reach a
 	// repository host the backend already trusts. Empty when none are set.
 	GitExtraCACerts []byte
+
+	// TV alarm thresholds and probes (RUSL-1786), from MULTICA_TV_CONFIG.
+	// The zero value means the defaults.
+	TV TVConfig
 }
 
 type cloudRuntimeProxy interface {
@@ -323,6 +329,12 @@ type Handler struct {
 	// cleanly when the DB is healthy without blocking process exit if the
 	// pool is frozen — at worst the next replica waits the full TTL.
 	ChannelSupervisor *engine.Supervisor
+	// ChannelRegistry maps a channel type to the Factory that builds its
+	// adapter. PostAgentChatMessage uses it for a one-shot outbound send: it
+	// builds an adapter for the session's bound installation without an
+	// inbound handler and calls Send. Nil when no channel engine was wired,
+	// which leaves a proactive agent message in the feed only.
+	ChannelRegistry *channel.Registry
 	// ChannelRouter is the channel-agnostic inbound pipeline (the shared
 	// handler the Supervisor injects into every Channel). main.go calls
 	// Drain on it during shutdown, after the Supervisor has stopped

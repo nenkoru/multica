@@ -1008,7 +1008,8 @@
       "agent_error": "智慧體執行出錯",
       "codex_semantic_inactivity": "Codex 長時間沒有語義進展",
       "manual": "使用者取消",
-      "user_cancelled": "使用者取消"
+      "user_cancelled": "使用者取消",
+      "daemon_shutdown": "守護程序已停止"
     }
   },
   "last_active": {

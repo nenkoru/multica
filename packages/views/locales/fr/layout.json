@@ -12,7 +12,9 @@
     "runtimes": "Runtimes",
     "skills": "Skills",
     "streams": "Flux",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "epics": "Épopées",
+    "sprints": "Sprints"
   },
   "tab": {
     "issue": "Tâche",

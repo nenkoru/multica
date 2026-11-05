@@ -175,6 +175,18 @@ drain:
 		c.hub.stopClient(c, nil, time.Time{})
 		return false
 	}
+	if c.kiosk {
+		// A kiosk connection receives only the content-free change signal.
+		projected := batch[:0]
+		for _, frame := range batch {
+			if frame = kioskProjection(frame); frame != nil {
+				projected = append(projected, frame)
+			}
+		}
+		if batch = projected; len(batch) == 0 {
+			return true
+		}
+	}
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	// One deadline bounds the whole batch instead of allowing each frame a

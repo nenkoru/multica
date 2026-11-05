@@ -31,6 +31,19 @@ describe("issue surface scope", () => {
     expect(issueScopeKey({ type: "team", teamId: "t1" })).toBe("team:t1");
   });
 
+  it("scopes a planning page to its epic or sprint and creates issues inside it", () => {
+    expect(buildIssueSurfaceQueryPlan({ type: "epic", epicId: "e1" })).toEqual({
+      scopeKey: "epic:e1",
+      queryFilter: { epic_id: "e1" },
+      createDefaults: { epic_id: "e1" },
+    });
+    expect(buildIssueSurfaceQueryPlan({ type: "sprint", sprintId: "s1" })).toEqual({
+      scopeKey: "sprint:s1",
+      queryFilter: { sprint_id: "s1" },
+      createDefaults: { sprint_id: "s1" },
+    });
+  });
+
   it("compiles each scope to its key, gantt filter, and create defaults", () => {
     expect(buildIssueSurfaceQueryPlan({ type: "workspace" })).toEqual({
       scopeKey: "workspace:all",

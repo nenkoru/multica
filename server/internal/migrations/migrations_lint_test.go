@@ -17,6 +17,25 @@ func TestMigrationNumericPrefixesAreUnique(t *testing.T) {
 	// From 129 onward, keep the numeric sequence unique so release tooling and
 	// operators can identify one schema change unambiguously by its number.
 	const firstUniqueMigrationNumber = 129
+	// The fork's own migrations 565-576 (planning, chat author, kiosk) were
+	// applied to the production database before upstream took the same numbers
+	// (RUSL-2508). The migrator tracks applied migrations by full name, so
+	// renaming them would re-run them; they are exempt from the uniqueness
+	// rule. New migrations must still use a unique number.
+	forkGrandfathered := map[string]bool{
+		"565_epics_and_sprints":                true,
+		"566_planning_idx_epic_workspace":      true,
+		"567_planning_idx_sprint_workspace":    true,
+		"568_planning_idx_sprint_status":       true,
+		"569_planning_idx_issue_epic":          true,
+		"570_planning_idx_issue_sprint":        true,
+		"571_chat_message_author":              true,
+		"572_chat_message_agent_author_index":  true,
+		"573_kiosk_token":                      true,
+		"574_kiosk_token_hash_index":           true,
+		"575_kiosk_pairing":                    true,
+		"576_kiosk_pairing_code_index":         true,
+	}
 	stemByNumber := make(map[int]string)
 	for _, file := range files {
 		stem, _, ok := splitMigrationFilename(filepath.Base(file))
@@ -29,6 +48,9 @@ func TestMigrationNumericPrefixesAreUnique(t *testing.T) {
 		}
 		number, err := strconv.Atoi(prefix)
 		if err != nil || number < firstUniqueMigrationNumber {
+			continue
+		}
+		if forkGrandfathered[stem] {
 			continue
 		}
 		if previous, exists := stemByNumber[number]; exists {

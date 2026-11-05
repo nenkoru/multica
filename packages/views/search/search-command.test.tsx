@@ -21,6 +21,8 @@ import zhHansProjects from "../locales/zh-Hans/projects.json";
 import { SearchCommand } from "./search-command";
 import { useSearchStore } from "./search-store";
 
+vi.mock("@multica/core/epics/config", () => ({ usePlanningEnabled: () => true }));
+
 vi.mock("@multica/core/issue-statuses/hooks", () => ({
   useIssueStatuses: () => buildIssueStatusCatalog([]),
 }));

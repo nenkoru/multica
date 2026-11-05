@@ -1,0 +1,48 @@
+{
+  "page": {
+    "title": "Épopées",
+    "new_epic": "Nouvelle épopée",
+    "empty": "Aucune épopée",
+    "create_first": "Créez votre première épopée",
+    "search_placeholder": "Rechercher des épopées...",
+    "no_search_results": "Aucun résultat ne correspond à votre recherche"
+  },
+  "table": {
+    "name": "Nom",
+    "status": "Statut",
+    "progress": "Progression",
+    "created": "Création",
+    "issues": "tâches"
+  },
+  "picker": {
+    "no_epic": "Aucune épopée",
+    "remove_epic": "Retirer l’épopée",
+    "no_epics": "Aucune épopée dans cet espace de travail"
+  },
+  "status": { "open": "Ouverte", "closed": "Fermée" },
+  "detail": {
+    "not_found": "Épopée introuvable",
+    "breadcrumb_fallback": "Épopées",
+    "title_placeholder": "Titre de l’épopée",
+    "copy_link": "Copier le lien",
+    "delete_action": "Supprimer l’épopée",
+    "section_properties": "Propriétés",
+    "section_description": "Description",
+    "description_placeholder": "Ajouter une description...",
+    "no_issues_yet": "Aucune tâche",
+    "delete_confirm_title": "Supprimer l’épopée",
+    "delete_confirm_description": "Voulez-vous supprimer cette épopée ? Les tâches associées seront conservées."
+  },
+  "create": {
+    "title": "Créer une épopée",
+    "label_title": "Titre",
+    "title_placeholder": "Titre de l’épopée",
+    "label_description": "Description",
+    "description_placeholder": "Ajouter une description...",
+    "color": "Couleur",
+    "submit": "Créer une épopée",
+    "cancel": "Annuler",
+    "success": "Création réussie",
+    "error": "Échec de la création"
+  }
+}

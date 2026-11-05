@@ -71,7 +71,8 @@
       "context_overflow": "這次對話超出了模型的上下文長度。開一個新會話，或把需求拆得更小一些。",
       "runtime_missing_executable": "無法在這臺裝置上執行智慧體的 CLI。確認已正確安裝並且在 PATH 中，然後重試。",
       "runtime_version_unsupported": "智慧體的 CLI 版本過低。升級後重試。",
-      "fallback": "出了點問題，智慧體未能完成回覆。請重試。"
+      "fallback": "出了點問題，智慧體未能完成回覆。請重試。",
+      "daemon_shutdown": "智慧體完成前守護程序已停止。請重試。"
     },
     "tools_other": "{{count}} 個工具",
     "tool_result_named": "{{tool}} 結果：",
@@ -84,7 +85,9 @@
     "quick_actions_heading": "後續提問",
     "quick_actions_aria": "後續提問建議",
     "quick_actions_regenerate": "重新生成建議",
-    "quick_actions_regenerate_failed": "無法重新生成建議，請重試。"
+    "quick_actions_regenerate_failed": "無法重新生成建議，請重試。",
+    "sent_by_agent": "由 {{agent}} 傳送",
+    "sent_by_unknown_agent": "由智慧體傳送"
   },
   "session_history": {
     "untitled": "無標題",

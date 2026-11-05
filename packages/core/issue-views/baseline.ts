@@ -115,6 +115,8 @@ export function baselineFromQuery(query: Record<string, unknown>): IssueViewBase
     label: new Set(labelFilters),
     property,
     raw: {
+      epicFilters: stringArray(query.epicFilters), includeNoEpic: query.includeNoEpic === true,
+      sprintFilters: stringArray(query.sprintFilters), includeNoSprint: query.includeNoSprint === true,
       statusFilters,
       priorityFilters,
       assigneeFilters,

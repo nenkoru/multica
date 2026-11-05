@@ -25,6 +25,12 @@ import enUsage from "./en/usage.json";
 import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
 import enBilling from "./en/billing.json";
+import enEpics from "./en/epics.json";
+import enSprints from "./en/sprints.json";
+import enPlanning from "./en/planning.json";
+import frEpics from "./fr/epics.json";
+import frSprints from "./fr/sprints.json";
+import frPlanning from "./fr/planning.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
 import zhHansSettings from "./zh-Hans/settings.json";
@@ -77,6 +83,12 @@ import zhHantUsage from "./zh-Hant/usage.json";
 import zhHantUi from "./zh-Hant/ui.json";
 import zhHantSquads from "./zh-Hant/squads.json";
 import zhHantBilling from "./zh-Hant/billing.json";
+import zhHantEpics from "./zh-Hant/epics.json";
+import zhHantSprints from "./zh-Hant/sprints.json";
+import zhHantPlanning from "./zh-Hant/planning.json";
+import zhHansEpics from "./zh-Hans/epics.json";
+import zhHansSprints from "./zh-Hans/sprints.json";
+import zhHansPlanning from "./zh-Hans/planning.json";
 import koCommon from "./ko/common.json";
 import koAuth from "./ko/auth.json";
 import koSettings from "./ko/settings.json";
@@ -103,6 +115,9 @@ import koUsage from "./ko/usage.json";
 import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
 import koBilling from "./ko/billing.json";
+import koEpics from "./ko/epics.json";
+import koSprints from "./ko/sprints.json";
+import koPlanning from "./ko/planning.json";
 import jaCommon from "./ja/common.json";
 import jaAuth from "./ja/auth.json";
 import jaSettings from "./ja/settings.json";
@@ -155,6 +170,9 @@ import frUsage from "./fr/usage.json";
 import frUi from "./fr/ui.json";
 import frSquads from "./fr/squads.json";
 import frBilling from "./fr/billing.json";
+import jaEpics from "./ja/epics.json";
+import jaSprints from "./ja/sprints.json";
+import jaPlanning from "./ja/planning.json";
 
 // Single source of truth for the resource bundle. Both apps (web layout +
 // desktop App.tsx) import from here so adding a locale or namespace happens
@@ -187,6 +205,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: enUi,
     squads: enSquads,
     billing: enBilling,
+    epics: enEpics,
+    sprints: enSprints,
+    planning: enPlanning,
   },
   "zh-Hans": {
     common: zhHansCommon,
@@ -215,6 +236,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHansUi,
     squads: zhHansSquads,
     billing: zhHansBilling,
+    epics: zhHansEpics,
+    sprints: zhHansSprints,
+    planning: zhHansPlanning,
   },
   "zh-Hant": {
     common: zhHantCommon,
@@ -243,6 +267,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHantUi,
     squads: zhHantSquads,
     billing: zhHantBilling,
+    epics: zhHantEpics,
+    sprints: zhHantSprints,
+    planning: zhHantPlanning,
   },
   ko: {
     common: koCommon,
@@ -271,6 +298,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: koUi,
     squads: koSquads,
     billing: koBilling,
+    epics: koEpics,
+    sprints: koSprints,
+    planning: koPlanning,
   },
   ja: {
     common: jaCommon,
@@ -299,8 +329,14 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: jaUi,
     squads: jaSquads,
     billing: jaBilling,
+    epics: jaEpics,
+    sprints: jaSprints,
+    planning: jaPlanning,
   },
   fr: {
+    epics: frEpics,
+    sprints: frSprints,
+    planning: frPlanning,
     common: frCommon,
     auth: frAuth,
     settings: frSettings,

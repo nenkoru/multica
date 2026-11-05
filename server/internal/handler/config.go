@@ -11,6 +11,7 @@ import (
 )
 
 type AppConfig struct {
+	PlanningEnabled bool `json:"planning_enabled"`
 	CdnDomain string `json:"cdn_domain"`
 	// The origin used for durable private-attachment Markdown links. Clients
 	// use it only to recognize links belonging to this deployment.
@@ -131,6 +132,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config.CdnSigned = h.CFSigner != nil
 	config.DaemonServerURL, config.DaemonAppURL = daemonSetupURLsFromEnv()
 	config.DaemonSetupTarget = "self_host"
+	config.PlanningEnabled = h.cfg.PlanningEnabled
 	config.VCSIntegrationAvailable = h.cfg.VCSIntegrationEnabled
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	// Only surface the build version on self-hosted deployments. The managed
