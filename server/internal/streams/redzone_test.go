@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
 
 func TestValidateAskRedTopicNeedsRedZone(t *testing.T) {
@@ -90,5 +92,53 @@ func TestManagerPatchFillsEmptySummary(t *testing.T) {
 	got, err := patchedSummary(context.Background(), h.sup.Q, h.reload(), step, "Шаг 2: без «ок».")
 	if err != nil || got != "Переезд: 15 позиций ждут «ок».\nШаг 2: без «ок»." {
 		t.Fatalf("%q %v", got, err)
+	}
+}
+
+// RUSL-2699: Терн и Работа had their only manager turn before patchedSummary
+// shipped and wait days for the next one. The tick rebuilds the summary.
+func TestEmptySummaryBackfilledOnTick(t *testing.T) {
+	h := newHarness(t, "backfill")
+	h.tick()
+	h.finish(h.only(KindManage, StepRunning), contract(map[string]any{
+		"result": "план", "summary_patch": "Переезд: 15 позиций ждут «ок».",
+		"next": []map[string]any{{"brief": "шорт-лист", "kind": "work", "cost_class": "M", "moves": "отклики"}},
+	}))
+	h.tick()
+	h.f.Exec(t, `UPDATE stream SET summary = '' WHERE id = $1`, uuidString(h.stream.ID))
+	h.tick()
+	if st := h.reload(); st.Summary != "Переезд: 15 позиций ждут «ок»." {
+		t.Fatalf("summary %q", st.Summary)
+	}
+	h.tick()
+	if n := h.journalCount("summary_rebuilt"); n != 1 {
+		t.Fatalf("summary_rebuilt %d", n)
+	}
+}
+
+// An expired replan wait reaches the manager even while another wait is
+// open (Терн, 05.11: RUSL-2269 expired, RUSL-2171 still open, no turn).
+func TestExpiredWaitReplansDespiteOpenWait(t *testing.T) {
+	h := newHarness(t, "replan")
+	h.tick()
+	mg := h.only(KindManage, StepRunning)
+	h.finish(mg, contract(map[string]any{
+		"result": "ждём", "summary_patch": "ждём RUSL-2171",
+		"wait": map[string]any{"kind": "issue", "check": "RUSL-2171", "deadline": time.Now().Add(48 * time.Hour).Format(time.RFC3339)},
+	}))
+	h.tick()
+	if st := h.reload(); st.State != StateWaiting {
+		t.Fatalf("state %s", st.State)
+	}
+	if _, err := h.sup.Q.InsertWait(context.Background(), sdb.InsertWaitParams{
+		StreamID: h.stream.ID, StepID: mg.ID, Kind: "issue", Check: "RUSL-2269",
+		Deadline: ts(time.Now().Add(-time.Minute)), OnDeadline: "replan",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h.tick()
+	next := h.only(KindManage, StepRunning)
+	if !strings.Contains(next.Brief, "RUSL-2269") {
+		t.Fatalf("brief %q", next.Brief)
 	}
 }
