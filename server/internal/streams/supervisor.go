@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -166,6 +167,9 @@ func (s *Supervisor) reconcile(ctx context.Context, st sdb.Stream) error {
 	if err != nil {
 		return err
 	}
+	if err := s.backfillSummary(ctx, st); err != nil {
+		return err
+	}
 
 	execStates, err := s.executorStates(ctx)
 	if err != nil {
@@ -237,7 +241,9 @@ func (s *Supervisor) reconcile(ctx context.Context, st sdb.Stream) error {
 	if err != nil {
 		return err
 	}
-	if len(waits) > 0 {
+	// A wait that expired this tick hands its on_deadline to the manager
+	// even when another wait is still open; otherwise "replan" is lost.
+	if len(waits) > 0 && len(expired) == 0 {
 		w := waits[0]
 		return s.setState(ctx, st, StateWaiting, fmt.Sprintf("%s: %s", w.Kind, firstLine(w.Check, 120)), w.Deadline.Time)
 	}
@@ -1253,6 +1259,25 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// backfillSummary fills an empty summary from the summary_patch of the
+// stream's done steps. Streams migrated before patchedSummary had their only
+// manager turn already behind them and wait days for the next one; the
+// summary is rebuilt on the next tick instead.
+func (s *Supervisor) backfillSummary(ctx context.Context, st sdb.Stream) error {
+	if strings.TrimSpace(st.Summary) != "" {
+		return nil
+	}
+	summary, err := patchedSummary(ctx, s.Q, st, sdb.StreamStep{Seq: math.MaxInt32}, "")
+	if err != nil || summary == "" {
+		return err
+	}
+	if err := s.Q.SetStreamSummary(ctx, sdb.SetStreamSummaryParams{ID: st.ID, Summary: summary}); err != nil {
+		return err
+	}
+	s.journal(ctx, st.ID, pgtype.UUID{}, "summary_rebuilt", map[string]any{"chars": len([]rune(summary))})
+	return nil
 }
 
 // patchedSummary appends patch to the stream's summary. An empty summary is
