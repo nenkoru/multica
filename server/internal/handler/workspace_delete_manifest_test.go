@@ -13,6 +13,12 @@ const (
 	workspaceDeleteDetach workspaceDeleteAction = "detach"
 	workspaceDeleteKeep   workspaceDeleteAction = "keep"
 	workspaceDeleteSettle workspaceDeleteAction = "settle"
+	// workspaceDeleteFabrika marks Fabrika tables (migrations 900x). They carry
+	// no foreign key to workspace and the delete handler does not touch them, so
+	// rows of a deleted workspace stay behind. This is a known, deliberate gap:
+	// closing it needs a schema or handler change that is out of scope for the
+	// test-metadata fix (RUSL-2711). Remove this action once teardown exists.
+	workspaceDeleteFabrika workspaceDeleteAction = "fabrika-external"
 )
 
 // workspaceDeletionManifest is the schema coverage contract for workspace
@@ -151,6 +157,19 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"workspace":                          workspaceDelete,
 	"workspace_invitation":               workspaceDelete,
 	"workspace_share_link":               workspaceDelete,
+	"ask":                                workspaceDeleteFabrika,
+	"chat_focus":                         workspaceDeleteFabrika,
+	"executor_status":                    workspaceDeleteFabrika,
+	"milestone":                          workspaceDeleteFabrika,
+	"multika_charter":                    workspaceDeleteFabrika,
+	"multika_turn":                       workspaceDeleteFabrika,
+	"stream":                             workspaceDeleteFabrika,
+	"stream_journal":                     workspaceDeleteFabrika,
+	"stream_step":                        workspaceDeleteFabrika,
+	"stream_supervisor_state":            workspaceDeleteFabrika,
+	"stream_wait":                        workspaceDeleteFabrika,
+	"ui_action":                          workspaceDeleteFabrika,
+	"ui_block":                           workspaceDeleteFabrika,
 }
 
 func TestWorkspaceDeletionManifestCoversPublicSchema(t *testing.T) {
