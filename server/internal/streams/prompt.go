@@ -169,7 +169,7 @@ func ManagePrompt(st sdb.Stream, c Charter, step sdb.StreamStep, in ManageInput)
 	if len(in.OpenAsks) > 0 {
 		b.WriteString("\n## Открытые вопросы (ждут пачки или ответа)\n\n")
 		for _, a := range in.OpenAsks {
-			fmt.Fprintf(&b, "- «%s» (%s, до %s)\n", a.Text, a.Zone, fmtMSK(a.Deadline.Time))
+			fmt.Fprintf(&b, "- «%s» (%s, до %s)\n", a.Text, askZone(a), fmtMSK(a.Deadline.Time))
 		}
 	}
 	if len(in.ExhaustedExec) > 0 {

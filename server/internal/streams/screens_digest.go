@@ -95,10 +95,10 @@ func (s *Supervisor) digestScreenSource(ctx context.Context, ws pgtype.UUID, now
 				qs[j] = q(firstLine(o, 70))
 			}
 			def := "null"
-			if a.DefaultOption.Valid {
-				def = strconv.Itoa(int(a.DefaultOption.Int32))
+			if d := askDefault(a); d >= 0 {
+				def = strconv.Itoa(d)
 			}
-			add(fmt.Sprintf("a%d", i+1), fmt.Sprintf("AskCard(%s, [%s], %s, %s, %s)", q(firstLine(a.Text, 600)), strings.Join(qs, ", "), q(uuidString(a.ID)), def, q(a.Zone)))
+			add(fmt.Sprintf("a%d", i+1), fmt.Sprintf("AskCard(%s, [%s], %s, %s, %s)", q(firstLine(a.Text, 600)), strings.Join(qs, ", "), q(uuidString(a.ID)), def, q(askZone(a))))
 		}
 	}
 	var rows []string

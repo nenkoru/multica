@@ -331,7 +331,7 @@ func (s *Supervisor) bindScreenActions(ctx context.Context, blockID, ws pgtype.U
 			if err != nil {
 				return sdb.UiAction{}, err
 			}
-			askID, zone = a.ID, a.Zone
+			askID, zone = a.ID, askZone(a)
 		}
 		tok, err := newAskToken()
 		if err != nil {
@@ -364,7 +364,7 @@ func (s *Supervisor) bindScreenActions(ctx context.Context, blockID, ws pgtype.U
 			delete(props, "ask_id") // shown as text only
 			continue
 		}
-		props["zone"] = a.Zone
+		props["zone"] = askZone(a)
 		ids := make([]string, 0, len(opts))
 		for i, o := range opts {
 			act := genui.Action{Name: "answer_ask", Args: map[string]any{"ask_id": askID, "choice": float64(i)}}

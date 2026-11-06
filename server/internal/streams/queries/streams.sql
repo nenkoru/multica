@@ -173,6 +173,14 @@ WHERE s.workspace_id = $1 AND a.shown_at >= $2;
 -- name: MarkAskShown :exec
 UPDATE ask SET status = 'shown', shown_at = now() WHERE id = $1 AND status = 'queued';
 
+-- name: RedenAsk :execrows
+-- A mandate question stored as normal-zone: red, no default (RUSL-2729).
+UPDATE ask SET zone = 'red', default_option = NULL
+WHERE id = $1 AND status IN ('queued', 'shown') AND (zone <> 'red' OR default_option IS NOT NULL);
+
+-- name: RedenAskActions :exec
+UPDATE ui_action SET zone = 'red' WHERE ask_id = $1 AND status = 'pending' AND zone <> 'red';
+
 -- name: MarkAskReminded :exec
 UPDATE ask SET reminded_at = now() WHERE id = $1;
 

@@ -2243,6 +2243,29 @@ func (q *Queries) RecordSupervisorTick(ctx context.Context, lastError string) er
 	return err
 }
 
+const redenAsk = `-- name: RedenAsk :execrows
+UPDATE ask SET zone = 'red', default_option = NULL
+WHERE id = $1 AND status IN ('queued', 'shown') AND (zone <> 'red' OR default_option IS NOT NULL)
+`
+
+// A mandate question stored as normal-zone: red, no default (RUSL-2729).
+func (q *Queries) RedenAsk(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, redenAsk, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const redenAskActions = `-- name: RedenAskActions :exec
+UPDATE ui_action SET zone = 'red' WHERE ask_id = $1 AND status = 'pending' AND zone <> 'red'
+`
+
+func (q *Queries) RedenAskActions(ctx context.Context, askID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, redenAskActions, askID)
+	return err
+}
+
 const releaseUIAction = `-- name: ReleaseUIAction :exec
 UPDATE ui_action SET status = 'pending', result = NULL, done_at = NULL
 WHERE id = $1 AND status = 'done'

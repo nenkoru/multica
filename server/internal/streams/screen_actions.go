@@ -69,7 +69,16 @@ func (s *Supervisor) PressScreenAction(ctx context.Context, ws, user, actionID p
 	default:
 		return PressResult{}, ErrActionStale
 	}
-	if ua.Zone == "red" {
+	red := ua.Zone == "red"
+	if !red && ua.AskID.Valid {
+		// An answer button made before the ask was turned red (RUSL-2729).
+		a, err := s.Q.GetAsk(ctx, ua.AskID)
+		if err != nil {
+			return PressResult{}, err
+		}
+		red = askZone(a) == "red"
+	}
+	if red {
 		text, err := s.describeAction(ctx, ws, act.Action)
 		if err != nil {
 			return PressResult{}, err

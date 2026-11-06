@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
 
@@ -66,6 +68,79 @@ func TestRedTopicAskNeverDefaults(t *testing.T) {
 	}
 	if n := h.journalCount("ask_reminded"); n != 1 {
 		t.Fatalf("want one reminder, got %d", n)
+	}
+}
+
+// RUSL-2729: the pulse of 06.11 showed RUSL-2171 (mandate: people, personal
+// access) as a normal question with "(по умолчанию)". The tick turns such a
+// row red without a default, its buttons get the red confirmation, it never
+// settles by silence and stays in the next pulse.
+func TestMandateAskStoredNormalTurnsRed(t *testing.T) {
+	h := newHarness(t, "redrow")
+	ctx := context.Background()
+	h.tick()
+	mg := h.only(KindManage, StepRunning)
+	text := "RUSL-2171: одобрить запуск места work.ruslan. Мандат: люди, личный доступ."
+	var askID string
+	h.f.QueryRow(t, `INSERT INTO ask (stream_id, origin_step_id, kind, text, options, default_option, zone, deadline, status, shown_at)
+		VALUES ($1, $2, 'choice', $3, '["да, запускать","пока нет"]', 0, 'normal', now() + interval '1 day', 'shown', now()) RETURNING id::text`,
+		uuidString(h.stream.ID), uuidString(mg.ID), text).Scan(&askID)
+	t.Cleanup(func() { _, _ = testPool.Exec(context.Background(), "DELETE FROM ui_action WHERE ask_id = $1", askID) })
+	h.f.Exec(t, `INSERT INTO ui_action (ask_id, token, action, zone) VALUES ($1, $2, '{"kind":"ask_reply","choice":0}', 'normal')`, askID, "tok-"+askID)
+
+	// Before the deadline: the row is fixed, nothing is resolved.
+	if err := h.sup.settleAsks(ctx, h.reload(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	var zone, status string
+	var def *int32
+	h.f.QueryRow(t, `SELECT zone, default_option, status FROM ask WHERE id = $1`, askID).Scan(&zone, &def, &status)
+	if zone != "red" || def != nil || status != "shown" {
+		t.Fatalf("ask after tick: zone=%s default=%v status=%s, want red/nil/shown", zone, def, status)
+	}
+	if z := h.f.Count(t, `SELECT count(*) FROM ui_action WHERE ask_id = $1 AND zone = 'red'`, askID); z != 1 {
+		t.Fatalf("pending button not red: %d", z)
+	}
+	if n := h.journalCount("ask_reddened"); n != 1 {
+		t.Fatalf("ask_reddened: %d", n)
+	}
+
+	// Past the deadline, twice: still open, one reminder, never defaulted.
+	later := time.Now().Add(48 * time.Hour)
+	for i := 0; i < 2; i++ {
+		if err := h.sup.settleAsks(ctx, h.reload(), later); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.f.QueryRow(t, `SELECT status FROM ask WHERE id = $1`, askID).Scan(&status)
+	if status != "shown" || h.journalCount("ask_defaulted") != 0 || h.journalCount("ask_reminded") != 1 || h.journalCount("ask_reddened") != 1 {
+		t.Fatalf("status=%s defaulted=%d reminded=%d reddened=%d", status, h.journalCount("ask_defaulted"), h.journalCount("ask_reminded"), h.journalCount("ask_reddened"))
+	}
+
+	// The next pulse still asks it, red, with no default promised.
+	pulse, err := h.sup.Digest(ctx, h.stream.WorkspaceID, SlotPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(pulse, "🔴 Поток redrow: "+text) || strings.Contains(pulse, "(по умолчанию)") || strings.Contains(pulse, "Молчание = вариант по умолчанию") {
+		t.Fatalf("pulse:\n%s", pulse)
+	}
+}
+
+// The pulse never promises a default for a mandate question, even for a row
+// the tick has not fixed yet (preview right after a deploy).
+func TestRenderAskMandateHasNoDefault(t *testing.T) {
+	at := pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}
+	legacy := sdb.Ask{Text: "Одобрить запуск? Мандат: люди, личный доступ.", Options: []byte(`["да","нет"]`), Zone: "normal", DefaultOption: pgtype.Int4{Int32: 0, Valid: true}, Deadline: at}
+	if out := renderAsk(1, legacy, "Терн", time.Now()); !strings.HasPrefix(out, "1. 🔴 Терн:") || strings.Contains(out, "по умолчанию") {
+		t.Fatalf("mandate ask rendered:\n%s", out)
+	}
+	plain := sdb.Ask{Text: "Шорт-лист из 15 позиций — ок?", Options: []byte(`["да","нет"]`), Zone: "normal", DefaultOption: pgtype.Int4{Int32: 0, Valid: true}, Deadline: at}
+	if out := renderAsk(1, plain, "Работа", time.Now()); strings.Contains(out, "🔴") || !strings.Contains(out, "а) да (по умолчанию)") {
+		t.Fatalf("plain ask rendered:\n%s", out)
+	}
+	if askZone(legacy) != "red" || askDefault(legacy) != -1 || askDefault(plain) != 0 {
+		t.Fatal("askZone/askDefault")
 	}
 }
 
@@ -140,5 +215,32 @@ func TestExpiredWaitReplansDespiteOpenWait(t *testing.T) {
 	next := h.only(KindManage, StepRunning)
 	if !strings.Contains(next.Brief, "RUSL-2269") {
 		t.Fatalf("brief %q", next.Brief)
+	}
+}
+
+// Review round 1 of RUSL-2729: a button sent while the ask was normal, on a
+// stream the tick does not reach (inactive), still needs the red confirmation
+// once the ask is about the mandate.
+func TestOldButtonOfMandateAskNeedsRedConfirm(t *testing.T) {
+	h := newHarness(t, "redbtn")
+	h.cleanupActions()
+	ctx := context.Background()
+	ws, _ := parseUUID(testWorkspaceID)
+	inst, chat := h.multikaTelegram(434343)
+	fake := &fakeButtonSender{}
+	h.sup.AskButtons = fake
+	h.askShown("Продлить домен за 1200 ₽?")
+	if n, err := h.sup.PushAskButtons(ctx, ws); err != nil || n != 1 {
+		t.Fatalf("push n=%d err=%v", n, err)
+	}
+	h.f.Exec(t, `UPDATE ask SET text = 'RUSL-2171: одобрить запуск. Мандат: люди, личный доступ.' WHERE stream_id = $1`, h.stream.ID)
+	h.f.Exec(t, `UPDATE stream SET active = false WHERE id = $1`, h.stream.ID)
+	h.tick()
+	if z := h.f.Count(t, `SELECT count(*) FROM ui_action WHERE ask_id IN (SELECT id FROM ask WHERE stream_id = $1) AND zone = 'normal'`, h.stream.ID); z == 0 {
+		t.Fatal("scenario needs a normal-zone button left over")
+	}
+	toast, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[0].rows[0][0].Data)
+	if toast != pressConfirmSent || done != "" || h.askStatus() != "shown" {
+		t.Fatalf("press: %q %q ask=%s", toast, done, h.askStatus())
 	}
 }
