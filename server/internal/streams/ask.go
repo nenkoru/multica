@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
 
 // DefaultAskDailyCap is the per-day ceiling of asynchronous questions to
@@ -69,6 +71,29 @@ func redTopic(text string) string {
 		}
 	}
 	return ""
+}
+
+// askIsRed: a red-zone question, or one whose text touches a mandate
+// category even if it was stored as normal (RUSL-2729). Such a question has
+// no default and is never answered by silence.
+func askIsRed(zone, text string) bool {
+	return zone == "red" || redTopic(text) != ""
+}
+
+// askZone is the zone a question is shown and pressed with.
+func askZone(a sdb.Ask) string {
+	if askIsRed(a.Zone, a.Text) {
+		return "red"
+	}
+	return a.Zone
+}
+
+// askDefault is the option silence picks, or -1: a red question has none.
+func askDefault(a sdb.Ask) int {
+	if !a.DefaultOption.Valid || askIsRed(a.Zone, a.Text) {
+		return -1
+	}
+	return int(a.DefaultOption.Int32)
 }
 
 // ValidateAsk applies the form check of §7.2 and the self-decide screen of

@@ -1167,14 +1167,30 @@ func (s *Supervisor) FireWait(ctx context.Context, waitID pgtype.UUID) error {
 	return nil
 }
 
-// settleAsks applies silence = default for normal-zone questions past their
-// deadline, reminds red ones once, and drops stale never-shown ones (§7.2).
+// settleAsks makes mandate questions red, applies silence = default for
+// normal-zone questions past their deadline, reminds red ones once (they stay
+// open for the next pulse), and drops stale never-shown ones (§7.2).
 func (s *Supervisor) settleAsks(ctx context.Context, st sdb.Stream, now time.Time) error {
 	asks, err := s.Q.ListOpenAsks(ctx, st.ID)
 	if err != nil {
 		return err
 	}
 	for _, a := range asks {
+		if askIsRed(a.Zone, a.Text) && (a.Zone != "red" || a.DefaultOption.Valid) {
+			// Stored before the red screen: fix the row, not just the
+			// rendering, so buttons get the red confirmation (RUSL-2729).
+			n, err := s.Q.RedenAsk(ctx, a.ID)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				if err := s.Q.RedenAskActions(ctx, a.ID); err != nil {
+					return err
+				}
+				s.journal(ctx, st.ID, a.OriginStepID, "ask_reddened", map[string]any{"text": a.Text, "why": redTopic(a.Text)})
+			}
+			a.Zone, a.DefaultOption = "red", pgtype.Int4{}
+		}
 		if a.Deadline.Time.After(now) {
 			continue
 		}
@@ -1188,7 +1204,7 @@ func (s *Supervisor) settleAsks(ctx context.Context, st sdb.Stream, now time.Tim
 				continue // answered meanwhile
 			}
 			s.journal(ctx, st.ID, a.OriginStepID, "ask_dropped", map[string]any{"text": a.Text})
-		case a.Zone == "normal" && a.DefaultOption.Valid && redTopic(a.Text) == "":
+		case a.Zone == "normal" && askDefault(a) >= 0:
 			ans, _ := json.Marshal(map[string]any{"choice": a.DefaultOption.Int32, "channel": "default", "at": now})
 			n, err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "defaulted", Answer: ans})
 			if err != nil {

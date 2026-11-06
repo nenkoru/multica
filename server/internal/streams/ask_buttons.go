@@ -131,7 +131,7 @@ func (s *Supervisor) PushAskButtons(ctx context.Context, workspaceID pgtype.UUID
 				return sent, err
 			}
 			raw, _ := json.Marshal(act)
-			ua, err := s.Q.InsertUIAction(ctx, sdb.InsertUIActionParams{AskID: a.ID, Token: tok, Action: raw, Zone: a.Zone})
+			ua, err := s.Q.InsertUIAction(ctx, sdb.InsertUIActionParams{AskID: a.ID, Token: tok, Action: raw, Zone: askZone(a)})
 			if err != nil {
 				return sent, err
 			}

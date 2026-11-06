@@ -104,10 +104,20 @@ func (s *Supervisor) Digest(ctx context.Context, workspaceID pgtype.UUID, slot D
 		for _, st := range streams {
 			names[uuidString(st.ID)] = st.Title
 		}
+		anyDefault, anyRed := false, false
 		for i, a := range shown {
 			b.WriteString(renderAsk(i+1, a, names[uuidString(a.StreamID)]))
+			anyDefault = anyDefault || askDefault(a) >= 0
+			anyRed = anyRed || askZone(a) == "red"
 		}
-		b.WriteString("Ответ одной строкой: «1 а, 2 да». Молчание = вариант по умолчанию (кроме 🔴).\n")
+		b.WriteString("Ответ одной строкой: «1 а, 2 да».")
+		if anyDefault {
+			b.WriteString(" Молчание = вариант по умолчанию, только у вопросов без 🔴.")
+		}
+		b.WriteString("\n")
+		if anyRed {
+			b.WriteString("🔴 — по мандату: молчанием не решается, ждёт ответа и остаётся в следующем пульсе.\n")
+		}
 	}
 	return b.String(), nil
 }
@@ -115,7 +125,7 @@ func (s *Supervisor) Digest(ctx context.Context, workspaceID pgtype.UUID, slot D
 func renderAsk(n int, a sdb.Ask, stream string) string {
 	var b strings.Builder
 	red := ""
-	if a.Zone == "red" {
+	if askZone(a) == "red" {
 		red = "🔴 "
 	}
 	fmt.Fprintf(&b, "%d. %s%s: %s\n", n, red, stream, a.Text)
@@ -123,7 +133,7 @@ func renderAsk(n int, a sdb.Ask, stream string) string {
 	_ = json.Unmarshal(a.Options, &opts)
 	for i, o := range opts {
 		def := ""
-		if a.DefaultOption.Valid && int(a.DefaultOption.Int32) == i {
+		if askDefault(a) == i {
 			def = " (по умолчанию)"
 		}
 		fmt.Fprintf(&b, "   %s) %s%s\n", OptionLabel(i), o, def)
@@ -133,7 +143,11 @@ func renderAsk(n int, a sdb.Ask, stream string) string {
 	for i, it := range items {
 		fmt.Fprintf(&b, "   %d.%d %s — да/нет\n", n, i+1, it)
 	}
-	fmt.Fprintf(&b, "   до %s\n", fmtMSK(a.Deadline.Time))
+	if red != "" && !a.Deadline.Time.After(time.Now()) {
+		fmt.Fprintf(&b, "   срок был %s — ждёт ответа\n", fmtMSK(a.Deadline.Time))
+	} else {
+		fmt.Fprintf(&b, "   до %s\n", fmtMSK(a.Deadline.Time))
+	}
 	return b.String()
 }
 
