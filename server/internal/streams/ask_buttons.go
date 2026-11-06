@@ -218,7 +218,9 @@ func (s *Supervisor) PressAskButton(ctx context.Context, installationID pgtype.U
 	default:
 		return pressStale, ""
 	}
-	if ua.Zone == "red" {
+	// The question's own zone counts too: a button sent before the ask was
+	// turned red must not skip the confirmation (RUSL-2729).
+	if ua.Zone == "red" || askZone(a) == "red" {
 		// Red zone: a separate system message confirms (§10.4, §10.5).
 		return s.askRedConfirm(ctx, installationID, chatID, a, ua, act)
 	}

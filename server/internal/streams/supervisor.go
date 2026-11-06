@@ -1179,15 +1179,19 @@ func (s *Supervisor) settleAsks(ctx context.Context, st sdb.Stream, now time.Tim
 		if askIsRed(a.Zone, a.Text) && (a.Zone != "red" || a.DefaultOption.Valid) {
 			// Stored before the red screen: fix the row, not just the
 			// rendering, so buttons get the red confirmation (RUSL-2729).
-			n, err := s.Q.RedenAsk(ctx, a.ID)
-			if err != nil {
-				return err
-			}
-			if n > 0 {
-				if err := s.Q.RedenAskActions(ctx, a.ID); err != nil {
+			err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+				q := s.Q.WithTx(tx)
+				n, err := q.RedenAsk(ctx, a.ID)
+				if err != nil || n == 0 {
 					return err
 				}
-				s.journal(ctx, st.ID, a.OriginStepID, "ask_reddened", map[string]any{"text": a.Text, "why": redTopic(a.Text)})
+				if err := q.RedenAskActions(ctx, a.ID); err != nil {
+					return err
+				}
+				return appendJournal(ctx, q, st.ID, a.OriginStepID, "ask_reddened", map[string]any{"text": a.Text, "why": redTopic(a.Text)})
+			})
+			if err != nil {
+				return err
 			}
 			a.Zone, a.DefaultOption = "red", pgtype.Int4{}
 		}

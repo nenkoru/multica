@@ -106,7 +106,7 @@ func (s *Supervisor) Digest(ctx context.Context, workspaceID pgtype.UUID, slot D
 		}
 		anyDefault, anyRed := false, false
 		for i, a := range shown {
-			b.WriteString(renderAsk(i+1, a, names[uuidString(a.StreamID)]))
+			b.WriteString(renderAsk(i+1, a, names[uuidString(a.StreamID)], now))
 			anyDefault = anyDefault || askDefault(a) >= 0
 			anyRed = anyRed || askZone(a) == "red"
 		}
@@ -122,7 +122,7 @@ func (s *Supervisor) Digest(ctx context.Context, workspaceID pgtype.UUID, slot D
 	return b.String(), nil
 }
 
-func renderAsk(n int, a sdb.Ask, stream string) string {
+func renderAsk(n int, a sdb.Ask, stream string, now time.Time) string {
 	var b strings.Builder
 	red := ""
 	if askZone(a) == "red" {
@@ -143,7 +143,7 @@ func renderAsk(n int, a sdb.Ask, stream string) string {
 	for i, it := range items {
 		fmt.Fprintf(&b, "   %d.%d %s — да/нет\n", n, i+1, it)
 	}
-	if red != "" && !a.Deadline.Time.After(time.Now()) {
+	if red != "" && !a.Deadline.Time.After(now) {
 		fmt.Fprintf(&b, "   срок был %s — ждёт ответа\n", fmtMSK(a.Deadline.Time))
 	} else {
 		fmt.Fprintf(&b, "   до %s\n", fmtMSK(a.Deadline.Time))

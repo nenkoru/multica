@@ -132,11 +132,11 @@ func TestMandateAskStoredNormalTurnsRed(t *testing.T) {
 func TestRenderAskMandateHasNoDefault(t *testing.T) {
 	at := pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}
 	legacy := sdb.Ask{Text: "Одобрить запуск? Мандат: люди, личный доступ.", Options: []byte(`["да","нет"]`), Zone: "normal", DefaultOption: pgtype.Int4{Int32: 0, Valid: true}, Deadline: at}
-	if out := renderAsk(1, legacy, "Терн"); !strings.HasPrefix(out, "1. 🔴 Терн:") || strings.Contains(out, "по умолчанию") {
+	if out := renderAsk(1, legacy, "Терн", time.Now()); !strings.HasPrefix(out, "1. 🔴 Терн:") || strings.Contains(out, "по умолчанию") {
 		t.Fatalf("mandate ask rendered:\n%s", out)
 	}
 	plain := sdb.Ask{Text: "Шорт-лист из 15 позиций — ок?", Options: []byte(`["да","нет"]`), Zone: "normal", DefaultOption: pgtype.Int4{Int32: 0, Valid: true}, Deadline: at}
-	if out := renderAsk(1, plain, "Работа"); strings.Contains(out, "🔴") || !strings.Contains(out, "а) да (по умолчанию)") {
+	if out := renderAsk(1, plain, "Работа", time.Now()); strings.Contains(out, "🔴") || !strings.Contains(out, "а) да (по умолчанию)") {
 		t.Fatalf("plain ask rendered:\n%s", out)
 	}
 	if askZone(legacy) != "red" || askDefault(legacy) != -1 || askDefault(plain) != 0 {
@@ -215,5 +215,32 @@ func TestExpiredWaitReplansDespiteOpenWait(t *testing.T) {
 	next := h.only(KindManage, StepRunning)
 	if !strings.Contains(next.Brief, "RUSL-2269") {
 		t.Fatalf("brief %q", next.Brief)
+	}
+}
+
+// Review round 1 of RUSL-2729: a button sent while the ask was normal, on a
+// stream the tick does not reach (inactive), still needs the red confirmation
+// once the ask is about the mandate.
+func TestOldButtonOfMandateAskNeedsRedConfirm(t *testing.T) {
+	h := newHarness(t, "redbtn")
+	h.cleanupActions()
+	ctx := context.Background()
+	ws, _ := parseUUID(testWorkspaceID)
+	inst, chat := h.multikaTelegram(434343)
+	fake := &fakeButtonSender{}
+	h.sup.AskButtons = fake
+	h.askShown("Продлить домен за 1200 ₽?")
+	if n, err := h.sup.PushAskButtons(ctx, ws); err != nil || n != 1 {
+		t.Fatalf("push n=%d err=%v", n, err)
+	}
+	h.f.Exec(t, `UPDATE ask SET text = 'RUSL-2171: одобрить запуск. Мандат: люди, личный доступ.' WHERE stream_id = $1`, h.stream.ID)
+	h.f.Exec(t, `UPDATE stream SET active = false WHERE id = $1`, h.stream.ID)
+	h.tick()
+	if z := h.f.Count(t, `SELECT count(*) FROM ui_action WHERE ask_id IN (SELECT id FROM ask WHERE stream_id = $1) AND zone = 'normal'`, h.stream.ID); z == 0 {
+		t.Fatal("scenario needs a normal-zone button left over")
+	}
+	toast, done := h.sup.PressAskButton(ctx, inst, chat, chat, fake.sent[0].rows[0][0].Data)
+	if toast != pressConfirmSent || done != "" || h.askStatus() != "shown" {
+		t.Fatalf("press: %q %q ask=%s", toast, done, h.askStatus())
 	}
 }
