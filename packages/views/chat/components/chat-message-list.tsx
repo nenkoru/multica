@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
@@ -29,6 +29,8 @@ import {
 } from "@multica/ui/icons";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { isTaskMessageTaskId, taskMessagesOptions } from "@multica/core/chat/queries";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { agentListOptions } from "@multica/core/workspace/queries";
 import { RichContent } from "../../rich-content";
 import { RichContentScrollRootProvider } from "../../rich-content/scroll-root";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -78,6 +80,8 @@ interface ChatMessageListProps {
   onLoadOlderMessages?: () => void;
   /** Transform assistant task text for embedded chat protocols before render/copy. */
   transformContent?: (content: string) => string;
+  /** Extra content under an assistant turn, e.g. Fabrika screens (fork). */
+  renderTaskExtras?: (taskId: string) => ReactNode;
   /** Send the full hidden prompt behind an assistant follow-up chip. */
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled?: boolean;
@@ -187,6 +191,7 @@ export function ChatMessageList({
   isFetchingOlderMessages = false,
   onLoadOlderMessages,
   transformContent,
+  renderTaskExtras,
   onQuickAction,
   quickActionsDisabled = false,
   onRegenerateQuickActions,
@@ -385,6 +390,7 @@ export function ChatMessageList({
               item={item}
               isPending={!!pendingTaskId && item.taskId === pendingTaskId}
               transformContent={transformContent}
+              renderTaskExtras={renderTaskExtras}
               onQuickAction={onQuickAction}
               quickActionsDisabled={quickActionsDisabled}
               onRegenerateQuickActions={onRegenerateQuickActions}
@@ -450,6 +456,7 @@ const MessageBubble = memo(function MessageBubble({
   item,
   isPending,
   transformContent,
+  renderTaskExtras,
   onQuickAction,
   quickActionsDisabled,
   onRegenerateQuickActions,
@@ -460,6 +467,7 @@ const MessageBubble = memo(function MessageBubble({
   item: ChatRenderItem;
   isPending: boolean;
   transformContent?: (content: string) => string;
+  renderTaskExtras?: (taskId: string) => ReactNode;
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled: boolean;
   onRegenerateQuickActions?: (message: ChatMessage) => void | Promise<unknown>;
@@ -476,6 +484,7 @@ const MessageBubble = memo(function MessageBubble({
         taskId={item.taskId}
         isPending={isPending}
         transformContent={transformContent}
+        renderTaskExtras={renderTaskExtras}
         onQuickAction={onQuickAction}
         quickActionsDisabled={quickActionsDisabled}
       />
@@ -484,9 +493,16 @@ const MessageBubble = memo(function MessageBubble({
 
   const { message } = item;
 
+  // Set only when an agent run wrote the row itself (a proactive post, or a
+  // `multica chat send` turn on the member side), so the feed never passes an
+  // agent's words off as the member's or as the session agent's reply.
+  const agentAuthorId =
+    message.author_type === "agent" && message.author_id ? message.author_id : null;
+
   if (message.role === "user") {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {agentAuthorId && <AgentAuthorLabel agentId={agentAuthorId} />}
         <div className="rounded-2xl bg-muted px-3.5 py-2 text-body max-w-[80%] break-words">
           {/* User messages are authored as markdown in ContentEditor, so they
            * render through the SAME RichContent as assistant replies and as
@@ -509,12 +525,13 @@ const MessageBubble = memo(function MessageBubble({
     );
   }
 
-  return (
+  const assistant = (
     <AssistantMessage
       taskId={message.task_id ?? null}
       message={message}
       isPending={isPending}
       transformContent={transformContent}
+      renderTaskExtras={renderTaskExtras}
       onQuickAction={onQuickAction}
       quickActionsDisabled={quickActionsDisabled}
       onRegenerateQuickActions={onRegenerateQuickActions}
@@ -523,7 +540,34 @@ const MessageBubble = memo(function MessageBubble({
       showStarterCards={message.id === starterCardsMessageId}
     />
   );
+  // Task-owned replies keep the bare <AssistantMessage> so the live row and
+  // the persisted row still reconcile; an agent-authored row owns no task.
+  if (!agentAuthorId) return assistant;
+  return (
+    <div className="flex flex-col gap-1">
+      <AgentAuthorLabel agentId={agentAuthorId} />
+      {assistant}
+    </div>
+  );
 });
+
+/**
+ * Names the agent that wrote a row on its own initiative. Mounted only for
+ * agent-authored rows, so ordinary messages never subscribe to the agent list.
+ */
+function AgentAuthorLabel({ agentId }: { agentId: string }) {
+  const { t } = useT("chat");
+  const wsId = useWorkspaceId();
+  const { data: agents } = useQuery(agentListOptions(wsId));
+  const agent = agents?.find((a) => a.id === agentId)?.name;
+  return (
+    <div className="text-caption text-muted-foreground">
+      {agent
+        ? t(($) => $.message_list.sent_by_agent, { agent })
+        : t(($) => $.message_list.sent_by_unknown_agent)}
+    </div>
+  );
+}
 
 /**
  * Assistant turn body — renders BOTH the in-flight (live) and the persisted
@@ -547,6 +591,7 @@ function AssistantMessage({
   message,
   isPending,
   transformContent,
+  renderTaskExtras,
   onQuickAction,
   quickActionsDisabled,
   onRegenerateQuickActions,
@@ -558,6 +603,7 @@ function AssistantMessage({
   message?: ChatMessage;
   isPending: boolean;
   transformContent?: (content: string) => string;
+  renderTaskExtras?: (taskId: string) => ReactNode;
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled: boolean;
   onRegenerateQuickActions?: (message: ChatMessage) => void | Promise<unknown>;
@@ -638,6 +684,7 @@ function AssistantMessage({
           className="leading-relaxed"
         />
       ) : null}
+      {renderTaskExtras && taskId ? renderTaskExtras(taskId) : null}
       {message && (
         <>
           <AttachmentList
@@ -1002,6 +1049,7 @@ function FailureBubble({
     runtime_access_denied: t(($) => $.message_list.failure.runtime_access_denied),
     runtime_access_revoked: t(($) => $.message_list.failure.runtime_access_revoked),
     runtime_recovery: t(($) => $.message_list.failure.runtime_recovery),
+    daemon_shutdown: t(($) => $.message_list.failure.daemon_shutdown),
     manual: t(($) => $.message_list.failure.manual),
     cancelled: t(($) => $.message_list.failure.manual),
     skill_bundle_unavailable: t(($) => $.message_list.failure.skill_bundle_unavailable),

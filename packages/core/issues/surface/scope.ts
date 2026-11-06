@@ -16,6 +16,9 @@ export type IssueScope =
       actorId: string;
       relation: "assigned" | "created";
     }
+  // Planning pages: the workspace's issues narrowed to one epic or sprint.
+  | { type: "epic"; epicId: string }
+  | { type: "sprint"; sprintId: string }
   | { type: "team"; teamId: string };
 
 /**
@@ -75,6 +78,10 @@ export function issueScopeKey(scope: IssueScope): string {
         : `project:${scope.projectId}`;
     case "actor":
       return `actor:${scope.actorType}:${scope.actorId}:${scope.relation}`;
+    case "epic":
+      return `epic:${scope.epicId}`;
+    case "sprint":
+      return `sprint:${scope.sprintId}`;
     case "team":
       return `team:${scope.teamId}`;
   }

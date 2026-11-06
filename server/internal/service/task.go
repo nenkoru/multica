@@ -85,6 +85,9 @@ type TaskService struct {
 	// state for a self-hosted deployment with no MULTICA_LLM_* configuration.
 	// Wired in router.go from the same *llm.Client that backs chat auto-titling.
 	QuickActions ChatQuickActionsLLM
+	// AgentChatRate overrides the cap on agent-authored chat messages. The zero
+	// value reads MULTICA_AGENT_CHAT_RATE_* and falls back to the defaults.
+	AgentChatRate AgentChatRateLimit
 	// quickActionsInFlight (chat session id -> struct{}{}) and
 	// quickActionsRunning admit suggestion passes: one per session, and a
 	// process-wide ceiling. Both zero values are usable, so a TaskService built
@@ -1135,7 +1138,7 @@ func taskFailureReason(task db.AgentTaskQueue) string {
 
 func taskErrorType(reason string) string {
 	switch reason {
-	case "runtime_offline", "runtime_recovery":
+	case "runtime_offline", "runtime_recovery", "daemon_shutdown":
 		return "runtime"
 	case "timeout", "codex_semantic_inactivity":
 		return "timeout"
@@ -2430,6 +2433,17 @@ func (s *TaskService) SendDirectChatMessage(
 		}
 		out.Queued = queued
 
+		// An agent run sending through its task token writes the member-side
+		// row of somebody else's chat and spends a run of the session agent, so
+		// it is capped and the row is stamped with who really wrote it.
+		authorType, authorID := pgtype.Text{}, pgtype.UUID{}
+		if uploaderType == ChatAuthorTypeAgent && uploaderID.Valid {
+			if err := s.enforceAgentChatRate(ctx, qtx, uploaderID, session.ID); err != nil {
+				return err
+			}
+			authorType, authorID = pgtype.Text{String: ChatAuthorTypeAgent, Valid: true}, uploaderID
+		}
+
 		task, err := qtx.CreateChatTask(ctx, db.CreateChatTaskParams{
 			ID:                   dbid.NewV7(),
 			AgentID:              session.AgentID,
@@ -2492,6 +2506,8 @@ func (s *TaskService) SendDirectChatMessage(
 			Content:       content,
 			TaskID:        task.ID,
 			MessageKind:   pgtype.Text{String: protocol.ChatMessageKindMessage, Valid: true},
+			AuthorType:    authorType,
+			AuthorID:      authorID,
 		})
 		if err != nil {
 			return fmt.Errorf("create user chat message: %w", err)
@@ -2545,6 +2561,10 @@ func (s *TaskService) SendDirectChatMessage(
 		}
 		return nil
 	}); err != nil {
+		var limited *AgentChatRateLimitedError
+		if errors.As(err, &limited) {
+			return nil, err
+		}
 		slog.Error("direct chat send failed",
 			"chat_session_id", util.UUIDToString(session.ID),
 			"agent_id", util.UUIDToString(session.AgentID),
@@ -5451,9 +5471,15 @@ func (s *TaskService) FailTaskWithTransition(ctx context.Context, taskID pgtype.
 // never started, so there is nothing to be idempotent about, and every bundle
 // that did download is already cached on disk — a retry resumes from there
 // instead of re-fetching the whole set (MUL-5370).
+// daemon_shutdown is the graceful-stop twin of runtime_recovery (RUSL-2266):
+// the daemon's own root context interrupted the run (SIGTERM, deploy), not a
+// server cancel. It is resume-safe, so the retry continues the same session
+// in the same workdir, and it gets daemonShutdownMaxAttempts so a rolling
+// deploy that restarts the daemon twice does not drop the run.
 var retryableReasons = map[string]bool{
 	string(taskfailure.ReasonRuntimeOffline):         true,
 	string(taskfailure.ReasonRuntimeRecovery):        true,
+	string(taskfailure.ReasonDaemonShutdown):         true,
 	string(taskfailure.ReasonTimeout):                true,
 	"codex_semantic_inactivity":                      true,
 	string(taskfailure.ReasonAgentProviderNetwork):   true,
@@ -5472,10 +5498,17 @@ var retryableReasons = map[string]bool{
 // A blip that survives the immediate retry gets a short cooldown before the
 // final attempt instead of firing back-to-back. Every other retryable reason
 // keeps the task's generic max_attempts ceiling and retries immediately.
+//
+// daemon_shutdown (RUSL-2266) widens the ceiling the same way: first run plus
+// up to two retries, each immediate. The child is created 'queued' while the
+// stopping daemon no longer claims, so in practice it is picked up by the next
+// daemon start; a second restart during that retry (a deploy followed by a
+// quick fix-up restart) still leaves one more attempt.
 const (
 	runtimeOfflineRetryDeferral   = time.Second
 	providerNetworkMaxAttempts    = 3
 	providerNetworkFinalRetryWait = 5 * time.Second
+	daemonShutdownMaxAttempts     = 3
 )
 
 // retryAttemptCeiling reports how many attempts the auto-retry path allows for
@@ -5495,6 +5528,9 @@ func retryAttemptCeiling(reason string, taskMaxAttempts int32) int32 {
 	}
 	if reason == string(taskfailure.ReasonAgentProviderNetwork) && taskMaxAttempts < providerNetworkMaxAttempts {
 		return providerNetworkMaxAttempts
+	}
+	if reason == string(taskfailure.ReasonDaemonShutdown) && taskMaxAttempts < daemonShutdownMaxAttempts {
+		return daemonShutdownMaxAttempts
 	}
 	return taskMaxAttempts
 }
@@ -5529,6 +5565,9 @@ func resumeUnsafeFailureReason(reason string) bool {
 	// overflowed the reader will overflow on every future attempt too.
 	case "iteration_limit", "agent_fallback_message", "api_invalid_request", "codex_semantic_inactivity", "agent_error.context_overflow", "codex_resume_oversized", "opencode_clock_skew":
 		return true
+	// runtime_recovery and daemon_shutdown are deliberately absent: the daemon
+	// went away underneath a healthy conversation, so the retry must resume
+	// the same session in the same workdir (RUSL-2266).
 	default:
 		return false
 	}
@@ -5587,6 +5626,12 @@ func ResumeUnsafeFailure(failureReason, errorText string) bool {
 // it has its own recovery. Re-triaging reads the entry as it stands now, which
 // a human may have edited in the meantime, so replaying the failed attempt is
 // never what the workspace wants.
+//
+// Known limitation (RUSL-2266): these exclusions also apply to
+// daemon_shutdown and runtime_recovery. An autopilot run or a Triage run
+// interrupted by a daemon stop/restart is NOT retried automatically — the
+// autopilot's next scheduled fire (or a manual rerun) and Triage's own
+// re-triage are the recovery for those, by design.
 func retryEligible(failureReason string, t db.AgentTaskQueue) bool {
 	return retryableReasons[failureReason] &&
 		t.Attempt < retryAttemptCeiling(failureReason, t.MaxAttempts) &&
@@ -7969,6 +8014,8 @@ func IssueToMap(issue db.Issue, issuePrefix string) map[string]any {
 		// row with no live mark; IssueToMapResolved resolves it for the rest.
 		"duplicate_of":     nil,
 		"project_id":       util.UUIDToPtr(issue.ProjectID),
+		"epic_id":          util.UUIDToPtr(issue.EpicID),
+		"sprint_id":        util.UUIDToPtr(issue.SprintID),
 		"position":         issue.Position,
 		"stage":            util.Int4ToPtr(issue.Stage),
 		"start_date":       util.DateToPtr(issue.StartDate),

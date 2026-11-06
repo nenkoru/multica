@@ -773,3 +773,23 @@ func TestPriceForModelAliasDeepSeekV41Flash(t *testing.T) {
 		}
 	}
 }
+
+func TestUsageCostUSD(t *testing.T) {
+	cases := []struct {
+		name                        string
+		model                       string
+		ticks, in, out, read, write int64
+		want                        float64
+	}{
+		{name: "estimate", model: "claude-opus-5-5", in: 1_000_000, out: 100_000, read: 2_000_000, write: 200_000, want: 4 + 2 + 0.4 + 1},
+		{name: "reported plus uncosted", model: "grok-4.6", ticks: 3 * CostUSDTicksPerUSD, in: 1_000_000, want: 3 + 2},
+		{name: "unpriced model keeps its report", model: "grok-composer-1", ticks: CostUSDTicksPerUSD / 2, in: 1_000_000, want: 0.5},
+		{name: "unpriced, nothing reported", model: "mystery", in: 1_000_000},
+	}
+	for _, c := range cases {
+		got := UsageCostUSD(c.model, c.ticks, c.in, c.out, c.read, c.write)
+		if diff := got - c.want; diff > 1e-9 || diff < -1e-9 {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}

@@ -1,0 +1,44 @@
+{
+  "title": "流",
+  "multika": "Multika",
+  "open_chat": "打开对话",
+  "focus_on": "焦点：{{title}}",
+  "no_focus": "无焦点",
+  "clear_focus": "清除焦点",
+  "set_focus": "设为焦点",
+  "empty": "还没有流。",
+  "unavailable": "此服务器不支持流。",
+  "voice": {
+    "record": "语音输入",
+    "stop": "停止录音",
+    "transcribing": "正在转写…",
+    "unsupported": "此浏览器无法录音。",
+    "no_microphone": "无法访问麦克风。",
+    "empty": "未识别到内容。",
+    "failed": "无法转写录音。"
+  },
+  "screen": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "failed": "无法生成此界面。",
+    "action_failed": "操作未能完成。",
+    "stale": "此按钮已失效。",
+    "done": "已完成",
+    "already": "已执行",
+    "digest": "摘要",
+    "from_screen": "来自界面：{{text}}",
+    "evidence": "依据",
+    "goal": "目标",
+    "now": "当前",
+    "next": "下一步",
+    "state": {
+      "running": "进行中",
+      "waiting": "等待中",
+      "asking": "等你处理",
+      "budget": "预算",
+      "paused": "已暂停",
+      "broken": "故障",
+      "milestone": "里程碑"
+    }
+  }
+}

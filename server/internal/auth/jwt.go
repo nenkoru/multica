@@ -88,6 +88,32 @@ func GenerateAgentTaskToken() (string, error) {
 	return "mat_" + hex.EncodeToString(b), nil
 }
 
+// KioskTokenPrefix marks read-only kiosk tokens for the TV dashboard. They
+// authenticate only the /api/tv routes; every other route rejects them.
+const KioskTokenPrefix = "mkt_"
+
+// KioskCookieName carries a kiosk token after the one-time exchange at
+// POST /api/tv/session, so the token never has to stay in a URL.
+const KioskCookieName = "multica_tv"
+
+// GenerateKioskToken creates a new kiosk token: "mkt_" + 40 random hex chars.
+func GenerateKioskToken() (string, error) {
+	b := make([]byte, 20)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate kiosk token: %w", err)
+	}
+	return KioskTokenPrefix + hex.EncodeToString(b), nil
+}
+
+// GenerateKioskPairingCode creates a one-time TV pairing code: 32 hex chars.
+func GenerateKioskPairingCode() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate kiosk pairing code: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
 // HashToken returns the hex-encoded SHA-256 hash of a token string.
 func HashToken(token string) string {
 	h := sha256.Sum256([]byte(token))

@@ -820,6 +820,7 @@
       "runtime_reconnect_timeout": "デーモンが時間内に再接続しませんでした",
       "runtime_recovery": "デーモンが再起動しました",
       "runtime_access_revoked": "ランタイムへのアクセスが取り消されました",
+      "daemon_shutdown": "デーモンが停止しました",
       "timeout": "実行がタイムアウトしました",
       "iteration_limit": "反復回数の上限に達しました",
       "agent_blocked": "人による入力を待機中",

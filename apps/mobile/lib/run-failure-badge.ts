@@ -24,6 +24,7 @@ const FAILURE_REASON_BADGE: Record<string, string> = {
   runtime_offline: "Runtime offline",
   runtime_access_revoked: "Access revoked",
   runtime_recovery: "Runtime recovery",
+  daemon_shutdown: "Daemon stopped",
   timeout: "Timeout",
   iteration_limit: "Iteration limit",
   agent_blocked: "Needs input",

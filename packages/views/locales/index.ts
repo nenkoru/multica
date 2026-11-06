@@ -16,6 +16,7 @@ import enWorkspace from "./en/workspace.json";
 import enProjects from "./en/projects.json";
 import enAutopilots from "./en/autopilots.json";
 import enSkills from "./en/skills.json";
+import enStreams from "./en/streams.json";
 import enChat from "./en/chat.json";
 import enModals from "./en/modals.json";
 import enRuntimes from "./en/runtimes.json";
@@ -24,6 +25,12 @@ import enUsage from "./en/usage.json";
 import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
 import enBilling from "./en/billing.json";
+import enEpics from "./en/epics.json";
+import enSprints from "./en/sprints.json";
+import enPlanning from "./en/planning.json";
+import frEpics from "./fr/epics.json";
+import frSprints from "./fr/sprints.json";
+import frPlanning from "./fr/planning.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
 import zhHansSettings from "./zh-Hans/settings.json";
@@ -41,6 +48,7 @@ import zhHansWorkspace from "./zh-Hans/workspace.json";
 import zhHansProjects from "./zh-Hans/projects.json";
 import zhHansAutopilots from "./zh-Hans/autopilots.json";
 import zhHansSkills from "./zh-Hans/skills.json";
+import zhHansStreams from "./zh-Hans/streams.json";
 import zhHansChat from "./zh-Hans/chat.json";
 import zhHansModals from "./zh-Hans/modals.json";
 import zhHansRuntimes from "./zh-Hans/runtimes.json";
@@ -66,6 +74,7 @@ import zhHantWorkspace from "./zh-Hant/workspace.json";
 import zhHantProjects from "./zh-Hant/projects.json";
 import zhHantAutopilots from "./zh-Hant/autopilots.json";
 import zhHantSkills from "./zh-Hant/skills.json";
+import zhHantStreams from "./zh-Hant/streams.json";
 import zhHantChat from "./zh-Hant/chat.json";
 import zhHantModals from "./zh-Hant/modals.json";
 import zhHantRuntimes from "./zh-Hant/runtimes.json";
@@ -74,6 +83,12 @@ import zhHantUsage from "./zh-Hant/usage.json";
 import zhHantUi from "./zh-Hant/ui.json";
 import zhHantSquads from "./zh-Hant/squads.json";
 import zhHantBilling from "./zh-Hant/billing.json";
+import zhHantEpics from "./zh-Hant/epics.json";
+import zhHantSprints from "./zh-Hant/sprints.json";
+import zhHantPlanning from "./zh-Hant/planning.json";
+import zhHansEpics from "./zh-Hans/epics.json";
+import zhHansSprints from "./zh-Hans/sprints.json";
+import zhHansPlanning from "./zh-Hans/planning.json";
 import koCommon from "./ko/common.json";
 import koAuth from "./ko/auth.json";
 import koSettings from "./ko/settings.json";
@@ -91,6 +106,7 @@ import koWorkspace from "./ko/workspace.json";
 import koProjects from "./ko/projects.json";
 import koAutopilots from "./ko/autopilots.json";
 import koSkills from "./ko/skills.json";
+import koStreams from "./ko/streams.json";
 import koChat from "./ko/chat.json";
 import koModals from "./ko/modals.json";
 import koRuntimes from "./ko/runtimes.json";
@@ -99,6 +115,9 @@ import koUsage from "./ko/usage.json";
 import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
 import koBilling from "./ko/billing.json";
+import koEpics from "./ko/epics.json";
+import koSprints from "./ko/sprints.json";
+import koPlanning from "./ko/planning.json";
 import jaCommon from "./ja/common.json";
 import jaAuth from "./ja/auth.json";
 import jaSettings from "./ja/settings.json";
@@ -116,6 +135,7 @@ import jaWorkspace from "./ja/workspace.json";
 import jaProjects from "./ja/projects.json";
 import jaAutopilots from "./ja/autopilots.json";
 import jaSkills from "./ja/skills.json";
+import jaStreams from "./ja/streams.json";
 import jaChat from "./ja/chat.json";
 import jaModals from "./ja/modals.json";
 import jaRuntimes from "./ja/runtimes.json";
@@ -141,6 +161,7 @@ import frWorkspace from "./fr/workspace.json";
 import frProjects from "./fr/projects.json";
 import frAutopilots from "./fr/autopilots.json";
 import frSkills from "./fr/skills.json";
+import frStreams from "./fr/streams.json";
 import frChat from "./fr/chat.json";
 import frModals from "./fr/modals.json";
 import frRuntimes from "./fr/runtimes.json";
@@ -149,6 +170,9 @@ import frUsage from "./fr/usage.json";
 import frUi from "./fr/ui.json";
 import frSquads from "./fr/squads.json";
 import frBilling from "./fr/billing.json";
+import jaEpics from "./ja/epics.json";
+import jaSprints from "./ja/sprints.json";
+import jaPlanning from "./ja/planning.json";
 
 // Single source of truth for the resource bundle. Both apps (web layout +
 // desktop App.tsx) import from here so adding a locale or namespace happens
@@ -172,6 +196,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     projects: enProjects,
     autopilots: enAutopilots,
     skills: enSkills,
+    streams: enStreams,
     chat: enChat,
     modals: enModals,
     runtimes: enRuntimes,
@@ -180,6 +205,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: enUi,
     squads: enSquads,
     billing: enBilling,
+    epics: enEpics,
+    sprints: enSprints,
+    planning: enPlanning,
   },
   "zh-Hans": {
     common: zhHansCommon,
@@ -199,6 +227,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     projects: zhHansProjects,
     autopilots: zhHansAutopilots,
     skills: zhHansSkills,
+    streams: zhHansStreams,
     chat: zhHansChat,
     modals: zhHansModals,
     runtimes: zhHansRuntimes,
@@ -207,6 +236,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHansUi,
     squads: zhHansSquads,
     billing: zhHansBilling,
+    epics: zhHansEpics,
+    sprints: zhHansSprints,
+    planning: zhHansPlanning,
   },
   "zh-Hant": {
     common: zhHantCommon,
@@ -226,6 +258,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     projects: zhHantProjects,
     autopilots: zhHantAutopilots,
     skills: zhHantSkills,
+    streams: zhHantStreams,
     chat: zhHantChat,
     modals: zhHantModals,
     runtimes: zhHantRuntimes,
@@ -234,6 +267,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHantUi,
     squads: zhHantSquads,
     billing: zhHantBilling,
+    epics: zhHantEpics,
+    sprints: zhHantSprints,
+    planning: zhHantPlanning,
   },
   ko: {
     common: koCommon,
@@ -253,6 +289,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     projects: koProjects,
     autopilots: koAutopilots,
     skills: koSkills,
+    streams: koStreams,
     chat: koChat,
     modals: koModals,
     runtimes: koRuntimes,
@@ -261,6 +298,9 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: koUi,
     squads: koSquads,
     billing: koBilling,
+    epics: koEpics,
+    sprints: koSprints,
+    planning: koPlanning,
   },
   ja: {
     common: jaCommon,
@@ -280,6 +320,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     projects: jaProjects,
     autopilots: jaAutopilots,
     skills: jaSkills,
+    streams: jaStreams,
     chat: jaChat,
     modals: jaModals,
     runtimes: jaRuntimes,
@@ -288,8 +329,14 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: jaUi,
     squads: jaSquads,
     billing: jaBilling,
+    epics: jaEpics,
+    sprints: jaSprints,
+    planning: jaPlanning,
   },
   fr: {
+    epics: frEpics,
+    sprints: frSprints,
+    planning: frPlanning,
     common: frCommon,
     auth: frAuth,
     settings: frSettings,
@@ -307,6 +354,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     projects: frProjects,
     autopilots: frAutopilots,
     skills: frSkills,
+    streams: frStreams,
     chat: frChat,
     modals: frModals,
     runtimes: frRuntimes,

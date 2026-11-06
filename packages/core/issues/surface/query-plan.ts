@@ -97,6 +97,18 @@ export function buildIssueSurfaceQueryPlan(
               }
             : {},
       };
+    case "epic":
+      return {
+        scopeKey,
+        queryFilter: { epic_id: scope.epicId },
+        createDefaults: { epic_id: scope.epicId },
+      };
+    case "sprint":
+      return {
+        scopeKey,
+        queryFilter: { sprint_id: scope.sprintId },
+        createDefaults: { sprint_id: scope.sprintId },
+      };
     case "team":
       throw new UnsupportedIssueScopeError(scope, "issue surface query plan");
   }

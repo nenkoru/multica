@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { usePlanningEnabled } from "@multica/core/epics/config";
 import type { CommandBarContext } from "@multica/core/command-bar";
 import { WORKSPACE_PAGES, type WorkspacePageKey } from "@multica/core/paths";
 import { partitionAggregatedSearchResults } from "@multica/core/search/cancelled-rank";
@@ -37,6 +38,8 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   chat: ["chat", "messages", "conversation", "聊天", "消息", "对话"],
   myIssues: ["my", "issues", "assigned", "mine", "我的", "任务"],
   issues: ["issues", "tasks", "bugs", "任务"],
+  epics: ["epic", "epics"],
+  sprints: ["sprint", "sprints"],
   projects: ["projects", "kanban", "项目"],
   autopilots: ["autopilot", "autopilots", "automation", "schedule", "cron", "webhook", "自动化", "定时"],
   agents: ["agents", "bots", "ai", "智能体"],
@@ -44,6 +47,7 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   usage: ["usage", "analytics", "stats", "metrics", "统计", "分析", "用量"],
   runtimes: ["runtimes", "environments", "machines", "运行时"],
   skills: ["skills", "library", "技能"],
+  streams: ["streams", "fabrika", "multika", "pulse", "потоки", "фабрика", "мультика"],
   settings: ["settings", "config", "preferences", "设置", "配置"],
 };
 
@@ -153,14 +157,15 @@ export function useRootModel(
   const delegateCandidates = useDelegateCandidates(active);
   const attachments = useDelegateAttachments(contexts);
 
+  const planningEnabled = usePlanningEnabled();
   const navPages = useMemo<NavPage[]>(
     () =>
-      NAV_PAGE_KEYS.map((key) => ({
+      NAV_PAGE_KEYS.filter((key) => planningEnabled || (key !== "epics" && key !== "sprints")).map((key) => ({
         key,
         label: tNav(($) => $.nav[WORKSPACE_PAGES[key].navKey]),
         keywords: PAGE_KEYWORDS[key],
       })),
-    [tNav],
+    [tNav, planningEnabled],
   );
 
   return useMemo<RootModel>(() => {

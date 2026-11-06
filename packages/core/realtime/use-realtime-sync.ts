@@ -202,6 +202,9 @@ export function applyChatMessageToCache(
       content: payload.content ?? "",
       task_id: payload.task_id ?? null,
       created_at: payload.created_at ?? new Date().toISOString(),
+      ...(payload.author_type && payload.author_id
+        ? { author_type: payload.author_type, author_id: payload.author_id }
+        : {}),
     });
   }
   invalidateChatMessageQueries(qc, sessionId);
@@ -825,6 +828,14 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) });
       },
+      epic: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) { qc.invalidateQueries({ queryKey: ["epics", wsId] }); qc.invalidateQueries({ queryKey: issueKeys.all(wsId) }); }
+      },
+      sprint: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) { qc.invalidateQueries({ queryKey: ["sprints", wsId] }); qc.invalidateQueries({ queryKey: issueKeys.all(wsId) }); }
+      },
       project: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
@@ -1069,6 +1080,10 @@ export function useRealtimeSync(
     ]);
 
     const unsubAny = ws.onAny((msg) => {
+      if (msg.type === "issue:created" || msg.type === "issue:updated" || msg.type === "issue:deleted") {
+        const wsId = getCurrentWsId();
+        if (wsId) { qc.invalidateQueries({ queryKey: ["epics", wsId] }); qc.invalidateQueries({ queryKey: ["sprints", wsId] }); }
+      }
       if (specificEvents.has(msg.type)) return;
       const prefix = msg.type.split(":")[0] ?? "";
       if (prefix === "agent" || (prefix === "task" && msg.type !== "task:progress")) {
@@ -1567,6 +1582,9 @@ export function useRealtimeSync(
       // Write the user turn before invalidating so the prompt does not depend
       // on the refetch surviving (MUL-5711) — same shape as chat:done.
       applyChatMessageToCache(qc, payload);
+      // An assistant row arriving here was not produced by a turn (chat:done
+      // carries those): it is a proactive agent post, which changes unread.
+      if (payload.role === "assistant") invalidateSessionLists();
       // NOTE: intentionally does NOT touch the pending aggregate. chat:message
       // fires per streamed message with no status; the aggregate is maintained
       // by the task lifecycle handlers below (MUL-4159).

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/multica-ai/multica/server/internal/integrations/channel"
 )
 
@@ -33,6 +35,10 @@ type telegramChannel struct {
 	// stored (see ChannelDeps.AcceptsMedia). Without it media keeps getting
 	// the unsupported notice instead of a placeholder nothing stands behind.
 	acceptsMedia bool
+	// callbacks handles inline button presses (see ChannelDeps.Callbacks).
+	// Nil keeps callback queries out of allowed_updates entirely.
+	callbacks      CallbackFunc
+	installationID pgtype.UUID
 }
 
 // pollRetryDelay spaces retries after a transient getUpdates failure inside
@@ -73,7 +79,7 @@ func (c *telegramChannel) Connect(ctx context.Context) error {
 	// relies on.
 	var offset int64
 	for {
-		updates, err := c.api.GetUpdates(ctx, offset)
+		updates, err := c.api.getUpdates(ctx, offset, c.callbacks != nil)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -122,6 +128,10 @@ func (c *telegramChannel) Connect(ctx context.Context) error {
 // location, …), they get a courteous notice in a private chat or when
 // explicitly addressed to the bot in a group.
 func (c *telegramChannel) dispatch(ctx context.Context, u Update) error {
+	if u.CallbackQuery != nil {
+		c.handleCallback(ctx, u.CallbackQuery)
+		return nil
+	}
 	msg, ok := inboundFromUpdateWithContext(u, c.botID, c.botUsername, c.recent)
 	if !ok {
 		return nil
@@ -255,6 +265,10 @@ type ChannelDeps struct {
 	// sets it from the same condition, so the loop never accepts a photo the
 	// pipeline cannot keep.
 	AcceptsMedia bool
+	// Callbacks handles inline keyboard presses. When set, the same polling
+	// loop also asks for callback_query updates; nil leaves the loop exactly
+	// as it was (messages only).
+	Callbacks CallbackFunc
 }
 
 // RegisterTelegram registers the per-installation Telegram Factory so the
@@ -287,13 +301,15 @@ func newTelegramFactory(deps ChannelDeps) channel.Factory {
 			return nil, fmt.Errorf("telegram: installation app_id is not a bot id: %w", err)
 		}
 		return &telegramChannel{
-			botID:        botID,
-			botUsername:  ic.BotUsername,
-			api:          newBotAPI(deps.APIBase, token, deps.HTTPClient),
-			handler:      cfg.Handler,
-			logger:       logger,
-			recent:       newRecentContextBuffer(deps.RecentContextSize),
-			acceptsMedia: deps.AcceptsMedia,
+			botID:          botID,
+			botUsername:    ic.BotUsername,
+			api:            newBotAPI(deps.APIBase, token, deps.HTTPClient),
+			handler:        cfg.Handler,
+			logger:         logger,
+			recent:         newRecentContextBuffer(deps.RecentContextSize),
+			acceptsMedia:   deps.AcceptsMedia,
+			callbacks:      deps.Callbacks,
+			installationID: cfg.ID,
 		}, nil
 	}
 }

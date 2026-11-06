@@ -1,0 +1,44 @@
+{
+  "title": "Streams",
+  "multika": "Multika",
+  "open_chat": "Open chat",
+  "focus_on": "Focus: {{title}}",
+  "no_focus": "No focus",
+  "clear_focus": "Clear focus",
+  "set_focus": "Focus",
+  "empty": "No streams yet.",
+  "unavailable": "Streams are not available on this server.",
+  "voice": {
+    "record": "Dictate",
+    "stop": "Stop recording",
+    "transcribing": "Transcribing…",
+    "unsupported": "This browser cannot record audio.",
+    "no_microphone": "No access to the microphone.",
+    "empty": "Nothing was recognized.",
+    "failed": "Could not transcribe the recording."
+  },
+  "screen": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "failed": "This screen could not be built.",
+    "action_failed": "The action did not go through.",
+    "stale": "This button is no longer active.",
+    "done": "Done",
+    "already": "Already done",
+    "digest": "Digest",
+    "from_screen": "From the screen: {{text}}",
+    "evidence": "Evidence",
+    "goal": "Goal",
+    "now": "Now",
+    "next": "Next",
+    "state": {
+      "running": "running",
+      "waiting": "waiting",
+      "asking": "needs you",
+      "budget": "budget",
+      "paused": "paused",
+      "broken": "broken",
+      "milestone": "milestone"
+    }
+  }
+}

@@ -867,6 +867,7 @@ export const EMPTY_ISSUE_PROPERTIES_RESPONSE: IssuePropertiesResponse = {
 };
 
 export interface AppConfigResponse {
+  planning_enabled?: boolean;
   cdn_domain: string;
   attachment_public_url?: string;
   // True when the CDN domain serves private content via time-bounded signed
@@ -974,6 +975,10 @@ export const ChatMessageSchema = z.object({
   // Optional additive data degrades independently: a malformed suggestion
   // must not hide the assistant reply that contains it.
   quick_actions: z.array(ChatQuickActionSchema).catch([]).optional().default([]),
+  // Additive attribution: absent on older servers, and a malformed value must
+  // cost only the label, never the message.
+  author_type: z.string().nullable().catch(null).optional(),
+  author_id: z.string().nullable().catch(null).optional(),
 }).loose();
 
 export const ChatMessageListSchema = z.array(ChatMessageSchema).default([]);
@@ -1149,6 +1154,7 @@ export const EMPTY_REFRESH_SESSION_RESPONSE: RefreshSessionResponse = {
 };
 
 export const AppConfigSchema = z.object({
+ planning_enabled: z.boolean().catch(false).default(false),
   cdn_domain: z.string().default(""),
   attachment_public_url: OptionalStringSchema,
   cdn_signed: BooleanWithDefaultSchema(false),
@@ -1461,6 +1467,8 @@ export const IssueSchema = z.object({
     .optional()
     .catch(undefined),
   project_id: z.string().nullable(),
+  epic_id: z.string().nullable().default(null),
+  sprint_id: z.string().nullable().default(null),
   position: z.number(),
   // Older backends predate `stage`; default to null so a missing field parses
   // cleanly into the non-optional Issue.stage (number | null).

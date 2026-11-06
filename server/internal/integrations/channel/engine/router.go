@@ -41,6 +41,7 @@ type Router struct {
 	tasks     TaskEnqueuer
 	reader    SessionReader
 	lifecycle ChannelChatLifecycle
+	denyNew   func(inst ResolvedInstallation) bool
 
 	batcher *pendingBatcher
 
@@ -78,6 +79,10 @@ type RouterConfig struct {
 	MediaConcurrency int
 	Logger           *slog.Logger
 	Lifecycle        ChannelChatLifecycle
+	// DenyNewChat (Fabrika fork) keeps one lifelong chat for an installation:
+	// /new with a body lands in the current chat, a bare /new gets
+	// OutcomeNewChatDisabled. Nil allows /new everywhere.
+	DenyNewChat func(inst ResolvedInstallation) bool
 }
 
 // NewRouter builds a Router around the shared (platform-agnostic) services:
@@ -104,6 +109,7 @@ func NewRouter(issues IssueCreator, tasks TaskEnqueuer, reader SessionReader, cf
 		tasks:        tasks,
 		reader:       reader,
 		lifecycle:    cfg.Lifecycle,
+		denyNew:      cfg.DenyNewChat,
 		replyTimeout: cfg.ReplyTimeout,
 		mediaTimeout: cfg.MediaTimeout,
 		mediaCtx:     mediaCtx,
@@ -389,6 +395,13 @@ func (r *Router) processClaimed(ctx context.Context, set ResolverSet, msg channe
 			InstallationID: inst.ID,
 			Sender:         msg.Source.SenderID,
 		}, finalizeMark, nil
+	}
+
+	if startChat && r.denyNew != nil && r.denyNew(inst) {
+		if strings.TrimSpace(msg.Text) == "" && !(set.Media != nil && set.Media.HasMedia(msg)) {
+			return Result{Outcome: OutcomeNewChatDisabled, InstallationID: inst.ID, Sender: msg.Source.SenderID}, finalizeMark, nil
+		}
+		startChat = false
 	}
 
 	// 5-6. Resolve the current Chat route, then either append normally or

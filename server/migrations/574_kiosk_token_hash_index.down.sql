@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS idx_kiosk_token_hash;

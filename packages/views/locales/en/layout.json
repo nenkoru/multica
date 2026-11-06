@@ -5,12 +5,15 @@
     "my_issues": "My Issues",
     "issues": "Issues",
     "projects": "Projects",
+    "epics": "Epics",
+    "sprints": "Sprints",
     "autopilots": "Autopilot",
     "agents": "Agents",
     "squads": "Squads",
     "usage": "Analytics",
     "runtimes": "Runtimes",
     "skills": "Skills",
+    "streams": "Streams",
     "settings": "Settings"
   },
   "tab": {

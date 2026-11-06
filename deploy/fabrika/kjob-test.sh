@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Fabrika: backend checks in one pod (kjob), same Postgres as upstream CI.
+#   kjob run --cpu 6 --mem 8Gi --image pgvector/pgvector:pg17 --timeout 90m -- bash deploy/fabrika/kjob-test.sh
+# Extra `go test` packages can be passed as arguments.
+set -euo pipefail
+
+export POSTGRES_DB=multica POSTGRES_USER=multica POSTGRES_PASSWORD=multica
+export DATABASE_URL="postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+export GOFLAGS=-count=1 GOTOOLCHAIN=auto DEBIAN_FRONTEND=noninteractive
+
+apt-get update -qq >/dev/null && apt-get install -y -qq curl ca-certificates git gcc >/dev/null
+docker-entrypoint.sh postgres >/tmp/pg.log 2>&1 &
+curl -fsSL https://go.dev/dl/go1.26.9.linux-amd64.tar.gz | tar -C /usr/local -xz
+export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
+for _ in $(seq 60); do pg_isready -q -h localhost -U multica -d multica && break; sleep 2; done
+pg_isready -h localhost -U multica -d multica
+
+cd server
+if [ "${FABRIKA_FIX:-}" = 1 ]; then
+  # Dev mode: regenerate sqlc and gofmt in place; fetch the tree with --artifact.
+  echo "== sqlc + gofmt -w"; go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate -f sqlc.streams.yaml && gofmt -w internal/streams cmd/server internal/integrations/telegram internal/integrations/channel/engine internal/handler/daemon.go internal/handler/handler.go
+fi
+echo "== gofmt"; test -z "$(gofmt -l internal/streams cmd/server internal/integrations/telegram internal/integrations/channel/engine internal/handler/daemon.go internal/handler/handler.go)" || { gofmt -l internal/streams cmd/server internal/integrations/telegram internal/integrations/channel/engine internal/handler/daemon.go internal/handler/handler.go; exit 1; }
+echo "== migrate up"; go run ./cmd/migrate up 2>&1 | tail -3
+echo "== migrate down/up 9005..9000"; for f in 9005_fabrika_ui_block_session_idx.down 9004_fabrika_genui.down 9003_fabrika_interview.down 9002_fabrika_multika.down 9001_fabrika_wait_kind_issue.down 9000_fabrika_streams.down 9000_fabrika_streams.up 9001_fabrika_wait_kind_issue.up 9002_fabrika_multika.up 9003_fabrika_interview.up 9004_fabrika_genui.up 9005_fabrika_ui_block_session_idx.up; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f migrations/$f.sql || exit 1; done && echo ok
+echo "== vet"; go vet ./internal/streams/... ./cmd/server/ ./internal/integrations/telegram/ ./internal/integrations/channel/engine/ ./internal/handler/
+echo "== build"; go build -o /tmp/server ./cmd/server && echo ok
+echo "== test"; set +e; go test ./internal/streams/... ./internal/migrations/... "$@" > /tmp/test.log 2>&1; rc=$?; grep -E "^(--- |ok |FAIL)" /tmp/test.log | tail -60; echo "== failures"; grep -n "_test.go:[0-9]*:" /tmp/test.log | head -40; exit $rc

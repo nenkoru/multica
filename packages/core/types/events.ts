@@ -58,12 +58,16 @@ export type WSEventType =
   | "issue_reaction:removed"
   | "chat:message"
   | "chat:done"
+  | "chat:ui_line"
+  | "chat:ui_final"
   | "chat:quick_actions"
   | "chat:cancel_finalized"
   | "chat:session_created"
   | "chat:session_read"
   | "chat:session_deleted"
   | "chat:session_updated"
+  | "epic:created" | "epic:updated" | "epic:deleted"
+  | "sprint:created" | "sprint:updated" | "sprint:deleted"
   | "project:created"
   | "project:updated"
   | "project:deleted"
@@ -423,6 +427,9 @@ export interface ChatMessageEventPayload {
   content: string;
   task_id?: string;
   created_at: string;
+  /** Set when an agent run wrote the row itself; see ChatMessage.author_type. */
+  author_type?: string;
+  author_id?: string;
 }
 
 export interface ChatDonePayload {
@@ -623,12 +630,17 @@ export interface WSEventPayloadMap {
   "activity:created": ActivityCreatedPayload;
   "chat:message": ChatMessageEventPayload;
   "chat:done": ChatDonePayload;
+  // Fabrika screens: shapes live in streams/schemas (parsed on receipt).
+  "chat:ui_line": unknown;
+  "chat:ui_final": unknown;
   "chat:quick_actions": ChatQuickActionsPayload;
   "chat:cancel_finalized": ChatCancelFinalizedPayload;
   "chat:session_created": ChatSessionCreatedPayload;
   "chat:session_read": ChatSessionReadPayload;
   "chat:session_deleted": ChatSessionDeletedPayload;
   "chat:session_updated": unknown;
+  "epic:created": unknown; "epic:updated": unknown; "epic:deleted": unknown;
+  "sprint:created": unknown; "sprint:updated": unknown; "sprint:deleted": unknown;
   "project:created": ProjectCreatedPayload;
   "project:updated": ProjectUpdatedPayload;
   "project:deleted": ProjectDeletedPayload;

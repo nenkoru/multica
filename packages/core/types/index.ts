@@ -9,6 +9,24 @@ export type {
   CreateIssueStatusRequest,
   UpdateIssueStatusRequest,
 } from "./issue-status";
+
+export type { Epic, EpicStatus } from "./epic";
+export type { Sprint, SprintStatus } from "./sprint";
+export type {
+  CompleteSprintRequest,
+  CompleteSprintResult,
+  EpicOverview,
+  PlanningActivityEntry,
+  PlanningAssigneeBreakdown,
+  PlanningAttentionIssue,
+  PlanningBucket,
+  PlanningBurndown,
+  PlanningEpicBreakdown,
+  PlanningProgress,
+  PlanningSprintBreakdown,
+  SprintOpenIssuesMode,
+  SprintOverview,
+} from "./planning";
 export type {
   IssueWorkflow,
   IssueWorkflowHandler,

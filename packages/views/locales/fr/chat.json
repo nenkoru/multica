@@ -54,6 +54,8 @@
     "failed_after": "Échec après {{elapsed}}",
     "finished_in": "Terminé en {{elapsed}}",
     "no_response": "L'agent a terminé ce tour sans réponse textuelle.",
+    "sent_by_agent": "Envoyé par {{agent}}",
+    "sent_by_unknown_agent": "Envoyé par un agent",
     "failure": {
       "agent_error": "L'agent a rencontré une erreur et n'a pas pu terminer sa réponse. Veuillez réessayer.",
       "timeout": "L'agent a mis trop de temps et s'est arrêté avant de terminer. Réessayez, ou découpez votre demande en étapes plus courtes.",
@@ -62,6 +64,7 @@
       "runtime_access_denied": "Cet agent ne peut pas s'exécuter sur son runtime privé et n'a donc pas pu répondre. Passez le runtime en public, ou réassociez/copiez l'agent vers un runtime que son propriétaire peut utiliser.",
       "runtime_recovery": "L'agent a redémarré avant d'avoir pu terminer. Veuillez réessayer.",
       "runtime_access_revoked": "L'accès au runtime a été révoqué. Associez l'agent à un runtime accessible avant de lancer une nouvelle exécution.",
+      "daemon_shutdown": "Le daemon a été arrêté avant que l'agent ait pu terminer. Veuillez réessayer.",
       "manual": "Cette réponse a été annulée.",
       "skill_bundle_unavailable": "Les skills de l'agent n'ont pas pu être téléchargés : il n'a donc jamais démarré. C'est généralement un problème de connexion — veuillez réessayer.",
       "runtime_cli_timeout": "L'outil OpenClaw local n'a pas répondu à temps, l'exécution n'a donc jamais démarré. C'est un délai de démarrage local, pas un problème de réseau — réessayer ne servira à rien tant que l'outil ne démarrera pas plus vite ou que le délai ne sera pas allongé (MULTICA_OPENCLAW_CLI_TIMEOUT).",

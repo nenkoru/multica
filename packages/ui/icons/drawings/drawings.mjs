@@ -49,6 +49,8 @@ export const DRAWINGS = {
   BookOpenText: `<path class="b" d="${rect(4, 2.75, 16, 18.5, 5)}"/>
     <path class="k" d="M8 2.75v18.5"/>
     <path class="k" ${S} d="M14.5 7.25c.3 1.65 1.35 2.7 3 3-1.65.3-2.7 1.35-3 3-.3-1.65-1.35-2.7-3-3 1.65-.3 2.7-1.35 3-3Z"/>`,
+  Mic: `<path class="b" d="${rect(8.5, 2.75, 7, 11.75, 3.5)}"/>
+    <path d="M5.5 11.25a6.5 6.5 0 0 0 13 0M12 17.75v3.5M8.75 21.25h6.5"/>`,
   Monitor: `<path class="b" d="${rect(2.5, 3.5, 19, 13.5, 5)}"/><path d="M8.5 20.75h7"/>
     <path class="k" d="M7.25 8.5L9.75 10.5 7.25 12.5M12.5 12.75h4"/>`,
   BarChart3: `<path class="b" stroke="none" d="M3.25 17.25 8.1 11.8c.4-.45 1.05-.5 1.5-.12l2.9 2.44c.45.38 1.1.33 1.5-.1l6.75-7.27V20.5H3.25Z"/>
@@ -395,6 +397,15 @@ Object.assign(DRAWINGS, {
   Lightbulb: `<path class="b" d="M9 17.25h6v-1.5c0-1 .5-1.9 1.25-2.6a6.25 6.25 0 1 0-8.5 0c.75.7 1.25 1.6 1.25 2.6Z"/><path d="M9.75 21h4.5"/>`,
   Hourglass: `<path d="M5.5 2.75h13M5.5 21.25h13"/><path class="b" d="M7 2.75v2.6c0 1.45.65 2.8 1.8 3.7L12 12l3.2-2.95A4.75 4.75 0 0 0 17 5.35v-2.6Z"/>
     <path class="b" d="M7 21.25v-2.6c0-1.45.65-2.8 1.8-3.7L12 12l3.2 2.95A4.75 4.75 0 0 1 17 18.65v2.6Z"/>`,
+  Diamond: `<path class="b" d="${shape([[12, 2.75, 1.5], [21.25, 12, 1.5], [12, 21.25, 1.5], [2.75, 12, 1.5]])}"/>`,
+  Timer: `<circle class="b" cx="12" cy="13.5" r="7.75"/><path class="k" d="M12 9.5v4l2.25 1.5"/><path d="M9.5 2.75h5M12 2.75V5.75"/>`,
+  CircleX: `<circle class="b" cx="12" cy="12" r="9.25"/><path class="k" d="M9 9l6 6M15 9l-6 6"/>`,
+  OctagonAlert: `<path class="b" d="M8.25 2.75h7.5l5.5 5.5v7.5l-5.5 5.5h-7.5l-5.5-5.5v-7.5Z"/><path class="k" d="M12 7.75v5M12 16.25h.01"/>`,
+  OctagonPause: `<path class="b" d="M8.25 2.75h7.5l5.5 5.5v7.5l-5.5 5.5h-7.5l-5.5-5.5v-7.5Z"/><path class="k" d="M10 9v6M14 9v6"/>`,
+  Hand: `<path class="b" d="M6 13.5V9a1.25 1.25 0 0 1 2.5 0V5.5a1.25 1.25 0 0 1 2.5 0V5a1.25 1.25 0 0 1 2.5 0v.5a1.25 1.25 0 0 1 2.5 0V14c0 4-2.5 7-6.25 7-2.5 0-4-1.25-5.25-3.5l-2-3.5a1.25 1.25 0 0 1 2.25-1Z"/>`,
+  Focus: `<path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><circle class="b" cx="12" cy="12" r="3"/>`,
+  Volume2: `<path class="b" d="M11 5 6.5 9H3.25v6H6.5L11 19Z"/><path d="M15.5 9.25a4 4 0 0 1 0 5.5M18.5 6.5a8 8 0 0 1 0 11"/>`,
+  VolumeX: `<path class="b" d="M11 5 6.5 9H3.25v6H6.5L11 19Z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>`,
   AlarmClock: `<circle class="b" cx="12" cy="13" r="7.75"/><path class="k" d="M12 9.5V13l2.25 1.5"/><path d="M3 5.75 5.75 3M21 5.75 18.25 3"/>`,
   GraduationCap: `<path class="b" d="${shape([[12, 4, 1.5], [22, 9, 1.5], [12, 14, 1.5], [2, 9, 1.5]])}"/>
     <path d="M6 11.25v4.25c0 1.65 2.7 3.25 6 3.25s6-1.6 6-3.25v-4.25M22 9v5.5"/>`,

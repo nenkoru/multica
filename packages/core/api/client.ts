@@ -1,8 +1,29 @@
+import {
+  EpicSchema, SprintSchema, EpicListSchema, SprintListSchema, EMPTY_EPIC, EMPTY_SPRINT,
+  EpicOverviewSchema, SprintOverviewSchema, EMPTY_EPIC_OVERVIEW, EMPTY_SPRINT_OVERVIEW,
+  CompleteSprintResultSchema, EMPTY_COMPLETE_SPRINT_RESULT,
+} from "./planning-schemas";
 import type { ZodType } from "zod";
 import { AgentRuntimeSchema, EMPTY_RUNTIME } from "../runtimes/schema";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
 import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSchema, PausedWakeupSchema, SystemWakeupSchema, WakeupRunSchema, WorkspaceSystemWakeupSchema } from "./schemas";
+import {
+  ListStreamsResponseSchema,
+  MultikaSchema,
+  EMPTY_LIST_STREAMS_RESPONSE,
+  EMPTY_MULTIKA,
+  TranscriptionSchema,
+  EMPTY_TRANSCRIPTION,
+  ListScreenBlocksResponseSchema,
+  EMPTY_LIST_SCREEN_BLOCKS,
+  ScreenPressResultSchema,
+  FAILED_SCREEN_PRESS,
+  type ListStreamsResponse,
+  type Multika,
+  type ListScreenBlocksResponse,
+  type ScreenPressResult,
+} from "../streams/schemas";
 import type { ArchivedInboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { parseQoderConnection, parseQoderCatalog, type QoderInput } from "../runtimes/qoder-schema";
@@ -240,6 +261,12 @@ import type {
   CreateCommentSubIssueManualRequest,
   CreateCommentSubIssueAgentRequest,
   CreateCommentSubIssueRequest,
+  Epic,
+  Sprint,
+  EpicOverview,
+  SprintOverview,
+  CompleteSprintRequest,
+  CompleteSprintResult,
 } from "../types";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type {
@@ -731,6 +758,10 @@ function subscriberTarget(
  * explicitly, or a concurrent writer of that singleton silently redirects the
  * write to the wrong workspace.
  */
+function planningHeaders(workspaceID?: string): Record<string, string> | undefined {
+  return workspaceID ? { "X-Workspace-ID": workspaceID, "X-Workspace-Slug": "" } : undefined;
+}
+
 function workspaceHeader(
   slug?: string,
 ): Record<string, string> | undefined {
@@ -1124,6 +1155,8 @@ export class ApiClient {
     // `ids=` — the server treats a PRESENT-but-empty list as an empty window
     // (nothing running), while an absent param means no restriction.
     if (params?.ids) search.set("ids", params.ids.join(","));
+    if (params?.epic_id) search.set("epic_id", params.epic_id);
+    if (params?.sprint_id) search.set("sprint_id", params.sprint_id);
     if (params?.involves_user_id) search.set("involves_user_id", params.involves_user_id);
     if (params?.metadata && Object.keys(params.metadata).length > 0) {
       search.set("metadata", JSON.stringify(params.metadata));
@@ -4146,6 +4179,75 @@ export class ApiClient {
     });
   }
 
+  // Fabrika streams (fork-owned)
+  async listStreams(): Promise<ListStreamsResponse> {
+    const raw = await this.fetch<unknown>(`/api/streams`);
+    return parseWithFallback(raw, ListStreamsResponseSchema, EMPTY_LIST_STREAMS_RESPONSE, {
+      endpoint: "GET /api/streams",
+    });
+  }
+
+  async getMultika(): Promise<Multika> {
+    const raw = await this.fetch<unknown>(`/api/streams/multika`);
+    return parseWithFallback(raw, MultikaSchema, EMPTY_MULTIKA, {
+      endpoint: "GET /api/streams/multika",
+    });
+  }
+
+  /** Speech to text for Мультика's composer. Multipart, so not routed
+   *  through `this.fetch`: the browser sets the boundary. */
+  async transcribeMultikaVoice(audio: Blob, filename: string): Promise<string> {
+    const formData = new FormData();
+    formData.append("file", audio, filename);
+    const credentialUsed = this.getToken();
+    const res = await fetch(`${this.baseUrl}/api/streams/multika/voice`, {
+      method: "POST",
+      headers: this.authHeaders(),
+      body: formData,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      if (res.status === 401) this.handleUnauthorized(credentialUsed);
+      throw new Error(await this.parseErrorMessage(res, `Voice failed: ${res.status}`));
+    }
+    const raw = (await res.json()) as unknown;
+    return parseWithFallback(raw, TranscriptionSchema, EMPTY_TRANSCRIPTION, {
+      endpoint: "POST /api/streams/multika/voice",
+    }).text;
+  }
+
+  async setMultikaFocus(slug: string): Promise<void> {
+    await this.fetch(`/api/streams/multika/focus`, {
+      method: "PUT",
+      body: JSON.stringify({ slug }),
+    });
+  }
+
+  async listScreenBlocks(sessionId: string): Promise<ListScreenBlocksResponse> {
+    const raw = await this.fetch<unknown>(`/api/streams/ui/blocks?session=${encodeURIComponent(sessionId)}`);
+    return parseWithFallback(raw, ListScreenBlocksResponseSchema, EMPTY_LIST_SCREEN_BLOCKS, {
+      endpoint: "GET /api/streams/ui/blocks",
+    });
+  }
+
+  /** `window` is the id of the confirmation window being confirmed. */
+  async pressScreenAction(actionId: string, confirm: boolean, window = ""): Promise<ScreenPressResult> {
+    const raw = await this.fetch<unknown>(`/api/streams/ui/actions/${actionId}`, {
+      method: "POST",
+      body: JSON.stringify({ confirm, window }),
+    });
+    return parseWithFallback(raw, ScreenPressResultSchema, FAILED_SCREEN_PRESS, {
+      endpoint: "POST /api/streams/ui/actions/:id",
+    });
+  }
+
+  async cancelScreenAction(actionId: string): Promise<ScreenPressResult> {
+    const raw = await this.fetch<unknown>(`/api/streams/ui/actions/${actionId}/cancel`, { method: "POST" });
+    return parseWithFallback(raw, ScreenPressResultSchema, FAILED_SCREEN_PRESS, {
+      endpoint: "POST /api/streams/ui/actions/:id/cancel",
+    });
+  }
+
   // Labels
   async listLabels(resourceType: LabelResourceType = "issue"): Promise<ListLabelsResponse> {
     const raw = await this.fetch<unknown>(`/api/labels?resource_type=${resourceType}`);
@@ -4566,6 +4668,88 @@ export class ApiClient {
     return parseWithFallback(raw, ResourceLabelsResponseSchema, EMPTY_RESOURCE_LABELS_RESPONSE, {
       endpoint: `POST /api/${resourceType === "agent" ? "agents" : "skills"}/{id}/labels`,
     });
+  }
+
+  // Epics
+  async listEpics(params?: { status?: string }, workspaceID?: string): Promise<{ epics: Epic[]; total: number }> {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics?${search}`, { headers: planningHeaders(workspaceID) }), EpicListSchema, { epics: [] as Epic[], total: 0 }, { endpoint: "GET /api/epics" });
+  }
+
+  async getEpic(id: string, workspaceID?: string): Promise<Epic> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}`, { headers: planningHeaders(workspaceID) }), EpicSchema, EMPTY_EPIC, { endpoint: "GET /api/epics/{id}" });
+  }
+
+  async getEpicOverview(id: string, workspaceID?: string): Promise<EpicOverview> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}/overview`, { headers: planningHeaders(workspaceID) }), EpicOverviewSchema, EMPTY_EPIC_OVERVIEW, { endpoint: "GET /api/epics/{id}/overview" });
+  }
+
+  async createEpic(data: { title: string; description?: string; color?: string }, workspaceID?: string): Promise<Epic> {
+    return parseWithFallback(await this.fetch<unknown>("/api/epics", {
+      headers: planningHeaders(workspaceID),
+      method: "POST",
+      body: JSON.stringify(data),
+    }), EpicSchema, EMPTY_EPIC, { endpoint: "CREATE /api/epics" });
+  }
+
+  async updateEpic(id: string, data: Record<string, unknown>, workspaceID?: string): Promise<Epic> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/epics/${id}`, {
+      headers: planningHeaders(workspaceID),
+      method: "PUT",
+      body: JSON.stringify(data),
+    }), EpicSchema, EMPTY_EPIC, { endpoint: "UPDATE /api/epics" });
+  }
+
+  async deleteEpic(id: string, workspaceID?: string): Promise<void> {
+    await this.fetch(`/api/epics/${id}`, { method: "DELETE", headers: planningHeaders(workspaceID) });
+  }
+
+  // Sprints
+  async listSprints(params?: { status?: string }, workspaceID?: string): Promise<{ sprints: Sprint[]; total: number }> {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints?${search}`, { headers: planningHeaders(workspaceID) }), SprintListSchema, { sprints: [] as Sprint[], total: 0 }, { endpoint: "GET /api/sprints" });
+  }
+
+  async getSprint(id: string, workspaceID?: string): Promise<Sprint> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}`, { headers: planningHeaders(workspaceID) }), SprintSchema, EMPTY_SPRINT, { endpoint: "GET /api/sprints/{id}" });
+  }
+
+  async getSprintOverview(id: string, workspaceID?: string): Promise<SprintOverview> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}/overview`, { headers: planningHeaders(workspaceID) }), SprintOverviewSchema, EMPTY_SPRINT_OVERVIEW, { endpoint: "GET /api/sprints/{id}/overview" });
+  }
+
+  /**
+   * Closes a sprint with an explicit choice for its unfinished issues. A plain
+   * status update never moves issues; this is the only call that does.
+   */
+  async completeSprint(id: string, data: CompleteSprintRequest, workspaceID?: string): Promise<CompleteSprintResult> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}/complete`, {
+      headers: planningHeaders(workspaceID),
+      method: "POST",
+      body: JSON.stringify(data),
+    }), CompleteSprintResultSchema, EMPTY_COMPLETE_SPRINT_RESULT, { endpoint: "POST /api/sprints/{id}/complete" });
+  }
+
+  async createSprint(data: { name: string; goal?: string; start_date: string; end_date: string }, workspaceID?: string): Promise<Sprint> {
+    return parseWithFallback(await this.fetch<unknown>("/api/sprints", {
+      headers: planningHeaders(workspaceID),
+      method: "POST",
+      body: JSON.stringify(data),
+    }), SprintSchema, EMPTY_SPRINT, { endpoint: "CREATE /api/sprints" });
+  }
+
+  async updateSprint(id: string, data: Record<string, unknown>, workspaceID?: string): Promise<Sprint> {
+    return parseWithFallback(await this.fetch<unknown>(`/api/sprints/${id}`, {
+      headers: planningHeaders(workspaceID),
+      method: "PUT",
+      body: JSON.stringify(data),
+    }), SprintSchema, EMPTY_SPRINT, { endpoint: "UPDATE /api/sprints" });
+  }
+
+  async deleteSprint(id: string, workspaceID?: string): Promise<void> {
+    await this.fetch(`/api/sprints/${id}`, { method: "DELETE", headers: planningHeaders(workspaceID) });
   }
 
   async detachLabelFromResource(

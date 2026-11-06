@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { ArrowLeft, MessageSquare } from "@multica/ui/icons";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import {
   ResizableHandle,
 } from "@multica/ui/components/ui/resizable";
 import { useIsCompact } from "@multica/ui/hooks/use-mobile";
-import { useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
+import { useCurrentWorkspace, useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
 import { getCurrentSlug } from "@multica/core/platform";
 import { useChatStore } from "@multica/core/chat";
 import { chatQuickActionsPendingOptions } from "@multica/core/chat/queries";
@@ -19,6 +19,7 @@ import { useRegenerateChatQuickActions } from "@multica/core/chat/mutations";
 import { useQuickActionsPendingTimeout } from "@multica/core/chat/use-quick-actions-pending-timeout";
 import { useQuickActionsFailureToast } from "./components/use-quick-actions-failure-toast";
 import { useQuery } from "@tanstack/react-query";
+import { multikaOptions, stripScreenSource, useScreenRealtime } from "@multica/core/streams";
 import type { Agent, ChatSession } from "@multica/core/types";
 import { PageHeader } from "../layout/page-header";
 import { useNavigation } from "../navigation";
@@ -37,6 +38,8 @@ import { ArchivedAgentBanner } from "./components/archived-agent-banner";
 import { AgentAccessRevokedBanner } from "./components/agent-access-revoked-banner";
 import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
 import { useRegisterCommandBarContext } from "../search/register-context";
+import { VoiceButton } from "../streams/components/voice-button";
+import { DigestScreen, TaskScreens } from "../streams/genui";
 
 /**
  * Chat tab — the first-class two-pane surface (thread list on the left,
@@ -81,6 +84,27 @@ export function ChatPage() {
   // Toast when an accepted refresh later fails in the daemon (async half).
   useQuickActionsFailureToast(c.activeSessionId ?? null);
   const regenerateQuickActions = useRegenerateChatQuickActions();
+  // Fabrika: voice input only in Мультика's chat, and only when the server
+  // has a transcription service.
+  const wsId = useCurrentWorkspace()?.id ?? "";
+  const { data: multika } = useQuery({ ...multikaOptions(wsId), enabled: !!wsId });
+  const isMultikaChat = !!multika?.agent_id && c.activeAgent?.id === multika.agent_id;
+  const voiceOn = multika?.voice === true && isMultikaChat;
+  // Fabrika screens: Мультика's replies may carry screens; their source is
+  // hidden from the text and the screen is drawn under the reply.
+  const screenSession = multika?.screens === true && isMultikaChat ? (c.activeSessionId ?? "") : "";
+  useScreenRealtime(wsId, screenSession);
+  const handleSend = c.handleSend;
+  const sendFollowup = useCallback((text: string) => void handleSend(text), [handleSend]);
+  const renderTaskExtras = useMemo(
+    () =>
+      screenSession
+        ? (taskId: string) => (
+            <TaskScreens wsId={wsId} sessionId={screenSession} taskId={taskId} onFollowup={sendFollowup} />
+          )
+        : undefined,
+    [screenSession, wsId, sendFollowup],
+  );
   const urlSession = searchParams.get("session") || null;
   const urlAgent = searchParams.get("agent") || null;
 
@@ -287,6 +311,7 @@ export function ChatPage() {
           onArchive={handleArchive}
         />
       )}
+      {screenSession ? <DigestScreen wsId={wsId} sessionId={screenSession} onFollowup={sendFollowup} /> : null}
       {c.showSkeleton ? (
         <ChatMessageSkeleton />
       ) : c.hasMessages ? (
@@ -317,6 +342,8 @@ export function ChatPage() {
               : undefined
           }
           quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
+          transformContent={screenSession ? stripScreenSource : undefined}
+          renderTaskExtras={renderTaskExtras}
         />
       ) : (
         <EmptyState
@@ -379,6 +406,7 @@ export function ChatPage() {
         onProjectChange={changeProjectContext}
         isProjectUpdating={c.isProjectUpdating}
         focusRequest={c.focusInputRequest}
+        rightAdornment={voiceOn ? (insert) => <VoiceButton onText={insert} /> : undefined}
       />
     </div>
   );

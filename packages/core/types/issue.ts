@@ -203,6 +203,8 @@ export interface Issue {
    */
   duplicate_of?: IssueDuplicateOf | null;
   project_id: string | null;
+  epic_id?: string | null;
+  sprint_id?: string | null;
   position: number;
   // Ordered barrier group among sibling sub-issues (null = unstaged). The
   // parent assignee is woken when a stage closes while a later one waits;

@@ -1,5 +1,7 @@
+import { EpicsPage, EpicDetail } from "@multica/views/epics/components";
+import { SprintsPage, SprintDetail } from "@multica/views/sprints/components";
 import { useEffect } from "react";
-import { createMemoryRouter, Outlet, useMatches } from "react-router-dom";
+import { createMemoryRouter, Outlet, useMatches, useParams } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { IssueDetailPage } from "./pages/issue-detail-page";
 import { ProjectDetailPage } from "./pages/project-detail-page";
@@ -19,6 +21,7 @@ import { DashboardPage } from "@multica/views/dashboard";
 import { AutopilotsPage } from "@multica/views/autopilots/components";
 import { MyIssuesPage } from "@multica/views/my-issues";
 import { SkillsPage } from "@multica/views/skills";
+import { StreamsPage } from "@multica/views/streams";
 import { DesktopRuntimesPage } from "./components/desktop-runtimes-page";
 import { DesktopAgentsPage } from "./components/desktop-agents-page";
 import {
@@ -138,6 +141,10 @@ export const appRoutes: RouteObject[] = [
             element: <IssueDetailPage />,
             handle: { title: "Issue" },
           },
+          { path: "epics", element: <EpicsPage />, handle: { title: "Epics" } },
+          { path: "epics/:id", element: <PlanningDetailPage kind="epic" />, handle: { title: "Epic" } },
+          { path: "sprints", element: <SprintsPage />, handle: { title: "Sprints" } },
+          { path: "sprints/:id", element: <PlanningDetailPage kind="sprint" />, handle: { title: "Sprint" } },
           {
             path: "projects",
             element: <ProjectsPage />,
@@ -179,6 +186,7 @@ export const appRoutes: RouteObject[] = [
             handle: { title: "Runtime" },
           },
           { path: "skills", element: <SkillsPage />, handle: { title: "Skills" } },
+          { path: "streams", element: <StreamsPage />, handle: { title: "Streams" } },
           {
             path: "skills/:id",
             element: <SkillDetailPage />,
@@ -258,4 +266,10 @@ export function createAppRouter() {
   return createMemoryRouter(appRoutes, {
     initialEntries: ["/"],
   });
+}
+
+function PlanningDetailPage({ kind }: { kind: "epic" | "sprint" }) {
+ const { id } = useParams<{ id: string }>();
+ if (!id) return null;
+ return kind === "epic" ? <EpicDetail epicId={id} /> : <SprintDetail sprintId={id} />;
 }

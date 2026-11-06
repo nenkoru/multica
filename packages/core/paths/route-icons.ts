@@ -25,7 +25,10 @@ export type RouteIconName =
   | "CircleUser"
   | "ListTodo"
   | "FolderKanban"
+  | "Diamond"
+  | "Timer"
   | "Zap"
+  | "Workflow"
   | "Bot"
   | "Users"
   | "BarChart3"
@@ -49,12 +52,15 @@ export type NavLabelKey =
   | "my_issues"
   | "issues"
   | "projects"
+  | "epics"
+  | "sprints"
   | "autopilots"
   | "agents"
   | "squads"
   | "usage"
   | "runtimes"
   | "skills"
+  | "streams"
   | "settings";
 
 /** Stable identifier for each workspace navigation page. */
@@ -64,12 +70,15 @@ export type WorkspacePageKey =
   | "myIssues"
   | "issues"
   | "projects"
+  | "epics"
+  | "sprints"
   | "autopilots"
   | "agents"
   | "squads"
   | "usage"
   | "runtimes"
   | "skills"
+  | "streams"
   | "settings";
 
 export interface WorkspacePage {
@@ -90,6 +99,8 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   chat: { segment: "chat", icon: "MessageSquare", navKey: "chat" },
   myIssues: { segment: "my-issues", icon: "CircleUser", navKey: "my_issues" },
   issues: { segment: "issues", icon: "ListTodo", navKey: "issues" },
+  epics: { segment: "epics", icon: "Diamond", navKey: "epics" },
+  sprints: { segment: "sprints", icon: "Timer", navKey: "sprints" },
   projects: { segment: "projects", icon: "FolderKanban", navKey: "projects" },
   autopilots: { segment: "autopilots", icon: "Zap", navKey: "autopilots" },
   agents: { segment: "agents", icon: "Bot", navKey: "agents" },
@@ -97,6 +108,7 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   usage: { segment: "usage", icon: "BarChart3", navKey: "usage" },
   runtimes: { segment: "runtimes", icon: "Monitor", navKey: "runtimes" },
   skills: { segment: "skills", icon: "BookOpenText", navKey: "skills" },
+  streams: { segment: "streams", icon: "Workflow", navKey: "streams" },
   settings: { segment: "settings", icon: "Settings", navKey: "settings" },
 };
 

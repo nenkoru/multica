@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/internal/auth"
@@ -31,6 +33,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/scheduler"
 	"github.com/multica-ai/multica/server/internal/selfhosttelemetry"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/streams"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/featureflag"
 	"github.com/multica-ai/multica/server/pkg/llm"
@@ -679,7 +682,66 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Fabrika (fork): the carrier is bound to upstream services once the
+	// router has built them.
+	streamsCarrier := &streams.MulticaCarrier{Queries: queries}
+	streamsSup := streams.NewSupervisor(pool, streamsCarrier)
+	// Мультика's one lifelong chat (week 2). Unset keeps the chat hooks off.
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_MULTIKA_AGENT_ID")); v != "" {
+		if err := streamsSup.MultikaAgentID.Scan(v); err != nil {
+			slog.Error("invalid FABRIKA_MULTIKA_AGENT_ID; multika chat hooks off", "error", err)
+			streamsSup.MultikaAgentID = pgtype.UUID{}
+		} else {
+			slog.Info("fabrika: multika chat hooks on", "agent_id", v)
+		}
+	}
+	// Executors and manager of a stream from Мультика's interview (§9.3).
+	streamsSup.StreamTemplate = strings.TrimSpace(os.Getenv("FABRIKA_STREAM_TEMPLATE"))
+	// Budgets (§6.7): slot caps, GPU executors, the API ceiling. Unset: no limits.
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_EXECUTOR_SLOTS")); v != "" {
+		if slots, err := streams.ParseSlots(v); err != nil {
+			slog.Error("invalid FABRIKA_EXECUTOR_SLOTS; slot caps off", "error", err)
+		} else {
+			streamsSup.Slots = slots
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_GPU_EXECUTORS")); v != "" {
+		streamsSup.GPUExecutors = map[string]bool{}
+		for _, name := range strings.Split(v, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				streamsSup.GPUExecutors[name] = true
+			}
+		}
+	}
+	// Voice for Мультика's composer: an OpenAI-compatible transcription service.
+	if c := streams.NewWhisperClient(os.Getenv("FABRIKA_WHISPER_URL"), strings.TrimSpace(os.Getenv("FABRIKA_WHISPER_MODEL")), os.Getenv("FABRIKA_WHISPER_TOKEN")); c != nil {
+		streamsSup.Voice = c
+	}
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_API_MONTHLY_USD")); v != "" {
+		if usd, err := strconv.ParseFloat(v, 64); err != nil || usd < 0 {
+			slog.Error("invalid FABRIKA_API_MONTHLY_USD; cost line off", "value", v)
+		} else {
+			streamsSup.APIMonthlyUSD = usd
+		}
+	}
+	// Screens in Мультика's chat (§10): on with FABRIKA_SCREENS=1.
+	if v := strings.TrimSpace(os.Getenv("FABRIKA_SCREENS")); v == "1" || v == "true" || v == "on" {
+		// Links a screen may carry: GitHub, the app itself and the hosts
+		// listed in FABRIKA_GENUI_LINK_HOSTS (comma-separated).
+		hosts := []string{"github.com"}
+		for _, h := range strings.Split(os.Getenv("FABRIKA_GENUI_LINK_HOSTS"), ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				hosts = append(hosts, h)
+			}
+		}
+		appURL := appURLFromEnv()
+		if u, err := url.Parse(appURL); err == nil && u.Hostname() != "" {
+			hosts = append(hosts, u.Hostname())
+		}
+		streamsSup.Screens = &streams.Screens{LinkHosts: hosts, AppURL: appURL}
+	}
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
+		Streams:             streamsSup,
 		HTTPMetrics:         httpMetrics,
 		BusinessMetrics:     businessMetrics,
 		ChannelLeaseMetrics: channelLeaseMetrics,
@@ -694,6 +756,14 @@ func main() {
 		LLMMaxRetries:       llmMaxRetries,
 		LLMDisableThinking:  llmDisableThinking,
 	})
+	if streamsSup.MultikaEnabled() {
+		h.ChatClaimContext = streamsSup.OnMultikaClaim
+	}
+	if streamsSup.Screens != nil {
+		// Repair rounds (§10.2) use the server's LLM; without it the
+		// screen is shown without the parts that stayed invalid.
+		streamsSup.Screens.Repair = streams.LLMRepairer(h.LLM, strings.TrimSpace(os.Getenv("FABRIKA_GENUI_REPAIR_MODEL")))
+	}
 	// member_delegation_day exists only for self-host telemetry; DO_NOT_TRACK
 	// stops writing it as well as sending the snapshot.
 	h.TaskService.RecordMemberActivity = telemetryConfig.Enabled
@@ -850,6 +920,13 @@ func main() {
 	if err := schedulerMgr.Register(scheduler.PluginHookScheduleDispatchJob(queries, h.PluginService)); err != nil {
 		slog.Warn("scheduler: failed to register plugin_hook_schedule_dispatch job", "error", err)
 	}
+	// Fabrika (fork): streams supervisor, harness-design.md §6.1.
+	streamsCarrier.Issues, streamsCarrier.Tasks = h.IssueService, taskSvc
+	if err := schedulerMgr.Register(streams.SupervisorJob(streamsSup)); err != nil {
+		slog.Error("scheduler: register fabrika streams supervisor", "error", err)
+	}
+	streams.Subscribe(bus, streamsSup)
+	go streamsSup.RunKicks(sweepCtx)
 	go func() {
 		_ = schedulerMgr.Run(sweepCtx)
 	}()

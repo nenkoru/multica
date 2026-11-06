@@ -20,6 +20,11 @@ const TEST_RESOURCES = { en: { common: enCommon, chat: enChat } };
 // a ref-driven fake the tests can steer. The thread-list stub stays
 // interactive: selecting a thread is the user action that must supersede a
 // pending `?agent=` intent.
+// Screens subscribe to realtime events; this page test has no WS provider.
+vi.mock("@multica/core/streams", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/streams")>()),
+  useScreenRealtime: vi.fn(),
+}));
 vi.mock("./components/chat-message-list", () => ({
   ChatMessageList: () => <div>chat-message-list</div>,
   ChatMessageSkeleton: () => <div>chat-message-skeleton</div>,
@@ -86,6 +91,7 @@ vi.mock("@multica/ui/hooks/use-mobile", () => ({
 }));
 vi.mock("@multica/core/paths", () => ({
   useRequiredWorkspaceSlug: () => "acme",
+  useCurrentWorkspace: () => null,
   useWorkspacePaths: () => ({ chat: () => "/acme/chat" }),
 }));
 const platformWorkspace = vi.hoisted(() => ({ slug: "acme" }));

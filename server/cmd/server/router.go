@@ -43,6 +43,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/seatcapacity"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/storage"
+	"github.com/multica-ai/multica/server/internal/streams"
 	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/internal/util/secretbox"
 	composiosdk "github.com/multica-ai/multica/server/pkg/composio"
@@ -246,6 +247,8 @@ type RouterOptions struct {
 	DaemonHub    *daemonws.Hub
 	DaemonWakeup service.TaskWakeupNotifier
 	FeatureFlags *featureflag.Service
+	// Streams is the Fabrika supervisor (fork); nil leaves /api/streams unmounted.
+	Streams *streams.Supervisor
 	// HeartbeatScheduler, when non-nil, replaces the default synchronous
 	// passthrough scheduler on the constructed Handler. main.go injects a
 	// BatchedHeartbeatScheduler here so the caller can also drive Run/Stop;
@@ -432,6 +435,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmailDomains:            splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation:       os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 		WorkspaceCreationAllowedEmails: splitAndTrim(os.Getenv("WORKSPACE_CREATION_ALLOWED_EMAILS")),
+		PlanningEnabled:                os.Getenv("MULTICA_PLANNING_ENABLED") == "true",
+		TV:                             tvConfigFromEnv(),
 		VCSIntegrationEnabled:          os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                      strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		AppURL:                         appURLFromEnv(),
@@ -536,8 +541,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// connection of its own outside the per-installation supervisor. The Router
 	// is the single shared inbound handler injected into every Channel.
 	channelRegistry := channel.NewRegistry()
+	h.ChannelRegistry = channelRegistry
 	channelRouter := engine.NewRouter(h.IssueService, h.TaskService, queries, engine.RouterConfig{
-		Logger: slog.Default(), Lifecycle: h,
+		Logger: slog.Default(), Lifecycle: h, DenyNewChat: multikaDenyNewChat(opts.Streams),
 	})
 	// Debounce the per-session run trigger so a burst of messages collapses
 	// into one agent run instead of one per message (MUL-2968).
@@ -1207,8 +1213,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				Decrypt: box.Open,
 				// The bind link (/telegram/bind) is a web-app page: app URL, not
 				// the API URL. Mirrors the Slack replier.
-				AppURL: appURLFromEnv(),
-				Logger: slog.Default(),
+				AppURL:  appURLFromEnv(),
+				Logger:  slog.Default(),
+				Notices: multikaTelegramNotices(opts.Streams),
 			})
 			telegramTyping := telegram.NewTypingNotifier(box.Open, "", nil, slog.Default())
 			// Media both ways needs object storage: inbound photos/files become
@@ -1219,6 +1226,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// as WeCom above).
 			var telegramMedia engine.MediaResolver
 			telegramOutbound := telegram.NewOutbound(queries, box.Open, "", nil, slog.Default())
+			telegramOutbound.SetNotices(multikaTelegramNotices(opts.Streams))
+			if final, partial := multikaTelegramReplyText(opts.Streams); final != nil {
+				telegramOutbound.SetReplyText(final, partial)
+			}
 			if store != nil {
 				telegramMedia = telegram.NewMediaResolver(box.Open, store, engine.NewDBMediaIntentLedger(queries), "", nil, slog.Default())
 				telegramOutbound.EnableFileDelivery(store)
@@ -1235,7 +1246,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				Logger:            slog.Default(),
 				RecentContextSize: telegram.DefaultRecentContextSize,
 				AcceptsMedia:      store != nil,
+				Callbacks:         multikaTelegramCallbacks(opts.Streams),
 			})
+			wireMultikaAskButtons(opts.Streams, telegram.NewButtonSender(queries, box.Open, ""))
 
 			installSvc, ierr := telegram.NewInstallService(queries, pool, box, slog.Default())
 			if ierr != nil {
@@ -1447,6 +1460,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.Get("/health", health.liveHandler)
 	r.Get("/readyz", health.readyHandler)
 	r.Get("/healthz", health.readyHandler)
+	registerStreamsHealth(r, opts.Streams)
 
 	// Realtime subsystem metrics — connection counts, slow-client evictions,
 	// and per-event-type send QPS counters. Exposed as JSON so it can be
@@ -1522,6 +1536,30 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authVerifyRL).Post("/auth/verify-code", h.VerifyCode)
 	r.With(authRL).Post("/auth/google", h.GoogleLogin)
 	r.Post("/auth/logout", h.Logout)
+
+	// TV dashboard (kiosk). Public by design: a read-only kiosk token bound
+	// to one workspace is the credential, exchanged once for an HttpOnly
+	// cookie. The token reaches only the aggregates (overview, game, health)
+	// and a content-free change signal; middleware.Auth rejects it everywhere else with 403.
+	r.With(authVerifyRL).Post("/api/tv/session", h.CreateTVSession)
+	r.Delete("/api/tv/session", h.DeleteTVSession)
+	r.Get("/api/tv/overview", h.GetTVOverview)
+	r.Get("/api/tv/health", h.GetTVHealth)
+	r.Get("/api/tv/game", h.GetTVGame)
+	r.Get("/api/tv/sounds/{file}", h.GetTVSound)
+	kioskResolver := func(ctx context.Context, token string) (string, error) {
+		session, err := h.ResolveKioskToken(ctx, token)
+		if errors.Is(err, handler.ErrKioskTokenInvalid) {
+			return "", realtime.KioskRejectedError{}
+		}
+		if err != nil {
+			return "", err
+		}
+		return util.UUIDToString(session.WorkspaceID), nil
+	}
+	r.Get("/api/tv/ws", func(w http.ResponseWriter, r *http.Request) {
+		realtime.HandleKioskWebSocket(hub, handler.KioskTokenFromRequest(r), kioskResolver, w, r)
+	})
 
 	// Public API
 	r.Get("/api/config", h.GetConfig)
@@ -2015,6 +2053,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
 
+			registerStreamsRoutes(r, opts.Streams)
+
 			// Local search index sync for Web/Desktop (MUL-7754). Human clients
 			// only: agents search through /api/issues/search.
 			r.Route("/api/search-index", func(r chi.Router) {
@@ -2178,6 +2218,39 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Post("/resources", h.CreateProjectResource)
 					r.Put("/resources/{resourceId}", h.UpdateProjectResource)
 					r.Delete("/resources/{resourceId}", h.DeleteProjectResource)
+				})
+			})
+
+			// Kiosk tokens for the TV dashboard (owners and admins).
+			r.Route("/api/kiosk-tokens", func(r chi.Router) {
+				r.Get("/", h.ListKioskTokens)
+				r.Post("/", h.CreateKioskToken)
+				r.Delete("/{id}", h.RevokeKioskToken)
+				r.Post("/{id}/pairing", h.CreateKioskPairing)
+			})
+
+			// Epics
+			r.Route("/api/epics", func(r chi.Router) {
+				r.Get("/", h.ListEpics)
+				r.Post("/", h.CreateEpic)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetEpic)
+					r.Get("/overview", h.GetEpicOverview)
+					r.Put("/", h.UpdateEpic)
+					r.Delete("/", h.DeleteEpic)
+				})
+			})
+
+			// Sprints
+			r.Route("/api/sprints", func(r chi.Router) {
+				r.Get("/", h.ListSprints)
+				r.Post("/", h.CreateSprint)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetSprint)
+					r.Get("/overview", h.GetSprintOverview)
+					r.Post("/complete", h.CompleteSprint)
+					r.Put("/", h.UpdateSprint)
+					r.Delete("/", h.DeleteSprint)
 				})
 			})
 
@@ -2454,6 +2527,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Patch("/archive", h.SetChatSessionArchived)
 					r.Delete("/", h.DeleteChatSession)
 					r.Post("/messages", h.SendChatMessage)
+					r.Post("/agent-messages", h.PostAgentChatMessage)
 					r.Post("/onboarding", h.StartMikaOnboarding)
 					// Explicit "refresh" of a turn's quick actions: re-runs the
 					// daemon suggestion pass for the latest assistant reply (MUL-5149).
@@ -2757,4 +2831,15 @@ func wecomMetricsOrNil(m *obsmetrics.WecomMetrics) wecom.Metrics {
 		return nil
 	}
 	return m
+}
+
+// tvConfigFromEnv reads MULTICA_TV_CONFIG; an invalid value is logged and
+// the defaults are used, so a typo never takes the server down.
+func tvConfigFromEnv() handler.TVConfig {
+	cfg, err := handler.ParseTVConfig(os.Getenv("MULTICA_TV_CONFIG"), os.Getenv)
+	if err != nil {
+		slog.Warn("invalid MULTICA_TV_CONFIG, using defaults", "error", err)
+	}
+	cfg.SoundsDir = strings.TrimSpace(os.Getenv("MULTICA_TV_SOUNDS_DIR"))
+	return cfg
 }

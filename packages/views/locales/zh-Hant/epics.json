@@ -1,0 +1,51 @@
+{
+  "page": {
+    "title": "Epics",
+    "new_epic": "新建 Epic",
+    "empty": "還沒有 Epic",
+    "create_first": "建立第一個 Epic",
+    "search_placeholder": "搜尋 Epic...",
+    "no_search_results": "未找到匹配的 Epic"
+  },
+  "table": {
+    "name": "名稱",
+    "status": "狀態",
+    "progress": "進度",
+    "created": "建立時間",
+    "issues": "issues"
+  },
+  "picker": {
+    "no_epic": "無 Epic",
+    "remove_epic": "移除 Epic",
+    "no_epics": "此工作區沒有 Epic"
+  },
+  "status": {
+    "open": "進行中",
+    "closed": "已關閉"
+  },
+  "detail": {
+    "not_found": "Epic 未找到",
+    "breadcrumb_fallback": "Epics",
+    "title_placeholder": "Epic 標題",
+    "copy_link": "複製連結",
+    "delete_action": "刪除 Epic",
+    "section_properties": "屬性",
+    "section_description": "描述",
+    "description_placeholder": "新增描述...",
+    "no_issues_yet": "暫無 Issue",
+    "delete_confirm_title": "刪除 Epic",
+    "delete_confirm_description": "確定要刪除此 Epic 嗎？分配給它的 Issue 不會被刪除。"
+  },
+  "create": {
+    "title": "建立 Epic",
+    "label_title": "標題",
+    "title_placeholder": "Epic 標題",
+    "label_description": "描述",
+    "description_placeholder": "新增描述...",
+    "color": "顏色",
+    "submit": "建立 Epic",
+    "cancel": "取消",
+    "success": "已建立",
+    "error": "建立失敗"
+  }
+}

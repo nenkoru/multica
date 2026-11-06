@@ -1,0 +1,118 @@
+{
+  "progress": {
+    "title": "進度",
+    "percent_done": "已完成 {{percent}}%",
+    "done_of_total": "{{done}} / {{total}}",
+    "bar_label": "按狀態統計的任務進度",
+    "bucket": {
+      "done": "已完成",
+      "in_review": "評審中",
+      "in_progress": "進行中",
+      "blocked": "已阻塞",
+      "not_started": "未開始",
+      "cancelled": "已取消"
+    }
+  },
+  "attention": {
+    "title": "需要關注",
+    "more": "另有 {{count}} 個未顯示"
+  },
+  "issues": {
+    "title": "任務",
+    "group_by": "分組方式",
+    "grouping": {
+      "status": "狀態",
+      "sprint": "Sprint",
+      "epic": "Epic",
+      "assignee": "負責人"
+    },
+    "view_label": "檢視",
+    "view": {
+      "list": "列表",
+      "board": "看板"
+    },
+    "no_sprint": "無 Sprint",
+    "no_epic": "無 Epic",
+    "unassigned": "未分配",
+    "unknown_sprint": "已刪除的 Sprint",
+    "unknown_epic": "已刪除的 Epic",
+    "create": "新建任務",
+    "link": "關聯已有任務",
+    "truncated": "共 {{total}} 個任務，當前顯示前 {{shown}} 個。其餘請在看板中檢視。",
+    "load_failed": "無法載入任務",
+    "retry": "重試"
+  },
+  "link": {
+    "epic_title": "將任務關聯到此 Epic",
+    "epic_description": "搜尋要加入此 Epic 的已有任務。",
+    "sprint_title": "將任務加入此 Sprint",
+    "sprint_description": "搜尋已有任務。其他 Sprint 中的任務會移到此 Sprint。",
+    "linked": "已關聯 {{identifier}}",
+    "failed": "無法關聯任務"
+  },
+  "empty": {
+    "epic_title": "此 Epic 還沒有任務",
+    "sprint_title": "此 Sprint 還沒有任務",
+    "hint": "在這裡新建任務，或關聯一個已有任務。"
+  },
+  "sidebar": {
+    "assignees": "負責人",
+    "workload": "工作量",
+    "sprints": "Sprint",
+    "epics": "Epic",
+    "activity": "最近動態",
+    "no_activity": "暫無動態",
+    "details": "詳情",
+    "created": "建立時間",
+    "last_activity": "最近活動",
+    "never": "暫無",
+    "open_count": "未完成：{{count}}"
+  },
+  "activity": {
+    "created": "建立了任務",
+    "status_changed": "將狀態改為 {{to}}",
+    "assignee_changed": "更改了負責人",
+    "priority_changed": "將優先順序設為 {{to}}",
+    "title_changed": "重新命名了任務",
+    "system": "系統"
+  },
+  "sprint": {
+    "goal": "目標",
+    "start": "開始 Sprint",
+    "complete": "完成 Sprint",
+    "day_of": "第 {{day}} 天，共 {{total}} 天",
+    "days_left": "剩餘天數：{{count}}",
+    "last_day": "最後一天",
+    "starts_in": "{{count}} 天后開始",
+    "ended_ago": "{{count}} 天前結束",
+    "length": "共 {{count}} 天",
+    "burndown": "燃盡圖",
+    "burndown_remaining": "剩餘",
+    "burndown_ideal": "理想線",
+    "burndown_label": "每日剩餘任務：{{date}} 剩餘 {{remaining}} / {{total}}"
+  },
+  "complete": {
+    "title": "完成 Sprint",
+    "summary_open": "{{total}} 個任務中有 {{open}} 個未完成。已完成的任務保留在此 Sprint 中。",
+    "summary_none": "此 Sprint 的所有任務均已完成。",
+    "choice_label": "未完成的任務",
+    "move": "移到其他 Sprint",
+    "move_unavailable": "沒有可移入的計劃中或進行中的 Sprint。",
+    "keep": "保留在此 Sprint",
+    "unlink": "從 Sprint 中移除",
+    "unlink_hint": "任務保留在工作區中，不屬於任何 Sprint。",
+    "target": "目標 Sprint",
+    "confirm": "完成 Sprint",
+    "cancel": "取消",
+    "done_moved": "Sprint 已完成。已將 {{count}} 個任務移到 {{sprint}}。",
+    "done_unlinked": "Sprint 已完成。已從 Sprint 中移除 {{count}} 個任務。",
+    "done_kept": "Sprint 已完成。保留在其中的未完成任務：{{count}} 個。",
+    "failed": "無法完成 Sprint"
+  },
+  "list": {
+    "open": "未完成：{{count}}",
+    "blocked": "已阻塞：{{count}}",
+    "created": "建立於 {{date}}",
+    "no_issues": "暫無任務"
+  }
+}

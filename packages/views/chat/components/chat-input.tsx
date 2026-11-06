@@ -122,6 +122,9 @@ interface ChatInputProps {
   agentName?: string;
   /** Rendered at the bottom-left of the input bar — typically the agent picker. */
   leftAdornment?: ReactNode;
+  /** Rendered before the send button; `insert` appends text to the draft
+   *  without sending it (voice input). */
+  rightAdornment?: (insert: (text: string) => void) => ReactNode;
   /** Chat @ suggestions: current/recent issue/project entries. */
   contextItems?: MentionItem[];
   /** Optional project context for the draft or current chat session. */
@@ -165,6 +168,7 @@ export function ChatInput({
   agentRuntimeRequired,
   agentName,
   leftAdornment,
+  rightAdornment,
   contextItems,
   projects = [],
   projectId,
@@ -444,6 +448,10 @@ export function ChatInput({
   // return. Reset at the top of every submit so a rejected send cannot leave a
   // stale `true` behind for the next one.
   const editorScrubbedRef = useRef(false);
+
+  const insertText = useCallback((text: string) => {
+    editorRef.current?.insertMarkdownAtEnd(text);
+  }, []);
 
   const { submitting, submit } = useComposerSubmit({
     editorRef,
@@ -758,6 +766,7 @@ export function ChatInput({
           </div>
         )}
         <div className="absolute bottom-1 right-1.5 flex items-center gap-1">
+          {rightAdornment?.(insertText)}
           <SubmitButton
             onClick={submit}
             disabled={hasNothingToSend || submitting || !!disabled || !!noAgent}
