@@ -164,8 +164,10 @@ healthy() {
   "$rusl_bin" --profile selfhost daemon status --output json | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d.get("status")=="running" and d.get("cli_version")=="v0.8.1-rusl2760" and d.get("failed_terminal_report_count")==0' || return 1
   kube get deployment multica-backend multica-frontend -o json | python3 -c 'import json,sys;d=json.load(sys.stdin);expected=dict(zip(["multica-backend","multica-frontend"],sys.argv[1:]));assert all(x.get("status",{}).get("readyReplicas",0)==x["spec"].get("replicas",1) and x.get("status",{}).get("observedGeneration",0)>=x["metadata"]["generation"] and x["spec"]["template"]["spec"]["containers"][0]["image"]==expected[x["metadata"]["name"]] for x in d["items"])' "$RUSL_NEW_BACKEND" "$RUSL_NEW_FRONTEND" || return 1
 }
-"$rusl_bin" --profile selfhost daemon maintenance resume --token-file "$rusl_receipt"
+# A lost resume response may already have opened claims. Any subsequent error
+# must reacquire/drain, even if the CLI fails before acknowledging success.
 rusl_maintenance=0
+"$rusl_bin" --profile selfhost daemon maintenance resume --token-file "$rusl_receipt"
 phase observing
 for ((rusl_minute=0; rusl_minute<30; rusl_minute++)); do
   sleep 60
