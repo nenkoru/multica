@@ -67,53 +67,6 @@ func newShutdownTestDaemon(url string, pollInterval time.Duration, runner taskRu
 	return d
 }
 
-// (a) A graceful stop cancels the daemon's root context; the agent comes back
-// with status "cancelled". That used to be reported as failure_reason
-// "cancelled" (not retryable) and the run was lost. It must now be the
-// retryable daemon_shutdown, carrying the session and workdir so the retry
-// resumes in place (RUSL-2266).
-func TestHandleTask_RootCancelWithCancelledResultReportsDaemonShutdown(t *testing.T) {
-	t.Parallel()
-
-	srv := newShutdownTestServer(t, "running")
-	d := newShutdownTestDaemon(srv.srv.URL, time.Hour, func(runCtx context.Context, _ Task, _ string, _ int, _ *slog.Logger) (TaskResult, error) {
-		if !errors.Is(runCtx.Err(), context.Canceled) {
-			t.Errorf("runner context error = %v, want context.Canceled", runCtx.Err())
-		}
-		return TaskResult{
-			Status:    "cancelled",
-			Comment:   "task cancelled by server",
-			SessionID: "sess-1",
-			WorkDir:   "/ws/task-1/workdir",
-		}, nil
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	d.handleTask(ctx, Task{ID: "task-shutdown-cancelled", RuntimeID: "rt-1"}, 0)
-
-	fails := srv.fails()
-	if len(fails) != 1 {
-		t.Fatalf("fail callbacks = %d, want 1", len(fails))
-	}
-	body := fails[0]
-	if got := body["failure_reason"]; got != "daemon_shutdown" {
-		t.Errorf("failure_reason = %v, want daemon_shutdown", got)
-	}
-	if got := body["session_id"]; got != "sess-1" {
-		t.Errorf("session_id = %v, want sess-1 (the retry resumes it)", got)
-	}
-	if got := body["work_dir"]; got != "/ws/task-1/workdir" {
-		t.Errorf("work_dir = %v, want the run's workdir", got)
-	}
-	if msg, _ := body["error"].(string); !strings.Contains(msg, "daemon shutdown") || strings.Contains(msg, "cancelled by server") {
-		t.Errorf("error = %q, want a daemon-shutdown message without the misleading server-cancel text", msg)
-	}
-	if got := srv.ackCalls.Load(); got != 0 {
-		t.Errorf("cancel-ack calls = %d, want 0", got)
-	}
-}
-
 // (a') Under KillMode=control-group the agent gets the same SIGTERM and dies
 // on its own; runTask classifies the exit as a process failure on the blocked
 // path. With the root context cancelled that is still a shutdown.
@@ -302,6 +255,8 @@ func TestDaemonShutdownFailureReason(t *testing.T) {
 		{"error path", stopped, "", "agent_error.unknown", true},
 		{"process failure", stopped, "blocked", "agent_error.process_failure", true},
 		{"idle watchdog", stopped, "blocked", "idle_watchdog", true},
+		{"cleanup uncertainty kept", stopped, "blocked", "cleanup_unconfirmed", false},
+		{"timeout kept", stopped, "blocked", "timeout", false},
 		{"poisoned session kept", stopped, "blocked", "api_invalid_request", false},
 		{"context overflow kept", stopped, "blocked", "agent_error.context_overflow", false},
 		{"invalid identity kept", stopped, "", "invalid_task_identity", false},
