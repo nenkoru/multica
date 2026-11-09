@@ -14,7 +14,7 @@ spec.loader.exec_module(bootstrap)
 
 
 class MaintenanceOperations(unittest.TestCase):
-    def rollback(self, mutated=True, held=True, fail='', expected='rolled_back'):
+    def rollback(self, mutated=True, held=True, fail='', expected='rolled_back', preflight=None):
         source = (ROOT / 'rollout-rusl2760.sh').read_text()
         function = source[source.index('rollback() {'):source.index("trap 'rollback")]
         with tempfile.TemporaryDirectory() as temporary:
@@ -35,8 +35,9 @@ print(json.dumps({'status':'stopped' if os.environ.get('FAIL')=='primary-ready' 
 'failed_terminal_report_count':0,'failed_terminal_report_bytes':0}))
 ''')
             cli.chmod(0o700)
+            (root/'maintenance-receipt.json').write_text('{}')
             env = {**os.environ, 'EVENTS':str(root/'events'), 'PHASE':str(root/'phase'),
-                   'MOCK_CLI':str(cli), 'FAIL':fail, 'MUTATED':str(int(mutated)), 'HELD':str(int(held))}
+                   'MOCK_CLI':str(cli), 'FAIL':fail, 'MUTATED':str(int(mutated)), 'HELD':str(int(held)), 'RELEASE_DIR':str(root)}
             harness = '''set -Eeuo pipefail
 rusl_mutated=$MUTATED
 rusl_maintenance=$HELD
@@ -68,7 +69,15 @@ kube() {
   if [[ "$1 $2 $3" == 'rollout status deployment/multica-backend' && "$FAIL" == old-ready ]]; then return 1; fi
 }
 '''+function
-            if fail == 'resume-response':
+            if preflight is not None:
+                start = source.index('rusl_mutated=0')
+                end = source.index('\nkube() {',start)
+                init = source[start:end]
+                start = source.index('phase preflight\n')
+                end = source.index('python3 - ',start)
+                harness += '\nrusl_release_dir=$RELEASE_DIR\nrusl_check_only='+preflight+'\n'+init
+                harness += "\ntrap 'rollback 1' ERR\n"+source[start:end]
+            elif fail == 'resume-response':
                 start = source.rindex('rusl_maintenance=0')
                 end = source.index('phase observing',start)
                 harness += "\ntrap 'rollback 1' ERR\nrusl_maintenance=1\n"+source[start:end]
@@ -124,6 +133,15 @@ kube() {
         stop = next(i for i,v in enumerate(events) if 'systemctl stop' in v)
         self.assertLess(released,enter)
         self.assertLess(enter,stop)
+
+    def test_bootstrap_gate_resumes_when_release_config_is_missing(self):
+        events = self.rollback(expected='aborted_before_deployment',preflight='')
+        self.assertTrue(any('maintenance resume' in v for v in events))
+        self.assertFalse(any('systemctl' in v or 'set image' in v for v in events))
+
+    def test_check_failure_never_resumes_existing_bootstrap_gate(self):
+        events = self.rollback(expected='aborted_before_deployment',preflight='--check')
+        self.assertFalse(any('maintenance resume' in v or 'systemctl' in v or 'set image' in v for v in events))
 
     def test_bootstrap_abort_is_owned_and_durable(self):
         with tempfile.TemporaryDirectory() as temporary:

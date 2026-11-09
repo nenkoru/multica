@@ -11,14 +11,15 @@ readonly rusl_unit=multica-daemon-selfhost.service
 exec >> "$rusl_release_dir/rollout.log" 2>&1
 exec 9>"$rusl_release_dir/rollout.lock"
 flock -n 9 || exit 0
-source "$rusl_release_dir/release.env"
 rusl_check_only=${1:-}
-[[ "$rusl_check_only" == '' || "$rusl_check_only" == --check ]]
 rusl_mutated=0
 rusl_standby_promoted=0
 rusl_watch_paused=0
 rusl_maintenance=0
 readonly rusl_receipt="$rusl_release_dir/maintenance-receipt.json"
+# Bootstrap may already own this gate before rollout preflight starts.
+# --check must never resume an existing gate, even when its checks fail.
+if [[ "$rusl_check_only" != --check && -f "$rusl_receipt" ]]; then rusl_maintenance=1; fi
 RUSL_WATCH_WAS_ACTIVE=inactive
 
 kube() {
@@ -102,6 +103,8 @@ trap 'rollback 130' INT
 trap 'rollback 143' TERM
 
 phase preflight
+[[ "$rusl_check_only" == '' || "$rusl_check_only" == --check ]]
+source "$rusl_release_dir/release.env"
 python3 - "$rusl_release_dir/qa.json" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
