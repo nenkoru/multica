@@ -3,17 +3,65 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/multica-ai/multica/server/internal/daemon"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/daemon"
 )
+
+func TestMaintenanceAbortedPortableChildAfterCLISetup(t *testing.T) {
+	t.Setenv("MULTICA_TASK_CONFIG_ROOT", t.TempDir())
+	t.Setenv("MULTICA_DAEMON_HANDOFF", "1")
+	t.Setenv("INVOCATION_ID", "test-supervisor")
+	cfg := daemon.Config{DaemonID: "d", ServerBaseURL: "https://example.test", WorkspacesRoot: t.TempDir()}
+	dir, err := cli.ProfileDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "maintenance.json")
+	data, _ := json.Marshal(map[string]any{"token": strings.Repeat("a", 64), "daemon_id": "d", "server_url": cfg.ServerBaseURL, "resume_on_start": true})
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Same lock + environment consumption boundary as runDaemonForeground.
+	lock, err := acquireDaemonStartupLock("", &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if os.Getenv("MULTICA_DAEMON_HANDOFF") != "" {
+		t.Fatal("handoff env was not consumed")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	d := daemon.New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := d.RunWithHealthListener(ctx, ln); err == nil || !strings.Contains(err.Error(), "waiting for supervisor restart") {
+		t.Fatalf("portable child passed startup after CLI setup: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("portable child consumed recovery marker")
+	}
+}
 
 func TestMaintenanceEnterFailureResumesAdmission(t *testing.T) {
 	for _, reason := range []string{"timeout", "failed reports", "unavailable counters", "lost acquire response"} {

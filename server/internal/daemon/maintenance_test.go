@@ -195,15 +195,14 @@ func TestMaintenanceBootstrapAbortResumesOnlySupervisor(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("INVOCATION_ID", "supervisor")
-	t.Setenv("MULTICA_DAEMON_HANDOFF", "1")
+	d.cfg.PortableSystemdHandoff = true
 	if err := (&Daemon{cfg: d.cfg}).restoreMaintenance(); err == nil {
 		t.Fatal("transient handoff child could start work")
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("handoff child consumed recovery instruction")
 	}
-	t.Setenv("MULTICA_DAEMON_HANDOFF", "")
+	d.cfg.PortableSystemdHandoff = false
 	next := &Daemon{cfg: d.cfg}
 	if err := next.restoreMaintenance(); err != nil {
 		t.Fatal(err)

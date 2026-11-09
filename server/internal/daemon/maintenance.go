@@ -66,7 +66,7 @@ func (d *Daemon) restoreMaintenance() error {
 		// The old daemon may still be finishing its native reload after an
 		// operator aborted bootstrap. Its portable child belongs to the old
 		// systemd cgroup and must never start work before the supervisor takes over.
-		if os.Getenv("INVOCATION_ID") != "" && os.Getenv("MULTICA_DAEMON_HANDOFF") == "1" {
+		if d.cfg.PortableSystemdHandoff {
 			return errors.New("bootstrap aborted; waiting for supervisor restart")
 		}
 		return os.Remove(path)

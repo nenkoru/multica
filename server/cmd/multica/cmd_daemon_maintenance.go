@@ -26,6 +26,19 @@ type maintenanceSession struct {
 	Profile  string `json:"profile"`
 }
 
+// The startup lock consumes the one-shot environment signal. Preserve the
+// portable systemd-child identity in Config before any daemon initialization.
+func acquireDaemonStartupLock(profile string, cfg *daemon.Config) (*os.File, error) {
+	handoff := os.Getenv("MULTICA_DAEMON_HANDOFF") == "1"
+	cfg.PortableSystemdHandoff = handoff && os.Getenv("INVOCATION_ID") != ""
+	lock, err := acquireDaemonProfileLock(profile, handoff)
+	if err != nil {
+		return nil, err
+	}
+	_ = os.Unsetenv("MULTICA_DAEMON_HANDOFF")
+	return lock, nil
+}
+
 func init() {
 	cmd := &cobra.Command{
 		Use:   "maintenance enter|status|resume|stop",
