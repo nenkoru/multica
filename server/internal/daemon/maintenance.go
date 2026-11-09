@@ -173,6 +173,11 @@ func (d *Daemon) maintenanceHandler() http.HandlerFunc {
 			d.maintenanceToken = req.Token
 			d.pauseClaims = true
 		}
+		if req.Action == "resume" && d.maintenanceToken == "" && d.maintenanceResumedToken == req.Token {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]bool{"resumed": true})
+			return
+		}
 		if d.maintenanceToken != req.Token {
 			http.Error(w, "maintenance ownership mismatch", http.StatusConflict)
 			return
@@ -191,6 +196,7 @@ func (d *Daemon) maintenanceHandler() http.HandlerFunc {
 				return
 			}
 			d.maintenanceToken = ""
+			d.maintenanceResumedToken = req.Token
 			d.pauseClaims = false
 			d.updating.Store(false)
 			w.Header().Set("Content-Type", "application/json")

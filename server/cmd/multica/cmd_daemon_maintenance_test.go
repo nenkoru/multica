@@ -68,3 +68,44 @@ func TestMaintenanceEnterFailureResumesAdmission(t *testing.T) {
 		})
 	}
 }
+
+func TestMaintenanceCallRejectsMalformedProof(t *testing.T) {
+	for _, fault := range []string{"missing counter", "null counter", "negative counter", "bytes remain", "wrong identity"} {
+		t.Run(fault, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					json.NewEncoder(w).Encode(map[string]any{"status": "running", "daemon_id": "d", "profile": "", "pid": 123})
+					return
+				}
+				data, _ := json.Marshal(daemon.MaintenanceStatus{PID: 123, DaemonID: "d", Ready: true})
+				var fields map[string]any
+				json.Unmarshal(data, &fields)
+				switch fault {
+				case "missing counter":
+					delete(fields, "claims_in_flight")
+				case "null counter":
+					fields["pending_terminal_report_bytes"] = nil
+				case "negative counter":
+					fields["active_task_count"] = -1
+				case "bytes remain":
+					fields["failed_terminal_report_bytes"] = 1
+				case "wrong identity":
+					fields["pid"] = 124
+				}
+				json.NewEncoder(w).Encode(fields)
+			}))
+			defer srv.Close()
+			_, rawPort, err := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			port, err := strconv.Atoi(rawPort)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := maintenanceCall(context.Background(), port, maintenanceSession{Token: strings.Repeat("a", 64), DaemonID: "d"}, "stop"); err == nil {
+				t.Fatal("invalid proof accepted")
+			}
+		})
+	}
+}

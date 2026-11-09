@@ -156,6 +156,7 @@ func TestMaintenanceOwnershipAndPersistenceFailures(t *testing.T) {
 		t.Fatal("wrong owner released barrier")
 	}
 	maintenanceTestCall(t, d, "resume", maintenanceTestToken, 200)
+	maintenanceTestCall(t, d, "resume", maintenanceTestToken, 200)
 	path, err := d.maintenancePath()
 	if err != nil {
 		t.Fatal(err)
