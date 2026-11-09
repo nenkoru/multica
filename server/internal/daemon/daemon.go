@@ -6046,6 +6046,7 @@ func taskCancelAcknowledgement(result TaskResult, runErr error, provider string)
 // service.resumeUnsafeFailureReason), an intentional agent block is not a
 // failure, and identity/authorization refusals are deterministic.
 var daemonShutdownPreservedReasons = map[string]bool{
+	"opencode_clock_skew":         true,
 	"timeout":                     true,
 	"process_cleanup_unconfirmed": true,
 	"process_cleanup_blocked":     true,

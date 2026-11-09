@@ -76,6 +76,19 @@ describe("viewSidebarRequest", () => {
   const TODAY = "2026-03-11";
   const workspace = { display: {}, scope_type: "workspace" as const, scope_variant: null };
 
+  it("keeps planning membership when expanding a saved view", () => {
+    const request = viewSidebarRequest({ ...workspace, query: {
+      epicFilters: ["epic-A"], includeNoEpic: true,
+      sprintFilters: ["sprint-A"], includeNoSprint: true,
+      statusFilters: ["todo"],
+    } }, TODAY);
+    expect(request?.table.filters).toMatchObject({
+      epic_ids: ["epic-A"], include_no_epic: true,
+      sprint_ids: ["sprint-A"], include_no_sprint: true,
+      statuses: ["todo"],
+    });
+  });
+
   it("carries the view's own filters, variant and ordering", () => {
     expect(
       viewSidebarRequest(

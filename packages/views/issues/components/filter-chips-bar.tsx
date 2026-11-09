@@ -305,6 +305,10 @@ export function useFilterChips(
     const raw = baseline.raw;
     const otherNegations = s.negatedFilters.filter((d) => d !== dimension);
     const current: FilterSnapshot = {
+      epicFilters: s.epicFilters,
+      includeNoEpic: s.includeNoEpic,
+      sprintFilters: s.sprintFilters,
+      includeNoSprint: s.includeNoSprint,
       statusFilters: s.statusFilters,
       priorityFilters: s.priorityFilters,
       assigneeFilters: s.assigneeFilters,

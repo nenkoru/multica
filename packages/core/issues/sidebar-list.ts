@@ -177,6 +177,10 @@ export function viewSidebarRequest(
     table: {
       scope,
       filters: {
+        ...(fields.epicFilters?.length ? { epic_ids: fields.epicFilters } : {}),
+        ...(fields.includeNoEpic ? { include_no_epic: true } : {}),
+        ...(fields.sprintFilters?.length ? { sprint_ids: fields.sprintFilters } : {}),
+        ...(fields.includeNoSprint ? { include_no_sprint: true } : {}),
         ...(fields.statusFilters.length > 0 ? { statuses: fields.statusFilters } : {}),
         ...(fields.priorityFilters.length > 0 ? { priorities: fields.priorityFilters } : {}),
         ...(fields.assigneeFilters.length > 0 ? { assignees: fields.assigneeFilters } : {}),

@@ -108,26 +108,30 @@ func TestHandleTask_RootCancelOverridesProcessFailureClassification(t *testing.T
 func TestHandleTask_RootCancelKeepsResumeUnsafeReason(t *testing.T) {
 	t.Parallel()
 
-	srv := newShutdownTestServer(t, "running")
-	d := newShutdownTestDaemon(srv.srv.URL, time.Hour, func(context.Context, Task, string, int, *slog.Logger) (TaskResult, error) {
-		return TaskResult{
-			Status:        "blocked",
-			Comment:       "prompt is too long",
-			SessionID:     "sess-3",
-			FailureReason: "agent_error.context_overflow",
-		}, nil
-	})
+	for _, reason := range []string{"agent_error.context_overflow", "opencode_clock_skew"} {
+		t.Run(reason, func(t *testing.T) {
+			srv := newShutdownTestServer(t, "running")
+			d := newShutdownTestDaemon(srv.srv.URL, time.Hour, func(context.Context, Task, string, int, *slog.Logger) (TaskResult, error) {
+				return TaskResult{
+					Status:        "blocked",
+					Comment:       "prompt is too long",
+					SessionID:     "sess-3",
+					FailureReason: reason,
+				}, nil
+			})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	d.handleTask(ctx, Task{ID: "task-shutdown-poisoned", RuntimeID: "rt-1"}, 0)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			d.handleTask(ctx, Task{ID: "task-shutdown-poisoned", RuntimeID: "rt-1"}, 0)
 
-	fails := srv.fails()
-	if len(fails) != 1 {
-		t.Fatalf("fail callbacks = %d, want 1", len(fails))
-	}
-	if got := fails[0]["failure_reason"]; got != "agent_error.context_overflow" {
-		t.Errorf("failure_reason = %v, want agent_error.context_overflow preserved", got)
+			fails := srv.fails()
+			if len(fails) != 1 {
+				t.Fatalf("fail callbacks = %d, want 1", len(fails))
+			}
+			if got := fails[0]["failure_reason"]; got != reason {
+				t.Errorf("failure_reason = %v, want %s preserved", got, reason)
+			}
+		})
 	}
 }
 
@@ -258,6 +262,7 @@ func TestDaemonShutdownFailureReason(t *testing.T) {
 		{"cleanup uncertainty kept", stopped, "blocked", "cleanup_unconfirmed", false},
 		{"timeout kept", stopped, "blocked", "timeout", false},
 		{"poisoned session kept", stopped, "blocked", "api_invalid_request", false},
+		{"clock-skew session kept", stopped, "blocked", "opencode_clock_skew", false},
 		{"context overflow kept", stopped, "blocked", "agent_error.context_overflow", false},
 		{"invalid identity kept", stopped, "", "invalid_task_identity", false},
 	}
