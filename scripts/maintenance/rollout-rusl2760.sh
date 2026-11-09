@@ -40,7 +40,7 @@ restore_watch() {
 }
 rollback() {
   local rusl_rc=$1
-  trap - ERR INT TERM
+  trap - ERR INT TERM EXIT
   set +e
   phase rollback_started
   local rusl_failed=0
@@ -101,6 +101,7 @@ rollback() {
 trap 'rollback "$?"' ERR
 trap 'rollback 130' INT
 trap 'rollback 143' TERM
+trap 'rusl_exit_code=$?; if [[ "$rusl_exit_code" != 0 ]]; then rollback "$rusl_exit_code"; fi' EXIT
 
 phase preflight
 [[ "$rusl_check_only" == '' || "$rusl_check_only" == --check ]]

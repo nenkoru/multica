@@ -75,8 +75,16 @@ kube() {
                 init = source[start:end]
                 start = source.index('phase preflight\n')
                 end = source.index('python3 - ',start)
-                harness += '\nrusl_release_dir=$RELEASE_DIR\nrusl_check_only='+preflight+'\n'+init
-                harness += "\ntrap 'rollback 1' ERR\n"+source[start:end]
+                mode = preflight
+                extra = ''
+                if preflight == 'missing-variable':
+                    mode = ''
+                    (root/'release.env').write_text('')
+                    (root/'qa.json').write_text(json.dumps(dict.fromkeys(['go_verified','db_rehearsal_verified','review_verified','views_failures_resolved','frontend_image_verified','backend_image_verified','maintenance_review_verified'],True)))
+                    extra = '\nrusl_candidate=candidate\nunset RUSL_NEW_CLI_SHA256\n'
+                    end = source.index('[[ "$(sha256sum "$rusl_bin"',start)
+                harness += '\nrusl_release_dir=$RELEASE_DIR\nrusl_check_only='+mode+'\n'+init+extra
+                harness += '\n'+source[source.index("trap 'rollback"):source.index('phase preflight\n')]+source[start:end]
             elif fail == 'resume-response':
                 start = source.rindex('rusl_maintenance=0')
                 end = source.index('phase observing',start)
@@ -142,6 +150,11 @@ kube() {
     def test_check_failure_never_resumes_existing_bootstrap_gate(self):
         events = self.rollback(expected='aborted_before_deployment',preflight='--check')
         self.assertFalse(any('maintenance resume' in v or 'systemctl' in v or 'set image' in v for v in events))
+
+    def test_unset_release_variable_also_restores_bootstrap_gate(self):
+        events = self.rollback(expected='aborted_before_deployment',preflight='missing-variable')
+        self.assertTrue(any('maintenance resume' in v for v in events))
+        self.assertFalse(any('systemctl' in v or 'set image' in v for v in events))
 
     def test_bootstrap_abort_is_owned_and_durable(self):
         with tempfile.TemporaryDirectory() as temporary:
