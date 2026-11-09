@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -66,6 +67,40 @@ func TestMaintenanceEnterFailureResumesAdmission(t *testing.T) {
 				t.Fatalf("%s left admission paused: %v", reason, err)
 			}
 		})
+	}
+}
+
+func TestMaintenanceResumeWaitsForSupervisorSuccessor(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			pid := 123
+			if attempts.Load() > 0 {
+				pid = 124
+			}
+			json.NewEncoder(w).Encode(map[string]any{"status": "running", "daemon_id": "d", "profile": "", "pid": pid})
+			return
+		}
+		if attempts.Add(1) == 1 {
+			http.Error(w, "maintenance stop already committed", 409)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"resumed": true})
+	}))
+	defer srv.Close()
+	_, rawPort, err := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resumeMaintenance(context.Background(), port, maintenanceSession{Token: strings.Repeat("a", 64), DaemonID: "d"}); err != nil {
+		t.Fatal(err)
+	}
+	if attempts.Load() != 2 {
+		t.Fatalf("resume attempts=%d", attempts.Load())
 	}
 }
 

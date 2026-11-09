@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/multica-ai/multica/server/internal/cli"
@@ -163,7 +165,12 @@ func runDaemonMaintenance(cmd *cobra.Command, args []string) error {
 		}
 		return cli.PrintJSON(cmd.OutOrStdout(), status)
 	}
-	status, err := maintenanceCall(cmd.Context(), port, session, action)
+	var status daemon.MaintenanceStatus
+	if action == "resume" {
+		status, err = resumeMaintenance(cmd.Context(), port, session)
+	} else {
+		status, err = maintenanceCall(cmd.Context(), port, session, action)
+	}
 	if err != nil {
 		return err
 	}
@@ -183,7 +190,7 @@ func enterMaintenance(ctx context.Context, port int, session maintenanceSession,
 		if err != nil {
 			recoveryCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_, resumeErr := maintenanceCall(recoveryCtx, port, session, "resume")
+			_, resumeErr := resumeMaintenance(recoveryCtx, port, session)
 			if resumeErr != nil {
 				err = errors.Join(err, fmt.Errorf("resume failed; retain --token-file for recovery: %w", resumeErr))
 			}
@@ -212,6 +219,29 @@ func enterMaintenance(ctx context.Context, port int, session maintenanceSession,
 			if err != nil {
 				return status, err
 			}
+		}
+	}
+}
+
+// A stop response can be lost while Restart=always replaces the process. The
+// durable marker keeps admission fenced; wait for that same daemon's successor
+// before retrying the owned, idempotent resume. Other conflicts fail immediately.
+func resumeMaintenance(ctx context.Context, port int, session maintenanceSession) (daemon.MaintenanceStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	for {
+		status, err := maintenanceCall(ctx, port, session, "resume")
+		if err == nil {
+			return status, nil
+		}
+		var networkError net.Error
+		if !errors.As(err, &networkError) && !strings.Contains(err.Error(), "maintenance stop already committed") && !strings.Contains(err.Error(), "daemon identity unavailable") {
+			return status, err
+		}
+		select {
+		case <-ctx.Done():
+			return status, errors.Join(err, ctx.Err())
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
 }

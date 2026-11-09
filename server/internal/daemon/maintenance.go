@@ -218,5 +218,10 @@ func (d *Daemon) maintenanceHandler() http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(status)
+		if req.Action == "stop" {
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
 	}
 }
