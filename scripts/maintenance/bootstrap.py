@@ -5,6 +5,7 @@ Run as the service owner, outside any agent task/cgroup, before the application
 rollout. No service stop/restart, agent pause, database, or network changes.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--installed', type=Path, required=True)
     parser.add_argument('--candidate', type=Path, required=True)
+    parser.add_argument('--original-backup', type=Path, required=True)
+    parser.add_argument('--original-sha256', required=True)
+    parser.add_argument('--candidate-sha256', required=True)
     parser.add_argument('--receipt', type=Path, required=True)
     parser.add_argument('--profile-dir', type=Path, required=True)
     parser.add_argument('--profile', default='selfhost')
@@ -52,6 +56,12 @@ def main():
         raise RuntimeError('bootstrap must run outside an agent task')
     installed = str(args.installed.resolve())
     candidate = str(args.candidate.resolve())
+    for path, expected in [(args.installed,args.original_sha256), (args.original_backup,args.original_sha256),
+                           (args.candidate,args.candidate_sha256)]:
+        with path.open('rb') as stream:
+            actual = hashlib.file_digest(stream,'sha256').hexdigest()
+        if actual != expected:
+            raise RuntimeError('bootstrap binary/backup checksum mismatch')
     cli = [candidate, '--profile', args.profile]
     health_command = [installed, '--profile', args.profile, 'daemon', 'status', '--output', 'json']
     health = json.loads(command(health_command))

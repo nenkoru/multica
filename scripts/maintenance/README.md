@@ -18,7 +18,7 @@ runtime arguments, and standby role settings are independent and unchanged.
 Bootstrap from the installed v0.7.2
 ----------------------------------
 
-The installed old process does not know the new endpoint. Build the six-file
+The installed old process does not know the new endpoint. Build the focused
 daemon/CLI change on the exact production source `d61b8d97c` as
 `v0.7.2-rusl2779-maintenance`, preserving the existing original binary backup.
 Build the same change on the accepted v0.8.1 source as `v0.8.1-rusl2760`.
@@ -37,6 +37,9 @@ Run from the final durable release unit outside the daemon cgroup, after review:
 python3 bootstrap.py \
   --installed /home/mika/.local/share/multica-selfhost/bin/multica \
   --candidate /home/mika/.local/share/multica-selfhost/bin/multica.rusl2779-maintenance \
+  --original-backup /home/mika/.local/share/multica-selfhost/bin/multica.rusl2760-bak \
+  --original-sha256 "$RUSL_OLD_CLI_SHA256" \
+  --candidate-sha256 "$RUSL_MAINT_CLI_SHA256" \
   --profile-dir /home/mika/.multica/profiles/selfhost \
   --receipt "$release_dir/maintenance-receipt.json"
 ```
