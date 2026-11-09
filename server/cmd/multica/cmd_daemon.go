@@ -1130,12 +1130,11 @@ func runDaemonForeground(cmd *cobra.Command) error {
 	// Set by the Electron Desktop app when it spawns the CLI so the server
 	// can mark those runtimes as "managed" and hide CLI self-update UI.
 	cfg.LaunchedBy = os.Getenv("MULTICA_LAUNCHED_BY")
-	lock, err := acquireDaemonProfileLock(profile, os.Getenv("MULTICA_DAEMON_HANDOFF") == "1")
+	lock, err := acquireDaemonStartupLock(profile, &cfg)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	_ = os.Unsetenv("MULTICA_DAEMON_HANDOFF")
 	// An older daemon has no profile lock. A direct --foreground start must
 	// still refuse to launch a second daemon for that same profile.
 	port := resolveHealthPort(profile)

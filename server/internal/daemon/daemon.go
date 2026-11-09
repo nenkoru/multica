@@ -690,9 +690,12 @@ type Daemon struct {
 	// or any task is in handleTask. Together that closes the fetch-then-claim
 	// race where a new task slipping in during the release-metadata fetch
 	// would be cancelled by triggerRestart's root-ctx cancel.
-	claimMu        sync.Mutex
-	pauseClaims    bool // when true, the batch poller skips claiming
-	claimsInFlight int  // pollers that have decided to claim but haven't yet handed the task off to handleTask
+	claimMu                 sync.Mutex
+	pauseClaims             bool   // when true, the batch poller skips claiming
+	claimsInFlight          int    // pollers that have decided to claim but haven't yet handed the task off to handleTask
+	maintenanceToken        string // claimMu; persisted so a supervisor restart keeps the barrier
+	maintenanceResumedToken string // claimMu; acknowledge a retried resume after a lost response
+	maintenanceStopping     bool   // claimMu; resume is forbidden after stop was committed
 
 	activeEnvRootsMu   sync.Mutex
 	activeEnvRootsCond *sync.Cond      // signalled when an in-flight env-root GC mutation finishes
@@ -2072,6 +2075,9 @@ func (d *Daemon) RunWithHealthListener(ctx context.Context, healthLn net.Listene
 
 func (d *Daemon) run(ctx context.Context, healthLn net.Listener) error {
 	var err error
+	if err := d.restoreMaintenance(); err != nil {
+		return fmt.Errorf("restore maintenance barrier: %w", err)
+	}
 	// Wrap context so handleUpdate can cancel the daemon for restart.
 	ctx, cancel := context.WithCancel(ctx)
 	d.cancelFunc = cancel
