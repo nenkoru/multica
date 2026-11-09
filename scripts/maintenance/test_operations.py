@@ -25,6 +25,10 @@ import json,os,sys
 with open(os.environ['EVENTS'],'a') as f: f.write('cli '+' '.join(sys.argv[1:])+'\\n')
 if 'maintenance' in sys.argv:
     if 'enter' in sys.argv and os.environ.get('FAIL')=='drain': sys.exit(1)
+    if 'resume' in sys.argv and os.environ.get('FAIL')=='resume-response':
+        from pathlib import Path
+        stamp=Path(os.environ['EVENTS']+'.resumed')
+        if not stamp.exists(): stamp.write_text('response lost'); sys.exit(1)
     print('{"ready":true}'); sys.exit(0)
 print(json.dumps({'status':'stopped' if os.environ.get('FAIL')=='primary-ready' else 'running','cli_version':'v0.7.2-rusl2779-maintenance',
 'pending_terminal_report_count':0,'pending_terminal_report_bytes':0,
@@ -63,7 +67,13 @@ kube() {
   fi
   if [[ "$1 $2 $3" == 'rollout status deployment/multica-backend' && "$FAIL" == old-ready ]]; then return 1; fi
 }
-'''+function+'\nrollback 1\n'
+'''+function
+            if fail == 'resume-response':
+                start = source.rindex('rusl_maintenance=0')
+                end = source.index('phase observing',start)
+                harness += "\ntrap 'rollback 1' ERR\nrusl_maintenance=1\n"+source[start:end]
+            else:
+                harness += '\nrollback 1\n'
             result = subprocess.run(['bash'],input=harness,text=True,capture_output=True,env=env,timeout=10)
             self.assertEqual(result.returncode,1,result.stderr)
             self.assertEqual((root/'phase').read_text().strip(),expected,result.stderr)
@@ -106,6 +116,14 @@ kube() {
     def test_busy_rollback_defers_without_stopping_tasks(self):
         events = self.rollback(held=False,fail='drain',expected='rollback_failed_could_not_drain')
         self.assertFalse(any('systemctl' in v or 'set image' in v for v in events))
+
+    def test_lost_resume_response_requires_another_drain(self):
+        events = self.rollback(fail='resume-response')
+        released = next(i for i,v in enumerate(events) if 'maintenance resume' in v)
+        enter = next(i for i,v in enumerate(events) if 'maintenance enter' in v)
+        stop = next(i for i,v in enumerate(events) if 'systemctl stop' in v)
+        self.assertLess(released,enter)
+        self.assertLess(enter,stop)
 
     def test_bootstrap_abort_is_owned_and_durable(self):
         with tempfile.TemporaryDirectory() as temporary:
