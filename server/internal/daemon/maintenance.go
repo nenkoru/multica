@@ -15,9 +15,10 @@ import (
 // Maintenance is local operator state, independent of agent/runtime pauses.
 // Its marker survives supervisor restarts; only an explicit resume removes it.
 type maintenanceMarker struct {
-	Token     string `json:"token"`
-	DaemonID  string `json:"daemon_id"`
-	ServerURL string `json:"server_url"`
+	Token         string `json:"token"`
+	DaemonID      string `json:"daemon_id"`
+	ServerURL     string `json:"server_url"`
+	ResumeOnStart bool   `json:"resume_on_start,omitempty"`
 }
 
 type MaintenanceStatus struct {
@@ -61,6 +62,15 @@ func (d *Daemon) restoreMaintenance() error {
 	if !validMaintenanceToken(marker.Token) || marker.DaemonID != d.cfg.DaemonID || marker.ServerURL != d.cfg.ServerBaseURL {
 		return errors.New("maintenance marker identity mismatch")
 	}
+	if marker.ResumeOnStart {
+		// The old daemon may still be finishing its native reload after an
+		// operator aborted bootstrap. Its portable child belongs to the old
+		// systemd cgroup and must never start work before the supervisor takes over.
+		if os.Getenv("INVOCATION_ID") != "" && os.Getenv("MULTICA_DAEMON_HANDOFF") == "1" {
+			return errors.New("bootstrap aborted; waiting for supervisor restart")
+		}
+		return os.Remove(path)
+	}
 	d.claimMu.Lock()
 	defer d.claimMu.Unlock()
 	d.maintenanceToken = marker.Token
@@ -79,7 +89,7 @@ func (d *Daemon) persistMaintenance(token string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	data, err := json.Marshal(maintenanceMarker{token, d.cfg.DaemonID, d.cfg.ServerBaseURL})
+	data, err := json.Marshal(maintenanceMarker{Token: token, DaemonID: d.cfg.DaemonID, ServerURL: d.cfg.ServerBaseURL})
 	if err != nil {
 		return err
 	}

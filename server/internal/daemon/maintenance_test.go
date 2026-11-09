@@ -181,3 +181,37 @@ func TestMaintenanceOwnershipAndPersistenceFailures(t *testing.T) {
 	}
 	d.exitClaim()
 }
+
+func TestMaintenanceBootstrapAbortResumesOnlySupervisor(t *testing.T) {
+	d, _ := maintenanceTestDaemon(t)
+	maintenanceTestCall(t, d, "acquire", maintenanceTestToken, 200)
+	path, err := d.maintenancePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := maintenanceMarker{Token: maintenanceTestToken, DaemonID: d.cfg.DaemonID, ServerURL: d.cfg.ServerBaseURL, ResumeOnStart: true}
+	data, _ := json.Marshal(marker)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("INVOCATION_ID", "supervisor")
+	t.Setenv("MULTICA_DAEMON_HANDOFF", "1")
+	if err := (&Daemon{cfg: d.cfg}).restoreMaintenance(); err == nil {
+		t.Fatal("transient handoff child could start work")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("handoff child consumed recovery instruction")
+	}
+	t.Setenv("MULTICA_DAEMON_HANDOFF", "")
+	next := &Daemon{cfg: d.cfg}
+	if err := next.restoreMaintenance(); err != nil {
+		t.Fatal(err)
+	}
+	if !next.tryEnterClaim() {
+		t.Fatal("aborted bootstrap did not restore claiming")
+	}
+	next.exitClaim()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("aborted marker not consumed")
+	}
+}
