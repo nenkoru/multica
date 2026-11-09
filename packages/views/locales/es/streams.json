@@ -1,0 +1,44 @@
+{
+  "title": "Flujos",
+  "multika": "Multika",
+  "open_chat": "Abrir chat",
+  "focus_on": "Enfoque: {{title}}",
+  "no_focus": "Sin enfoque",
+  "clear_focus": "Quitar enfoque",
+  "set_focus": "Enfocar",
+  "empty": "Todavía no hay flujos.",
+  "unavailable": "Los flujos no están disponibles en este servidor.",
+  "voice": {
+    "record": "Dictar",
+    "stop": "Detener grabación",
+    "transcribing": "Transcribiendo…",
+    "unsupported": "Este navegador no permite grabar audio.",
+    "no_microphone": "Sin acceso al micrófono.",
+    "empty": "No se ha reconocido nada.",
+    "failed": "No se ha podido transcribir la grabación."
+  },
+  "screen": {
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "failed": "No se ha podido generar esta pantalla.",
+    "action_failed": "No se ha podido completar la acción.",
+    "stale": "Este botón ya no está activo.",
+    "done": "Hecho",
+    "already": "Ya está hecho",
+    "digest": "Resumen",
+    "from_screen": "Desde la pantalla: {{text}}",
+    "evidence": "Pruebas",
+    "goal": "Objetivo",
+    "now": "Ahora",
+    "next": "Siguiente",
+    "state": {
+      "running": "en curso",
+      "waiting": "en espera",
+      "asking": "requiere tu atención",
+      "budget": "presupuesto",
+      "paused": "en pausa",
+      "broken": "con problemas",
+      "milestone": "hito"
+    }
+  }
+}

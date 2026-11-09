@@ -355,6 +355,7 @@ export function DataTable<TData>({
     [rows],
   );
   const rowVirtualizer = useVirtualizer({
+    enabled: virtualizeRows,
     count: virtualizeRows ? rows.length : 0,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => virtualRowHeight,
