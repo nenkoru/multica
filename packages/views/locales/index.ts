@@ -195,6 +195,10 @@ import esUsage from "./es/usage.json";
 import esUi from "./es/ui.json";
 import esSquads from "./es/squads.json";
 import esBilling from "./es/billing.json";
+import esEpics from "./es/epics.json";
+import esSprints from "./es/sprints.json";
+import esPlanning from "./es/planning.json";
+import esStreams from "./es/streams.json";
 import jaEpics from "./ja/epics.json";
 import jaSprints from "./ja/sprints.json";
 import jaPlanning from "./ja/planning.json";
@@ -390,6 +394,10 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     billing: frBilling,
   },
   es: {
+    epics: esEpics,
+    sprints: esSprints,
+    planning: esPlanning,
+    streams: esStreams,
     common: esCommon,
     auth: esAuth,
     settings: esSettings,

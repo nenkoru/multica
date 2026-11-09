@@ -76,7 +76,8 @@
       "runtime_missing_executable": "La CLI del agente no se ha podido ejecutar en esta máquina. Comprueba que está instalada correctamente y en el PATH, y reintenta.",
       "runtime_version_unsupported": "La CLI del agente es demasiado antigua para este runtime. Actualízala y reintenta.",
       "fallback": "Algo ha ido mal y el agente no pudo terminar de responder. Inténtalo de nuevo.",
-      "runtime_access_revoked": "Se revocó el acceso al runtime. Vincula el agente a un runtime accesible antes de iniciar otra ejecución."
+      "runtime_access_revoked": "Se revocó el acceso al runtime. Vincula el agente a un runtime accesible antes de iniciar otra ejecución.",
+      "daemon_shutdown": "El daemon se ha detenido antes de que el agente pudiera terminar. Inténtalo de nuevo."
     },
     "tools_one": "{{count}} herramienta",
     "tools_other": "{{count}} herramientas",
@@ -91,7 +92,9 @@
     "quick_actions_heading": "Preguntas de seguimiento",
     "quick_actions_aria": "Seguimientos sugeridos",
     "quick_actions_regenerate": "Regenerar sugerencias",
-    "quick_actions_regenerate_failed": "No se han podido actualizar las sugerencias. Inténtalo de nuevo."
+    "quick_actions_regenerate_failed": "No se han podido actualizar las sugerencias. Inténtalo de nuevo.",
+    "sent_by_agent": "Enviado por {{agent}}",
+    "sent_by_unknown_agent": "Enviado por un agente"
   },
   "session_history": {
     "untitled": "Sin título",

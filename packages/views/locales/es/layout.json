@@ -12,7 +12,10 @@
     "runtimes": "Runtimes",
     "skills": "Skills",
     "settings": "Ajustes",
-    "views": "Vistas"
+    "views": "Vistas",
+    "epics": "Épicas",
+    "sprints": "Sprints",
+    "streams": "Flujos"
   },
   "tab": {
     "issue": "Tarea",

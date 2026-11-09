@@ -1031,7 +1031,8 @@
       "agent_error": "Error de ejecución del agente",
       "codex_semantic_inactivity": "Tiempo de inactividad semántica de Codex agotado",
       "manual": "Cancelada por el usuario",
-      "user_cancelled": "Cancelada por el usuario"
+      "user_cancelled": "Cancelada por el usuario",
+      "daemon_shutdown": "Daemon detenido"
     }
   },
   "last_active": {

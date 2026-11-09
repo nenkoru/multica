@@ -1,0 +1,51 @@
+{
+  "page": {
+    "title": "Épicas",
+    "new_epic": "Nueva épica",
+    "empty": "Todavía no hay épicas",
+    "create_first": "Crea tu primera épica",
+    "search_placeholder": "Buscar épicas...",
+    "no_search_results": "No hay resultados para tu búsqueda"
+  },
+  "table": {
+    "name": "Nombre",
+    "status": "Estado",
+    "progress": "Progreso",
+    "created": "Creada",
+    "issues": "tareas"
+  },
+  "picker": {
+    "no_epic": "Sin épica",
+    "remove_epic": "Quitar épica",
+    "no_epics": "No hay épicas en este espacio de trabajo"
+  },
+  "status": {
+    "open": "Abierta",
+    "closed": "Cerrada"
+  },
+  "detail": {
+    "not_found": "No se ha encontrado la épica",
+    "breadcrumb_fallback": "Épicas",
+    "title_placeholder": "Título de la épica",
+    "copy_link": "Copiar enlace",
+    "delete_action": "Eliminar épica",
+    "section_properties": "Propiedades",
+    "section_description": "Descripción",
+    "description_placeholder": "Añadir descripción...",
+    "no_issues_yet": "Todavía no hay tareas",
+    "delete_confirm_title": "Eliminar épica",
+    "delete_confirm_description": "¿Seguro que quieres eliminar esta épica? Sus tareas no se eliminarán."
+  },
+  "create": {
+    "title": "Crear épica",
+    "label_title": "Título",
+    "title_placeholder": "Título de la épica",
+    "label_description": "Descripción",
+    "description_placeholder": "Añadir descripción...",
+    "color": "Color",
+    "submit": "Crear épica",
+    "cancel": "Cancelar",
+    "success": "Creada",
+    "error": "No se ha podido crear"
+  }
+}

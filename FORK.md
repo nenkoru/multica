@@ -24,6 +24,8 @@ needed to publish application changes.
 | Interruption notice | `server/internal/daemon/{prompt,types}.go`, `server/internal/handler/daemon.go` | Tell retries to inspect prior side effects | Yes |
 | TV / kiosk / Orbit | TV handlers, kiosk migrations, `packages/views/tv`, kiosk CLI | Read-only wall display | Yes |
 | Fabrika and Multika | `server/internal/streams`, `packages/core/streams`, `packages/views/streams`, migrations `9000+` | Streams, summaries, spend, mandate confirmations, voice and screens | Yes; retain latest RUSL-2729 behavior |
+| Spanish custom features | `packages/views/locales/es`, locale registration | Translate retained planning, streams, chat and recovery copy for upstream's new locale | Yes |
+| Inactive table virtualizer | `packages/ui/components/ui/data-table.tsx` | Avoid scroll callbacks for ordinary, non-virtualized tables | Yes on v0.8.1; remove when upstream gates the unused virtualizer |
 
 The v0.8.0 layout replaced the old sidebar and save-view dialog. Planning and
 Fabrika entry points move into the Work panel; the obsolete components stay

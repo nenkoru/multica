@@ -261,7 +261,13 @@
     "advanced_group_match_trailing": "de estas condiciones",
     "advanced_group_hint": "Las condiciones de este grupo se unen con «{{word}}»",
     "advanced_add_to_group": "Añadir al grupo",
-    "advanced_turn_into_group": "Convertir en grupo"
+    "advanced_turn_into_group": "Convertir en grupo",
+    "section_epic": "Épica",
+    "section_sprint": "Sprint",
+    "epic": "Épica",
+    "no_epic": "Sin épica",
+    "sprint": "Sprint",
+    "no_sprint": "Sin sprint"
   },
   "display": {
     "tooltip": "Opciones de visualización",
@@ -305,7 +311,8 @@
     "columns_section": "Columnas",
     "columns_locked_by_filter": "Quita el filtro de estado para mostrar u ocultar columnas.",
     "columns_shown": "{{count}} visibles",
-    "layout_options": "Opciones de {{layout}}"
+    "layout_options": "Opciones de {{layout}}",
+    "group_epic": "Épica"
   },
   "view": {
     "tooltip_board": "Vista de tablero",
@@ -559,7 +566,10 @@
     "thread_nav_hide_replies": "Ocultar respuestas",
     "load_failed": "No se pudo cargar la tarea.",
     "load_retry": "Reintentar",
-    "not_found_title": "Tarea no encontrada"
+    "not_found_title": "Tarea no encontrada",
+    "planning": "Planificación",
+    "prop_epic": "Épica",
+    "prop_sprint": "Sprint"
   },
   "timeline": {
     "loading": "Cargando...",
@@ -1866,5 +1876,20 @@
       "empty_title": "Aún no hay vistas guardadas",
       "empty_description": "Configura los filtros y las opciones de visualización de una lista de tareas y guárdalos como vista."
     }
+  },
+  "epic_picker": {
+    "none": "Sin épica",
+    "remove": "Quitar épica",
+    "empty": "No hay épicas en este espacio de trabajo"
+  },
+  "sprint_picker": {
+    "none": "Sin sprint",
+    "remove": "Quitar sprint",
+    "empty": "No hay sprints en este espacio de trabajo"
+  },
+  "sections": {
+    "properties": "Propiedades",
+    "planning": "Planificación",
+    "dates": "Fechas"
   }
 }
