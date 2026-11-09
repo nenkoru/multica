@@ -104,7 +104,7 @@ trap 'rollback 143' TERM
 
 phase preflight
 [[ "$rusl_check_only" == '' || "$rusl_check_only" == --check ]]
-source "$rusl_release_dir/release.env"
+source "$rusl_release_dir/release.env" || rollback "$?"
 python3 - "$rusl_release_dir/qa.json" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
