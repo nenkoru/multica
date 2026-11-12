@@ -1,0 +1,72 @@
+{
+  "issue": "RUSL-2939",
+  "previous_review": "RUSL-2938",
+  "pr": "https://github.com/nenkoru/multica/pull/25",
+  "fix_commit": "156bca54e3077637919b651d7c9ca4f301de2657",
+  "job": "kj-af07017c",
+  "result": "pass",
+  "checks": {
+    "regression": {
+      "passed_tests_including_subtests": 8,
+      "skipped": 0,
+      "passed_packages": [
+        "github.com/multica-ai/multica/server/internal/streams"
+      ]
+    },
+    "tests": {
+      "passed_tests_including_subtests": 5620,
+      "skipped": 1,
+      "passed_packages": [
+        "github.com/multica-ai/multica/server/internal/streams/genui",
+        "github.com/multica-ai/multica/server/internal/projectaccess",
+        "github.com/multica-ai/multica/server/internal/streams",
+        "github.com/multica-ai/multica/server/internal/handler"
+      ],
+      "skip_reasons": [
+        "skill_test.go:970: set MULTICA_RUN_SKILLS_SH_INTEGRATION=1 to run live GitHub integration test"
+      ]
+    },
+    "race": {
+      "passed_tests_including_subtests": 18,
+      "skipped": 0,
+      "passed_packages": [
+        "github.com/multica-ai/multica/server/internal/streams"
+      ]
+    }
+  },
+  "build": [
+    "cmd/server",
+    "cmd/multica",
+    "cmd/migrate"
+  ],
+  "source_sha256": {
+    "server/internal/streams/interview.go": "b47c7e05347b1829bb3714940f588f0cf5bb8d7770f23aac337bf545b1981f4a",
+    "server/internal/streams/multika_access_db_test.go": "05c2eaece898c321a9fecdab1ea72448d34b8bcbcc47334d9078808475bff4b8",
+    "server/internal/streams/screens.go": "de0c0c95cead74fd1ed9b586e0e7fa029e996d148b77bc5a0f8b9d9fe5afd9f6",
+    "server/internal/streams/multika.go": "7502b7f5fb6ab23ad58af5e6854a1595927b92f082ac5af63b37b14852f20dc7"
+  },
+  "environment": "Disposable pgvector PostgreSQL 17 and Redis on loopback, Go 1.26.9 distribution, 4 CPU / 8Gi kjob",
+  "negative_evidence": {
+    "job": "kj-6b8bc932",
+    "base": "71c570860ab54e56a0cced1f321fd41fb55140e9",
+    "confirmed_failed_scenarios": [
+      "originator bounds owner",
+      "accountable fallback",
+      "missing task",
+      "agent owner bounds originator",
+      "foreign session task"
+    ],
+    "limitation": "The final replay case hit an invalid project_member fixture; no complete baseline suite result is claimed."
+  },
+  "initial_failures": [
+    "kj-dceb9f62 and kj-f95d3e53: task fixture violated accountable_matches_originator; fixture corrected.",
+    "kj-3dc60408: project_member has no id column; replaced generic fixture insert with explicit SQL.",
+    "kj-427944a3: regression passed; four example-plugin handler tests failed because the upload omitted examples/plugins/deploy-sentinel. Fixture upload corrected; Redis enabled for the final run."
+  ],
+  "inherited_checks": "Prior full backend/race, restore/migration 658->678, frontend and images remain recorded in v0.8.2-validation.json and independent RUSL-2938; not rerun or reattributed to this fix.",
+  "limitations": [
+    "No production rollout or production dump access in this task.",
+    "GitHub CI and independent DSH acceptance are separate gates."
+  ],
+  "rollback": "git revert 156bca54e3077637919b651d7c9ca4f301de2657"
+}
