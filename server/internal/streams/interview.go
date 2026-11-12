@@ -97,6 +97,9 @@ func (s *Supervisor) OnMultikaReply(ctx context.Context, sessionID, taskID pgtyp
 	if err != nil || !s.IsMultika(owner.AgentID) {
 		return
 	}
+	if !s.multikaProjectAccess(ctx, taskID, sessionID, owner.AgentID, owner.WorkspaceID) {
+		return
+	}
 	draft, perr := ParseCharterBlock(content)
 	if draft == nil && perr == nil {
 		return
