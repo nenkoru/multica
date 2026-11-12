@@ -1,0 +1,157 @@
+{
+  "issue": "RUSL-2933",
+  "pr": "https://github.com/nenkoru/multica/pull/25",
+  "verified_at_msk": "2026-11-12 11:01:18 МСК",
+  "upstream": "b7f8efcaae6c5f3273c0038252b5d10c81b41068",
+  "custom_source": "e9c3e7fce5e4b1db463a438bdf051c630b23d0e1",
+  "tested_integration_before_receipt": "0ef869bf904025425394c545367476488c111807",
+  "tested_publication_before_receipt": "f7ab35f3798087a01a9d6d5579c8786e1c6381a6",
+  "checks": {
+    "database": {
+      "job": "kj-8acccf7c",
+      "toolchain": "go1.26.9",
+      "pass_events": 7420,
+      "skip_events": 3,
+      "packages": {
+        "internal/migrations": "pass",
+        "cmd/migrate": "pass",
+        "cmd/server": "pass",
+        "internal/streams/genui": "pass",
+        "internal/projectaccess": "pass",
+        "internal/streams": "pass",
+        "internal/service": "pass",
+        "internal/handler": "pass"
+      },
+      "skipped_tests": [
+        "TestCommentContentBigramRequirementMatchesRealPGBigm",
+        "TestIssuePropertiesBigramIndexNeedsAnalyzeForItsExpression",
+        "TestFetchFromSkillsSh_AnthropicPptxIntegration"
+      ]
+    },
+    "race": {
+      "job": "kj-53e8565c",
+      "exit_code": 0,
+      "toolchain": "go1.26.10",
+      "args": "IS_SANDBOX=1 GOMAXPROCS=4 go test -json -race -p=1 -parallel=2 -count=1 ./internal/daemon ./pkg/redact ./pkg/agent ./cmd/multica",
+      "pass_events": 6779,
+      "skip_events": 14,
+      "packages": {
+        "internal/daemon": "pass",
+        "pkg/redact": "pass",
+        "pkg/agent": "pass",
+        "cmd/multica": "pass"
+      },
+      "skipped_tests": [
+        "TestProbeAgentCLIsDiscoversZCodeAppBundle",
+        "TestDshPluginPathDirs_FindsBothLayouts/generational",
+        "TestDshPluginPathDirs_FindsBothLayouts/flat",
+        "TestValidateLocalPath/rejects_an_unwritable_directory",
+        "TestValidateLocalPath/rejects_canonical_macOS_/private/{tmp,etc,var}",
+        "TestIsDriveRoot",
+        "TestTaskTempBaseDir/non-writable_dir_rejected",
+        "TestHermesEscapedPipeHolderHelper",
+        "TestPlatformReadAutostartReportsUnmarkedUnitPresence",
+        "TestPlatformRemoveAutostartRefusesUnmarkedUnit",
+        "TestPlatformRemoveAutostartKeepsUnmarkedXdgAlongsideManagedUnit",
+        "TestDisableKeepsRunningServiceRecoverable",
+        "TestDaemonStopUnconfirmedExitHelper",
+        "TestDaemonStopWithTaskProcess"
+      ]
+    },
+    "restore_migration": {
+      "postgres": "17 + pgvector",
+      "data": "synthetic only",
+      "baseline_migrations": 658,
+      "candidate_migrations": 678,
+      "full_names_match": true,
+      "second_up_idempotent": true,
+      "invalid_indexes": 0,
+      "retained_counts_epic_sprint_stream_linked_issue_and_summary": "1|1|1|1|Preserve this synthetic summary"
+    },
+    "maintenance_operations": {
+      "passed": 11,
+      "real_external_operations": false
+    },
+    "backend_build": {
+      "job": "kj-53e8565c",
+      "targets": [
+        "cmd/server",
+        "cmd/multica",
+        "cmd/migrate"
+      ],
+      "result": "passed"
+    },
+    "typecheck": {
+      "job": "kj-08287450",
+      "packages": [
+        "core",
+        "ui",
+        "views",
+        "web",
+        "desktop"
+      ],
+      "result": "passed"
+    },
+    "lint": {
+      "jobs": [
+        "kj-08287450",
+        "kj-259a0199"
+      ],
+      "result": "passed after eight custom button-shape fixes",
+      "warnings": {
+        "core": 2,
+        "ui": 3,
+        "views": 20
+      }
+    },
+    "frontend_tests": {
+      "full_job": "kj-259a0199",
+      "files_by_package_core_views": [
+        "227 passed (227)",
+        "1 failed | 612 passed (613)"
+      ],
+      "tests_by_package_core_views": [
+        "2981 passed | 1 skipped (2982)",
+        "1 failed | 7905 passed (7906)"
+      ],
+      "fixed_failure": "Three missing ru/chat.json keys: sent_by_agent, sent_by_unknown_agent, failure.daemon_shutdown",
+      "followup_job": "kj-fbe7eb54",
+      "followup_suites": [
+        "locales/parity.test.ts",
+        "chat/chat-page.test.tsx",
+        "chat/components/chat-message-list.test.tsx"
+      ],
+      "followup_tests": "489 passed (489)",
+      "result": "Only failure fixed and verified; no single full post-fix views rerun claimed"
+    },
+    "web_build": {
+      "job": "kj-fbe7eb54",
+      "mode": "STANDALONE=true NEXT_PUBLIC_APP_VERSION=v0.8.2-rusl2933",
+      "result": "passed after final chat locale fix"
+    },
+    "web_image": {
+      "job": "kj-fc47ff52",
+      "builder": "gcr.io/kaniko-project/executor:v1.23.2-debug",
+      "dockerfile_sha256": "b4e744f61707d5926549bb37233ad92bed3bafa2ff064f26b88ec182abcbe592",
+      "ru_chat_sha256": "4559fa4e381616509f77b20e22385abe410852c9a432638346e3e6db2e9f674a",
+      "digest": "sha256:5a3871ba54034b544beb83a4917c44a959c9707403eb0c155550a72dcd9394f9",
+      "pushed": false
+    }
+  },
+  "attempts": [
+    "kj-08287450: all five typechecks and core/ui lint passed; eight custom views button-shape errors fixed before retry",
+    "kj-8acccf7c: DB suites/rehearsal passed; subsequent race failed due missing ps/root sandbox signal plus short timing fixtures; no application guard weakened",
+    "kj-ec2644aa: invocation typo -p4 stopped before race execution; corrected to -p=4",
+    "kj-387d6e34: cancelled own initial image attempt to include the statically missing plugin-sdk/vitest-setup manifests; replaced by kj-4a96b33a",
+    "kj-259a0199: 2981 core tests passed with one skip; 7905 views tests passed and one ru/chat parity case failed; three translations fixed and verified by focused parity/chat followup",
+    "kj-4a96b33a: first Dockerfile image built successfully; rebuilt as kj-fc47ff52 to include final chat translations"
+  ],
+  "limits": [
+    "No production rollout, merge, release or registry publication performed by this task",
+    "Synthetic restore does not replace fresh production dump/restore/migration rehearsal at deployment time",
+    "Planning writes require complete project visibility; Fabrika prose screens deny viewers with hidden projects; kiosk TV denies mixed private workspaces",
+    "Original openui visual acceptance remains separate; no authorized browser visual verification claimed",
+    "GitHub workflows retained from fabrika; Actions checks are absent for this PR target, not green or pending",
+    "Go build checks are compilation; no backend Docker image or running production artifact is claimed"
+  ]
+}

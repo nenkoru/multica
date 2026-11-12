@@ -44,7 +44,7 @@ func epicToResponse(e db.Epic) EpicResponse {
 }
 
 func (h *Handler) loadEpicIssueStats(ctx context.Context, epicID pgtype.UUID) (int64, int64, error) {
-	stats, err := h.Queries.GetEpicIssueStats(ctx, []pgtype.UUID{epicID})
+	stats, err := h.Queries.GetEpicIssueStats(ctx, db.GetEpicIssueStatsParams{EpicIds: []pgtype.UUID{epicID}, HiddenProjectIds: planningHidden(ctx)})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -72,6 +72,11 @@ var validEpicStatuses = []string{"open", "closed"}
 func (h *Handler) ListEpics(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	workspaceID := h.resolveWorkspaceID(r)
@@ -102,7 +107,7 @@ func (h *Handler) ListEpics(w http.ResponseWriter, r *http.Request) {
 		for i, e := range epics {
 			epicIDs[i] = e.ID
 		}
-		stats, err := h.Queries.GetEpicIssueStats(r.Context(), epicIDs)
+		stats, err := h.Queries.GetEpicIssueStats(r.Context(), db.GetEpicIssueStatsParams{EpicIds: epicIDs, HiddenProjectIds: planningHidden(r.Context())})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to count planning issues")
 			return
@@ -137,6 +142,11 @@ func (h *Handler) ListEpics(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetEpic(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -176,6 +186,11 @@ func (h *Handler) GetEpic(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CreateEpic(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	var req CreateEpicRequest
@@ -226,6 +241,11 @@ func (h *Handler) CreateEpic(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateEpic(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -329,6 +349,11 @@ func (h *Handler) UpdateEpic(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteEpic(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	id := chi.URLParam(r, "id")

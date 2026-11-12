@@ -162,6 +162,7 @@ export function EpicDetail({ epicId }: { epicId: string }) {
                           aria-label={c}
                           onClick={() => handleUpdate({ id: epic.id, color: c })}
                           className={cn(
+                            // eslint-disable-next-line no-restricted-syntax -- Color swatch.
                             "size-5 rounded-full transition-all",
                             epic.color === c
                               ? "ring-2 ring-offset-1 ring-foreground"
@@ -192,7 +193,7 @@ export function EpicDetail({ epicId }: { epicId: string }) {
                       <button
                         type="button"
                         className={cn(
-                          "text-caption px-2 py-0.5 rounded-full cursor-pointer",
+                          "text-caption px-2 py-0.5 rounded-md cursor-pointer",
                           epic.status === "open"
                             ? "bg-primary/10 text-primary"
                             : "bg-muted text-muted-foreground",

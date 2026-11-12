@@ -1,0 +1,118 @@
+{
+  "progress": {
+    "title": "Progreso",
+    "percent_done": "{{percent}} % completado",
+    "done_of_total": "{{done}} de {{total}}",
+    "bar_label": "Progreso de las tareas por estado",
+    "bucket": {
+      "done": "Completadas",
+      "in_review": "En revisión",
+      "in_progress": "En curso",
+      "blocked": "Bloqueadas",
+      "not_started": "Sin iniciar",
+      "cancelled": "Canceladas"
+    }
+  },
+  "attention": {
+    "title": "Requiere atención",
+    "more": "{{count}} más sin mostrar"
+  },
+  "issues": {
+    "title": "Tareas",
+    "group_by": "Agrupar por",
+    "grouping": {
+      "status": "Estado",
+      "sprint": "Sprint",
+      "epic": "Épica",
+      "assignee": "Responsable"
+    },
+    "view_label": "Vista",
+    "view": {
+      "list": "Lista",
+      "board": "Tablero"
+    },
+    "no_sprint": "Sin sprint",
+    "no_epic": "Sin épica",
+    "unassigned": "Sin asignar",
+    "unknown_sprint": "Sprint eliminado",
+    "unknown_epic": "Épica eliminada",
+    "create": "Nueva tarea",
+    "link": "Vincular existente",
+    "truncated": "Se muestran las primeras {{shown}} de {{total}} tareas. Abre el tablero para ver el resto.",
+    "load_failed": "No se han podido cargar las tareas",
+    "retry": "Reintentar"
+  },
+  "link": {
+    "epic_title": "Vincular una tarea a esta épica",
+    "epic_description": "Busca una tarea existente para añadirla a la épica.",
+    "sprint_title": "Añadir una tarea a este sprint",
+    "sprint_description": "Busca una tarea existente. Si está en otro sprint, se moverá a este.",
+    "linked": "Se ha vinculado {{identifier}}",
+    "failed": "No se ha podido vincular la tarea"
+  },
+  "empty": {
+    "epic_title": "Todavía no hay tareas en esta épica",
+    "sprint_title": "Todavía no hay tareas en este sprint",
+    "hint": "Crea una tarea aquí o vincula una existente."
+  },
+  "sidebar": {
+    "assignees": "Responsables",
+    "workload": "Carga de trabajo",
+    "sprints": "Sprints",
+    "epics": "Épicas",
+    "activity": "Actividad reciente",
+    "no_activity": "Todavía no hay actividad",
+    "details": "Detalles",
+    "created": "Creada",
+    "last_activity": "Última actividad",
+    "never": "Todavía ninguna",
+    "open_count": "Abiertas: {{count}}"
+  },
+  "activity": {
+    "created": "ha creado la tarea",
+    "status_changed": "ha cambiado el estado a {{to}}",
+    "assignee_changed": "ha cambiado el responsable",
+    "priority_changed": "ha cambiado la prioridad a {{to}}",
+    "title_changed": "ha renombrado la tarea",
+    "system": "Sistema"
+  },
+  "sprint": {
+    "goal": "Objetivo",
+    "start": "Iniciar sprint",
+    "complete": "Completar sprint",
+    "day_of": "Día {{day}} de {{total}}",
+    "days_left": "Días restantes: {{count}}",
+    "last_day": "Último día",
+    "starts_in": "Empieza en {{count}} d",
+    "ended_ago": "Terminó hace {{count}} d",
+    "length": "Duración: {{count}} d",
+    "burndown": "Trabajo pendiente",
+    "burndown_remaining": "Restante",
+    "burndown_ideal": "Ideal",
+    "burndown_label": "Tareas restantes por día: quedan {{remaining}} de {{total}} el {{date}}"
+  },
+  "complete": {
+    "title": "Completar sprint",
+    "summary_open": "Hay {{open}} de {{total}} tareas sin terminar. Las completadas permanecen en este sprint.",
+    "summary_none": "Todas las tareas de este sprint están terminadas.",
+    "choice_label": "Tareas sin terminar",
+    "move": "Mover a otro sprint",
+    "move_unavailable": "No hay otro sprint planificado o activo al que moverlas.",
+    "keep": "Dejar en este sprint",
+    "unlink": "Quitar del sprint",
+    "unlink_hint": "Las tareas permanecen en el espacio de trabajo sin sprint.",
+    "target": "Sprint de destino",
+    "confirm": "Completar sprint",
+    "cancel": "Cancelar",
+    "done_moved": "Sprint completado. Se han movido {{count}} tareas a {{sprint}}.",
+    "done_unlinked": "Sprint completado. Se han quitado {{count}} tareas del sprint.",
+    "done_kept": "Sprint completado. Quedan {{count}} tareas sin terminar en él.",
+    "failed": "No se ha podido completar el sprint"
+  },
+  "list": {
+    "open": "Abiertas: {{count}}",
+    "blocked": "Bloqueadas: {{count}}",
+    "created": "Creada el {{date}}",
+    "no_issues": "Sin tareas"
+  }
+}

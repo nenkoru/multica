@@ -178,7 +178,7 @@ export function TvOrbit({ controller, overview, lang = "ru", labels = DEFAULT_OR
             <button
               type="button"
               onClick={() => void controller.unlockSound()}
-              className="flex items-center gap-1.5 rounded-full border border-[#2b3b4f] bg-[#18212c] px-3 py-1.5 font-semibold text-[#cfe0f2]"
+              className="flex items-center gap-1.5 rounded-lg border border-[#2b3b4f] bg-[#18212c] px-3 py-1.5 font-semibold text-[#cfe0f2]"
             >
               <Volume2 aria-hidden className="size-4" />
               {copy.enableSound}
@@ -187,7 +187,7 @@ export function TvOrbit({ controller, overview, lang = "ru", labels = DEFAULT_OR
             <button
               type="button"
               onClick={() => controller.toggleMute()}
-              className="flex items-center gap-1.5 rounded-full border border-[#2b3b4f] bg-[#18212c] px-3 py-1.5 text-[#cfe0f2]"
+              className="flex items-center gap-1.5 rounded-lg border border-[#2b3b4f] bg-[#18212c] px-3 py-1.5 text-[#cfe0f2]"
             >
               {view.mutedUntil ? <VolumeX aria-hidden className="size-4" /> : <Volume2 aria-hidden className="size-4" />}
               {view.mutedUntil ? copy.unmute(tvTime(new Date(view.mutedUntil))) : copy.mute}
@@ -197,7 +197,7 @@ export function TvOrbit({ controller, overview, lang = "ru", labels = DEFAULT_OR
             type="button"
             onClick={() => setFocus((f) => !f)}
             aria-pressed={focus}
-            className="flex items-center gap-1.5 rounded-full border border-[#2b3b4f] bg-[#18212c] px-3 py-1.5 text-[#cfe0f2]"
+            className="flex items-center gap-1.5 rounded-lg border border-[#2b3b4f] bg-[#18212c] px-3 py-1.5 text-[#cfe0f2]"
           >
             <Focus aria-hidden className="size-4" />
             {focus ? copy.unfocus : copy.focus}

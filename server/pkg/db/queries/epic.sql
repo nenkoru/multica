@@ -33,6 +33,7 @@ SELECT epic_id,
        count(*)::bigint AS total_count,
        count(*) FILTER (WHERE status IN ('done', 'cancelled') OR status IN (SELECT key FROM issue_status WHERE issue_status.workspace_id = issue.workspace_id AND category IN ('done', 'closed')))::bigint AS done_count
 FROM issue
-WHERE epic_id = ANY(sqlc.arg('epic_ids')::uuid[])
+WHERE (sqlc.narg('hidden_project_ids')::uuid[] IS NULL OR project_id IS NULL OR NOT (project_id = ANY(sqlc.narg('hidden_project_ids')::uuid[])))
+  AND epic_id = ANY(sqlc.arg('epic_ids')::uuid[])
   AND EXISTS (SELECT 1 FROM epic WHERE epic.id = issue.epic_id AND epic.workspace_id = issue.workspace_id)
 GROUP BY epic_id;

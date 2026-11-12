@@ -98,10 +98,16 @@ SELECT sprint_id,
        count(*)::bigint AS total_count,
        count(*) FILTER (WHERE status IN ('done', 'cancelled') OR status IN (SELECT key FROM issue_status WHERE issue_status.workspace_id = issue.workspace_id AND category IN ('done', 'closed')))::bigint AS done_count
 FROM issue
-WHERE sprint_id = ANY($1::uuid[])
+WHERE ($1::uuid[] IS NULL OR project_id IS NULL OR NOT (project_id = ANY($1::uuid[])))
+  AND sprint_id = ANY($2::uuid[])
   AND EXISTS (SELECT 1 FROM sprint WHERE sprint.id = issue.sprint_id AND sprint.workspace_id = issue.workspace_id)
 GROUP BY sprint_id
 `
+
+type GetSprintIssueStatsParams struct {
+	HiddenProjectIds []pgtype.UUID `json:"hidden_project_ids"`
+	SprintIds        []pgtype.UUID `json:"sprint_ids"`
+}
 
 type GetSprintIssueStatsRow struct {
 	SprintID   pgtype.UUID `json:"sprint_id"`
@@ -109,8 +115,8 @@ type GetSprintIssueStatsRow struct {
 	DoneCount  int64       `json:"done_count"`
 }
 
-func (q *Queries) GetSprintIssueStats(ctx context.Context, sprintIds []pgtype.UUID) ([]GetSprintIssueStatsRow, error) {
-	rows, err := q.db.Query(ctx, getSprintIssueStats, sprintIds)
+func (q *Queries) GetSprintIssueStats(ctx context.Context, arg GetSprintIssueStatsParams) ([]GetSprintIssueStatsRow, error) {
+	rows, err := q.db.Query(ctx, getSprintIssueStats, arg.HiddenProjectIds, arg.SprintIds)
 	if err != nil {
 		return nil, err
 	}

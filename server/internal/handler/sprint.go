@@ -47,7 +47,7 @@ func sprintToResponse(s db.Sprint) SprintResponse {
 }
 
 func (h *Handler) loadSprintIssueStats(ctx context.Context, sprintID pgtype.UUID) (int64, int64, error) {
-	stats, err := h.Queries.GetSprintIssueStats(ctx, []pgtype.UUID{sprintID})
+	stats, err := h.Queries.GetSprintIssueStats(ctx, db.GetSprintIssueStatsParams{SprintIds: []pgtype.UUID{sprintID}, HiddenProjectIds: planningHidden(ctx)})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -79,6 +79,11 @@ func (h *Handler) ListSprints(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "planning is disabled")
 		return
 	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
+		return
+	}
 	workspaceID := h.resolveWorkspaceID(r)
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
 	if !ok {
@@ -107,7 +112,7 @@ func (h *Handler) ListSprints(w http.ResponseWriter, r *http.Request) {
 		for i, s := range sprints {
 			sprintIDs[i] = s.ID
 		}
-		stats, err := h.Queries.GetSprintIssueStats(r.Context(), sprintIDs)
+		stats, err := h.Queries.GetSprintIssueStats(r.Context(), db.GetSprintIssueStatsParams{SprintIds: sprintIDs, HiddenProjectIds: planningHidden(r.Context())})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to count planning issues")
 			return
@@ -142,6 +147,11 @@ func (h *Handler) ListSprints(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetSprint(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -181,6 +191,11 @@ func (h *Handler) GetSprint(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	var req CreateSprintRequest
@@ -251,6 +266,11 @@ func (h *Handler) CreateSprint(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -377,6 +397,11 @@ func (h *Handler) UpdateSprint(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteSprint(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	id := chi.URLParam(r, "id")

@@ -13,6 +13,12 @@ const (
 	workspaceDeleteDetach workspaceDeleteAction = "detach"
 	workspaceDeleteKeep   workspaceDeleteAction = "keep"
 	workspaceDeleteSettle workspaceDeleteAction = "settle"
+	// workspaceDeleteFabrika marks Fabrika tables (migrations 900x). They carry
+	// no foreign key to workspace and the delete handler does not touch them, so
+	// rows of a deleted workspace stay behind. This is a known, deliberate gap:
+	// closing it needs a schema or handler change that is out of scope for the
+	// test-metadata fix (RUSL-2711). Remove this action once teardown exists.
+	workspaceDeleteFabrika workspaceDeleteAction = "fabrika-external"
 )
 
 // workspaceDeletionManifest is the schema coverage contract for workspace
@@ -91,6 +97,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"issue_workflow":                     workspaceDelete,
 	"issue_subscriber":                   workspaceDelete,
 	"issue_to_label":                     workspaceDelete,
+	"issue_unread":                       workspaceDelete,
 	"issue_vcs_pull_request":             workspaceDelete,
 	"lark_binding_token":                 workspaceDelete,
 	"lark_chat_session_binding":          workspaceDelete,
@@ -116,6 +123,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"plugin_package_version":             workspaceDelete,
 	"plugin_package_file":                workspaceDelete,
 	"project":                            workspaceDelete,
+	"project_member":                     workspaceDelete,
 	"epic":                               workspaceDelete,
 	"sprint":                             workspaceDelete,
 	"kiosk_token":                        workspaceDelete,
@@ -127,9 +135,11 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"search_index_change":                workspaceDelete,
 	"search_index_prune_mark":            workspaceDeleteKeep,
 	"seat_capacity_outbox":               workspaceDeleteSettle,
+	"site_counter":                       workspaceDeleteKeep,
 	"skill":                              workspaceDelete,
 	"skill_file":                         workspaceDelete,
 	"skill_to_label":                     workspaceDelete,
+	"skill_version":                      workspaceDelete,
 	"squad":                              workspaceDelete,
 	"squad_member":                       workspaceDelete,
 	"sys_cron_executions":                workspaceDeleteKeep,
@@ -148,9 +158,31 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"vcs_pull_request":                   workspaceDelete,
 	"verification_code":                  workspaceDeleteKeep,
 	"webhook_delivery":                   workspaceDelete,
+	"wecom_install_session":              workspaceDelete,
+	"workspace_composio_connection":      workspaceDelete,
+	"agent_app":                          workspaceDelete,
+	"app_action_rule":                    workspaceDelete,
+	"app_action_request":                 workspaceDelete,
+	"app_tool_call":                      workspaceDelete,
+	"issue_environment":                  workspaceDelete,
+	"workspace_app_setting":              workspaceDelete,
+	"app_tool_class_override":            workspaceDelete,
 	"workspace":                          workspaceDelete,
 	"workspace_invitation":               workspaceDelete,
 	"workspace_share_link":               workspaceDelete,
+	"ask":                                workspaceDeleteFabrika,
+	"chat_focus":                         workspaceDeleteFabrika,
+	"executor_status":                    workspaceDeleteFabrika,
+	"milestone":                          workspaceDeleteFabrika,
+	"multika_charter":                    workspaceDeleteFabrika,
+	"multika_turn":                       workspaceDeleteFabrika,
+	"stream":                             workspaceDeleteFabrika,
+	"stream_journal":                     workspaceDeleteFabrika,
+	"stream_step":                        workspaceDeleteFabrika,
+	"stream_supervisor_state":            workspaceDeleteFabrika,
+	"stream_wait":                        workspaceDeleteFabrika,
+	"ui_action":                          workspaceDeleteFabrika,
+	"ui_block":                           workspaceDeleteFabrika,
 }
 
 func TestWorkspaceDeletionManifestCoversPublicSchema(t *testing.T) {

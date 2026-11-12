@@ -221,6 +221,9 @@ func (s *Supervisor) finishScreens(ctx context.Context, e events.Event, p protoc
 		slog.Warn("streams: screens session lookup failed", "error", err)
 		return
 	}
+	if !s.IsMultika(owner.AgentID) || !s.multikaProjectAccess(ctx, taskID, sessionID, owner.AgentID, owner.WorkspaceID) {
+		return
+	}
 	messageID, _ := parseUUID(p.MessageID)
 	if messageID.Valid {
 		_ = s.Q.SetUIBlocksMessage(ctx, sdb.SetUIBlocksMessageParams{TaskID: taskID, MessageID: messageID})

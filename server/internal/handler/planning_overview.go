@@ -208,9 +208,9 @@ FROM (
   SELECT %s AS bucket, i.assignee_type, i.assignee_id, i.%s AS other_id,
          COALESCE(i.last_activity_at, i.updated_at) AS activity_at
   FROM issue i
-  WHERE i.workspace_id = $1 AND i.%s = $2
+  WHERE i.workspace_id = $1 AND i.%s = $2 AND ($3::uuid[] IS NULL OR i.project_id IS NULL OR NOT (i.project_id = ANY($3::uuid[])))
 ) t
-GROUP BY bucket, assignee_type, assignee_id, other_id`, planningBucketExpr, rel.other, rel.column), wsID, id)
+GROUP BY bucket, assignee_type, assignee_id, other_id`, planningBucketExpr, rel.other, rel.column), wsID, id, planningHidden(ctx))
 	if err != nil {
 		return out, err
 	}
@@ -314,11 +314,11 @@ SELECT id, number, title, status, bucket, assignee_type, assignee_id, updated_at
 FROM (
   SELECT i.id, i.number, i.title, i.status, %s AS bucket, i.assignee_type, i.assignee_id, i.updated_at
   FROM issue i
-  WHERE i.workspace_id = $1 AND i.%s = $2
+  WHERE i.workspace_id = $1 AND i.%s = $2 AND ($3::uuid[] IS NULL OR i.project_id IS NULL OR NOT (i.project_id = ANY($3::uuid[])))
 ) t
 WHERE bucket IN ('blocked', 'in_review')
 ORDER BY (bucket = 'blocked') DESC, updated_at DESC, id
-LIMIT %d`, planningBucketExpr, rel.column, planningAttentionLimit), wsID, id)
+LIMIT %d`, planningBucketExpr, rel.column, planningAttentionLimit), wsID, id, planningHidden(ctx))
 	if err != nil {
 		return out, err
 	}
@@ -361,9 +361,9 @@ CROSS JOIN LATERAL (
   ORDER BY al.created_at DESC, al.id DESC
   LIMIT %d
 ) a
-WHERE i.workspace_id = $1 AND i.%s = $2
+WHERE i.workspace_id = $1 AND i.%s = $2 AND ($4::uuid[] IS NULL OR i.project_id IS NULL OR NOT (i.project_id = ANY($4::uuid[])))
 ORDER BY a.created_at DESC, a.id DESC
-LIMIT %d`, planningActivityLimit, rel.column, planningActivityLimit), wsID, id, planningActivityActions)
+LIMIT %d`, planningActivityLimit, rel.column, planningActivityLimit), wsID, id, planningActivityActions, planningHidden(ctx))
 	if err != nil {
 		return out, err
 	}
@@ -418,11 +418,11 @@ FROM (
   FROM (
     SELECT i.id, i.status, i.updated_at, %s AS bucket
     FROM issue i
-    WHERE i.workspace_id = $1 AND i.sprint_id = $2
+    WHERE i.workspace_id = $1 AND i.sprint_id = $2 AND ($3::uuid[] IS NULL OR i.project_id IS NULL OR NOT (i.project_id = ANY($3::uuid[])))
   ) t
   WHERE t.bucket IN ('done', 'cancelled')
 ) c
-GROUP BY day`, planningBucketExpr), sprint.WorkspaceID, sprint.ID)
+GROUP BY day`, planningBucketExpr), sprint.WorkspaceID, sprint.ID, planningHidden(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -479,9 +479,9 @@ SELECT rel_id, bucket, count(*)::bigint
 FROM (
   SELECT i.%s AS rel_id, %s AS bucket
   FROM issue i
-  WHERE i.workspace_id = $1 AND i.%s = ANY($2::uuid[])
+  WHERE i.workspace_id = $1 AND i.%s = ANY($2::uuid[]) AND ($3::uuid[] IS NULL OR i.project_id IS NULL OR NOT (i.project_id = ANY($3::uuid[])))
 ) t
-GROUP BY rel_id, bucket`, rel.column, planningBucketExpr, rel.column), wsID, ids)
+GROUP BY rel_id, bucket`, rel.column, planningBucketExpr, rel.column), wsID, ids, planningHidden(ctx))
 	if err != nil {
 		return out, err
 	}
@@ -510,6 +510,11 @@ func writePlanningOverviewFailure(w http.ResponseWriter, r *http.Request, err er
 func (h *Handler) GetEpicOverview(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	idUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "epic id")
@@ -597,6 +602,11 @@ ORDER BY start_date, id`, epic.WorkspaceID, ids)
 func (h *Handler) GetSprintOverview(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	idUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "sprint id")
@@ -705,6 +715,11 @@ const (
 func (h *Handler) CompleteSprint(w http.ResponseWriter, r *http.Request) {
 	if !h.cfg.PlanningEnabled {
 		writeError(w, http.StatusNotFound, "planning is disabled")
+		return
+	}
+	var accessOK bool
+	r, accessOK = h.planningRequest(w, r)
+	if !accessOK {
 		return
 	}
 	workspaceID := h.resolveWorkspaceID(r)

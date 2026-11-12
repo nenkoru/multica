@@ -30,10 +30,11 @@ func registerStreamsHealth(r chi.Router, sup *streams.Supervisor) {
 
 // registerStreamsRoutes mounts the member routes inside the workspace group.
 // Pause/resume/activate are Ruslan's controls and refuse agent credentials.
-func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor) {
+func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor, access func(http.Handler) http.Handler) {
 	if sup == nil {
 		return
 	}
+	r = r.With(access)
 	h := streamsHTTP(sup)
 	r.Get("/api/streams", h.List)
 	r.Post("/api/streams/digest", h.Digest)

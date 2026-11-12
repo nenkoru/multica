@@ -231,7 +231,7 @@ export function SprintDetail({ sprintId }: { sprintId: string }) {
                       <button
                         type="button"
                         className={cn(
-                          "text-caption px-2 py-0.5 rounded-full cursor-pointer",
+                          "text-caption px-2 py-0.5 rounded-md cursor-pointer",
                           statusCfg.badgeBg,
                           statusCfg.badgeText,
                         )}

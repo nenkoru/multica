@@ -19,9 +19,11 @@ const columns: ColumnDef<Row>[] = [
 function ResizableTable({
   onSizingChange,
   pinFirstColumn = false,
+  virtualizeRows = false,
 }: {
   onSizingChange: (sizing: ColumnSizingState) => void;
   pinFirstColumn?: boolean;
+  virtualizeRows?: boolean;
 }) {
   const [columnSizing, setColumnSizing] = React.useState<ColumnSizingState>({});
   const table = useReactTable({
@@ -41,7 +43,7 @@ function ResizableTable({
     },
   });
 
-  return <DataTable table={table} />;
+  return <DataTable table={table} virtualizeRows={virtualizeRows} />;
 }
 
 // jsdom has no layout, so every <th> would measure 0 and each committed width
@@ -88,6 +90,38 @@ function setup() {
 }
 
 describe("DataTable column resize", () => {
+  it("keeps scroll tracking enabled for virtual rows", () => {
+    vi.useFakeTimers();
+    let unmount: (() => void) | undefined;
+    try {
+      ({ unmount } = render(<ResizableTable onSizingChange={vi.fn()} virtualizeRows />));
+      const scroller = document.querySelector<HTMLElement>(".overflow-auto")!;
+      const before = vi.getTimerCount();
+      act(() => scroller.dispatchEvent(new Event("scroll")));
+      expect(vi.getTimerCount()).toBeGreaterThan(before);
+    } finally {
+      unmount?.();
+      act(() => vi.runOnlyPendingTimers());
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not schedule virtual scroll callbacks for ordinary rows", () => {
+    vi.useFakeTimers();
+    let unmount: (() => void) | undefined;
+    try {
+      ({ unmount } = render(<ResizableTable onSizingChange={vi.fn()} />));
+      const scroller = document.querySelector<HTMLElement>(".overflow-auto")!;
+      const before = vi.getTimerCount();
+      act(() => scroller.dispatchEvent(new Event("scroll")));
+      expect(vi.getTimerCount()).toBe(before);
+    } finally {
+      unmount?.();
+      act(() => vi.runOnlyPendingTimers());
+      vi.useRealTimers();
+    }
+  });
+
   it("commits nothing when the handle is clicked without dragging", () => {
     const { onSizingChange, handle } = setup();
 

@@ -1,0 +1,51 @@
+{
+  "page": {
+    "title": "Эпики",
+    "new_epic": "Новый эпик",
+    "empty": "Эпиков пока нет",
+    "create_first": "Создать первый эпик",
+    "search_placeholder": "Поиск эпиков...",
+    "no_search_results": "По вашему запросу ничего не найдено"
+  },
+  "table": {
+    "name": "Название",
+    "status": "Статус",
+    "progress": "Прогресс",
+    "created": "Создано",
+    "issues": "задач"
+  },
+  "picker": {
+    "no_epic": "Без эпика",
+    "remove_epic": "Убрать эпик",
+    "no_epics": "В рабочем пространстве нет эпиков"
+  },
+  "status": {
+    "open": "Открыт",
+    "closed": "Закрыт"
+  },
+  "detail": {
+    "not_found": "Эпик не найден",
+    "breadcrumb_fallback": "Эпики",
+    "title_placeholder": "Название эпика",
+    "copy_link": "Копировать ссылку",
+    "delete_action": "Удалить эпик",
+    "section_properties": "Свойства",
+    "section_description": "Описание",
+    "description_placeholder": "Добавить описание...",
+    "no_issues_yet": "Задач пока нет",
+    "delete_confirm_title": "Удалить эпик",
+    "delete_confirm_description": "Удалить эпик? Его задачи останутся в рабочем пространстве."
+  },
+  "create": {
+    "title": "Создать эпик",
+    "label_title": "Название",
+    "title_placeholder": "Название эпика",
+    "label_description": "Описание",
+    "description_placeholder": "Добавить описание...",
+    "color": "Цвет",
+    "submit": "Создать эпик",
+    "cancel": "Отмена",
+    "success": "Создано",
+    "error": "Не удалось создать"
+  }
+}

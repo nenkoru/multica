@@ -13,7 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/projectaccess"
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // Мультика: one lifelong chat for web and Telegram (§2 #8, §9.2, §13 day 6).
@@ -30,6 +32,7 @@ const (
 	MultikaUnavailableText     = "Мультика недоступна, потоки идут. Сообщение сохранено в чате — повтори его чуть позже. Сводка в 10:00 придёт в любом случае."
 	MultikaOfflineText         = "Мультика недоступна: её исполнитель сейчас не в сети. Потоки идут, сообщение сохранено и будет обработано, когда она вернётся."
 	MultikaNewChatDisabledText = "Чат с Мультикой один, /new отключён. Пиши как обычно: «давай про <поток>» — нырнуть в поток, «всё» — вынырнуть."
+	MultikaAccessDeniedText    = "Контекст и действия Фабрики недоступны для этого запуска. Не используй сводки и не выполняй действия с потоками."
 )
 
 // FocusIdle ends the focus after this much silence (§9.2).
@@ -190,7 +193,7 @@ type MultikaTurnActions struct {
 
 // OnMultikaClaim runs when the daemon claims a chat turn. It returns the
 // context block to put in front of the user's text, or "" when the turn is
-// not Мультика's. Errors only degrade the context: the turn always runs.
+// not Мультика's. Access failures return a denial without applying actions.
 func (s *Supervisor) OnMultikaClaim(ctx context.Context, taskID, sessionID, agentID pgtype.UUID, text string) string {
 	if !s.IsMultika(agentID) || !sessionID.Valid {
 		return ""
@@ -198,7 +201,10 @@ func (s *Supervisor) OnMultikaClaim(ctx context.Context, taskID, sessionID, agen
 	owner, err := s.Q.GetChatSessionOwner(ctx, sessionID)
 	if err != nil {
 		slog.Warn("streams: multika session lookup failed", "error", err)
-		return ""
+		return MultikaAccessDeniedText
+	}
+	if owner.AgentID != agentID || !s.multikaProjectAccess(ctx, taskID, sessionID, agentID, owner.WorkspaceID) {
+		return MultikaAccessDeniedText
 	}
 	streams, err := s.Q.ListStreams(ctx, owner.WorkspaceID)
 	if err != nil {
@@ -222,6 +228,35 @@ func (s *Supervisor) OnMultikaClaim(ctx context.Context, taskID, sessionID, agen
 		out = strings.Replace(out, multikaContextEnd, s.screenContext(ctx, owner.WorkspaceID, streams, acts, now)+multikaContextEnd, 1)
 	}
 	return out
+}
+
+// Stored Fabrika prose combines projects and cannot be safely filtered after
+// reading. Check current run principals before any context, replay or action;
+// a shared agent's owner or the canonical chat owner alone is insufficient.
+func (s *Supervisor) multikaProjectAccess(ctx context.Context, taskID, sessionID, agentID, workspaceID pgtype.UUID) bool {
+	q := db.New(s.Pool)
+	private, err := q.ListPrivateProjectIDs(ctx, workspaceID)
+	if err != nil {
+		slog.Warn("streams: multika project access lookup failed", "error", err)
+		return false
+	}
+	if len(private) == 0 {
+		return true
+	}
+	task, err := q.GetAgentTaskInWorkspace(ctx, db.GetAgentTaskInWorkspaceParams{ID: taskID, WorkspaceID: workspaceID})
+	if err != nil || task.AgentID != agentID || task.ChatSessionID != sessionID {
+		return false
+	}
+	agent, err := q.GetAgent(ctx, agentID)
+	if err != nil {
+		return false
+	}
+	hidden, err := projectaccess.ForPrincipals(ctx, q, workspaceID, projectaccess.RunPrincipals(task, agent.OwnerID)...)
+	if err != nil {
+		slog.Warn("streams: multika run access lookup failed", "error", err)
+		return false
+	}
+	return hidden.Empty()
 }
 
 // MultikaFocus is the current focus of the chat, if any.

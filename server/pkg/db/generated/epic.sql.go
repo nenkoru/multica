@@ -94,10 +94,16 @@ SELECT epic_id,
        count(*)::bigint AS total_count,
        count(*) FILTER (WHERE status IN ('done', 'cancelled') OR status IN (SELECT key FROM issue_status WHERE issue_status.workspace_id = issue.workspace_id AND category IN ('done', 'closed')))::bigint AS done_count
 FROM issue
-WHERE epic_id = ANY($1::uuid[])
+WHERE ($1::uuid[] IS NULL OR project_id IS NULL OR NOT (project_id = ANY($1::uuid[])))
+  AND epic_id = ANY($2::uuid[])
   AND EXISTS (SELECT 1 FROM epic WHERE epic.id = issue.epic_id AND epic.workspace_id = issue.workspace_id)
 GROUP BY epic_id
 `
+
+type GetEpicIssueStatsParams struct {
+	HiddenProjectIds []pgtype.UUID `json:"hidden_project_ids"`
+	EpicIds          []pgtype.UUID `json:"epic_ids"`
+}
 
 type GetEpicIssueStatsRow struct {
 	EpicID     pgtype.UUID `json:"epic_id"`
@@ -105,8 +111,8 @@ type GetEpicIssueStatsRow struct {
 	DoneCount  int64       `json:"done_count"`
 }
 
-func (q *Queries) GetEpicIssueStats(ctx context.Context, epicIds []pgtype.UUID) ([]GetEpicIssueStatsRow, error) {
-	rows, err := q.db.Query(ctx, getEpicIssueStats, epicIds)
+func (q *Queries) GetEpicIssueStats(ctx context.Context, arg GetEpicIssueStatsParams) ([]GetEpicIssueStatsRow, error) {
+	rows, err := q.db.Query(ctx, getEpicIssueStats, arg.HiddenProjectIds, arg.EpicIds)
 	if err != nil {
 		return nil, err
 	}
