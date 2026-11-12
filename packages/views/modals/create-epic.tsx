@@ -102,6 +102,7 @@ export function CreateEpicModal({ onClose }: { onClose: () => void }) {
                   aria-label={`${t(($) => $.create.color)} ${c}`}
                   onClick={() => setColor(c)}
                   className={cn(
+                    // eslint-disable-next-line no-restricted-syntax -- Color swatch.
                     "size-6 rounded-full transition-all",
                     color === c
                       ? "ring-2 ring-offset-2 ring-foreground scale-110"

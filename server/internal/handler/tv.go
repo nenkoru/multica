@@ -178,6 +178,18 @@ func (h *Handler) requireKiosk(w http.ResponseWriter, r *http.Request) (KioskSes
 		writeError(w, http.StatusInternalServerError, "failed to check kiosk token")
 		return KioskSession{}, false
 	}
+	// A kiosk token has no human principals. Its aggregate includes titles,
+	// counts and failure reasons, so do not serve a mixed private workspace
+	// until the complete TV projection can exclude private issues consistently.
+	private, err := h.Queries.ListPrivateProjectIDs(r.Context(), s.WorkspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check project access")
+		return KioskSession{}, false
+	}
+	if len(private) > 0 {
+		writeError(w, http.StatusNotFound, "TV not available for private workspaces")
+		return KioskSession{}, false
+	}
 	return s, true
 }
 

@@ -56,6 +56,7 @@ func TestDaemonLocalCommandsFailClosedInTaskContext(t *testing.T) {
 	t.Setenv("MULTICA_TASK_CONFIG_ROOT", filepath.Join(t.TempDir(), "task-multica"))
 
 	cases := map[string]func() error{
+		"maintenance":       func() error { return runDaemonMaintenance(daemonStatusCmd, []string{"enter"}) },
 		"probe-runtimes":    func() error { return runDaemonProbeRuntimes(daemonProbeRuntimesCmd, nil) },
 		"start":             func() error { return runDaemonStart(daemonStartCmd, nil) },
 		"restart":           func() error { return runDaemonRestart(daemonRestartCmd, nil) },

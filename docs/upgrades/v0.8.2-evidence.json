@@ -1,0 +1,341 @@
+{
+  "issue": "RUSL-2897",
+  "checked_at": "2026-11-11T15:08:31+03:00",
+  "refs": {
+    "v0.8.1": "b1ea927def6490c43bedff537b6f4ed9a47fa828",
+    "v0.8.2": "b7f8efcaae6c5f3273c0038252b5d10c81b41068",
+    "origin/fabrika": "44882282ffc9df552677ba563e7290e719ba8db2",
+    "origin/custom/RUSL-2779-maintenance-pr": "e9c3e7fce5e4b1db463a438bdf051c630b23d0e1"
+  },
+  "upstream": {
+    "commits": 114,
+    "changed_files": 1143,
+    "diff_stat": "1143 files changed, 83678 insertions(+), 11528 deletions(-)",
+    "api_compare_file_list_truncated_at": 300
+  },
+  "custom": {
+    "changed_files_against_v081": 487,
+    "overlap_paths": [
+      ".github/workflows/ci.yml",
+      "apps/desktop/src/renderer/src/routes.tsx",
+      "apps/docs/content/docs/cli.mdx",
+      "apps/docs/content/docs/cli.zh.mdx",
+      "deploy/helm/multica/values.yaml",
+      "packages/core/api/client.test.ts",
+      "packages/core/api/client.ts",
+      "packages/core/api/schemas.ts",
+      "packages/core/diagnostics/diagnostic-context.ts",
+      "packages/core/issues/mutations.test.tsx",
+      "packages/core/issues/mutations.ts",
+      "packages/core/issues/queries.ts",
+      "packages/core/issues/ws-updaters.test.ts",
+      "packages/core/modals/store.ts",
+      "packages/core/package.json",
+      "packages/core/paths/paths.ts",
+      "packages/core/paths/reserved-slugs.ts",
+      "packages/core/realtime/use-realtime-sync.ts",
+      "packages/core/types/agent.ts",
+      "packages/core/types/api.ts",
+      "packages/core/types/events.ts",
+      "packages/core/types/index.ts",
+      "packages/views/chat/chat-page.test.tsx",
+      "packages/views/chat/chat-page.tsx",
+      "packages/views/chat/components/chat-input.tsx",
+      "packages/views/chat/components/chat-message-list.test.tsx",
+      "packages/views/chat/components/chat-message-list.tsx",
+      "packages/views/issues/components/filter-chips-bar.tsx",
+      "packages/views/issues/components/issue-detail.test.tsx",
+      "packages/views/issues/components/issue-detail.tsx",
+      "packages/views/issues/components/issues-header.tsx",
+      "packages/views/layout/panels/work-panel.tsx",
+      "packages/views/locales/en/agents.json",
+      "packages/views/locales/en/issues.json",
+      "packages/views/locales/en/layout.json",
+      "packages/views/locales/es/agents.json",
+      "packages/views/locales/es/issues.json",
+      "packages/views/locales/es/layout.json",
+      "packages/views/locales/fr/agents.json",
+      "packages/views/locales/fr/issues.json",
+      "packages/views/locales/fr/layout.json",
+      "packages/views/locales/index.ts",
+      "packages/views/locales/ja/agents.json",
+      "packages/views/locales/ja/issues.json",
+      "packages/views/locales/ja/layout.json",
+      "packages/views/locales/ko/agents.json",
+      "packages/views/locales/ko/issues.json",
+      "packages/views/locales/ko/layout.json",
+      "packages/views/locales/zh-Hans/agents.json",
+      "packages/views/locales/zh-Hans/issues.json",
+      "packages/views/locales/zh-Hans/layout.json",
+      "packages/views/locales/zh-Hant/agents.json",
+      "packages/views/locales/zh-Hant/issues.json",
+      "packages/views/locales/zh-Hant/layout.json",
+      "packages/views/modals/create-issue.tsx",
+      "packages/views/modals/registry.tsx",
+      "packages/views/package.json",
+      "packages/views/search/search-command.test.tsx",
+      "packages/views/search/use-root-model.ts",
+      "server/cmd/migrate/main.go",
+      "server/cmd/multica/cmd_daemon.go",
+      "server/cmd/multica/cmd_issue.go",
+      "server/cmd/multica/main.go",
+      "server/cmd/server/main.go",
+      "server/cmd/server/router.go",
+      "server/internal/daemon/client.go",
+      "server/internal/daemon/config.go",
+      "server/internal/daemon/daemon.go",
+      "server/internal/daemon/health.go",
+      "server/internal/handler/agent.go",
+      "server/internal/handler/chat.go",
+      "server/internal/handler/config.go",
+      "server/internal/handler/daemon.go",
+      "server/internal/handler/handler.go",
+      "server/internal/handler/issue.go",
+      "server/internal/handler/issue_table_query.go",
+      "server/internal/handler/reserved_slugs.json",
+      "server/internal/handler/search_candidate_parity_test.go",
+      "server/internal/handler/workspace_delete_manifest_test.go",
+      "server/internal/service/issue.go",
+      "server/internal/service/task.go",
+      "server/pkg/db/generated/issue.sql.go",
+      "server/pkg/db/generated/issue_workflow.sql.go",
+      "server/pkg/db/generated/models.go",
+      "server/pkg/db/generated/search_index.sql.go",
+      "server/pkg/db/queries/issue.sql",
+      "server/pkg/protocol/messages.go"
+    ],
+    "merge_preview": {
+      "command": "git merge-tree --write-tree --messages --name-only --merge-base=v0.8.1 origin/custom/RUSL-2779-maintenance-pr v0.8.2",
+      "exit_code": 1,
+      "conflict_paths": [
+        "packages/core/api/client.ts",
+        "packages/core/diagnostics/diagnostic-context.ts",
+        "packages/core/paths/reserved-slugs.ts",
+        "packages/views/issues/components/issue-detail.tsx",
+        "packages/views/locales/en/issues.json",
+        "packages/views/locales/es/issues.json",
+        "packages/views/locales/fr/issues.json",
+        "packages/views/locales/ja/issues.json",
+        "packages/views/locales/ko/issues.json",
+        "packages/views/locales/zh-Hans/issues.json",
+        "packages/views/locales/zh-Hant/issues.json",
+        "server/internal/handler/issue.go",
+        "server/internal/handler/reserved_slugs.json",
+        "server/internal/handler/workspace_delete_manifest_test.go",
+        "server/pkg/db/generated/issue.sql.go",
+        "server/pkg/db/generated/models.go",
+        "server/pkg/db/queries/issue.sql"
+      ],
+      "semantic_validation": false
+    }
+  },
+  "migrations": [
+    {
+      "up": "server/migrations/617_connected_apps.up.sql",
+      "down": "server/migrations/617_connected_apps.down.sql",
+      "concurrent_indexes": [],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/618_workspace_composio_connection_account_idx.up.sql",
+      "down": "server/migrations/618_workspace_composio_connection_account_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_workspace_composio_connection_account"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/619_workspace_composio_connection_status_idx.up.sql",
+      "down": "server/migrations/619_workspace_composio_connection_status_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_workspace_composio_connection_status"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/620_agent_app_agent_toolkit_idx.up.sql",
+      "down": "server/migrations/620_agent_app_agent_toolkit_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_agent_app_agent_toolkit"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/621_agent_app_workspace_toolkit_idx.up.sql",
+      "down": "server/migrations/621_agent_app_workspace_toolkit_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_agent_app_workspace_toolkit"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/622_app_action_rule_scope_idx.up.sql",
+      "down": "server/migrations/622_app_action_rule_scope_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_action_rule_scope"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/623_app_action_request_issue_idx.up.sql",
+      "down": "server/migrations/623_app_action_request_issue_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_action_request_issue"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/624_app_action_request_pending_idx.up.sql",
+      "down": "server/migrations/624_app_action_request_pending_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_action_request_pending"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/625_app_tool_call_workspace_idx.up.sql",
+      "down": "server/migrations/625_app_tool_call_workspace_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_tool_call_workspace"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/626_app_action_request_task_idx.up.sql",
+      "down": "server/migrations/626_app_action_request_task_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_action_request_task"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/627_app_tool_call_issue_idx.up.sql",
+      "down": "server/migrations/627_app_tool_call_issue_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_tool_call_issue"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/628_app_action_request_chat_idx.up.sql",
+      "down": "server/migrations/628_app_action_request_chat_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_app_action_request_chat"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/629_user_star_prompt.up.sql",
+      "down": "server/migrations/629_user_star_prompt.down.sql",
+      "concurrent_indexes": [],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/630_project_visibility.up.sql",
+      "down": "server/migrations/630_project_visibility.down.sql",
+      "concurrent_indexes": [],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/631_project_member.up.sql",
+      "down": "server/migrations/631_project_member.down.sql",
+      "concurrent_indexes": [],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/632_project_member_user_idx.up.sql",
+      "down": "server/migrations/632_project_member_user_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_project_member_workspace_user"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/633_issue_environment.up.sql",
+      "down": "server/migrations/633_issue_environment.down.sql",
+      "concurrent_indexes": [],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/634_issue_environment_task_key_idx.up.sql",
+      "down": "server/migrations/634_issue_environment_task_key_idx.down.sql",
+      "concurrent_indexes": [
+        "uq_issue_environment_task_key"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/635_issue_environment_issue_idx.up.sql",
+      "down": "server/migrations/635_issue_environment_issue_idx.down.sql",
+      "concurrent_indexes": [
+        "idx_issue_environment_issue"
+      ],
+      "drops_on_down": true
+    },
+    {
+      "up": "server/migrations/636_site_counter.up.sql",
+      "down": "server/migrations/636_site_counter.down.sql",
+      "concurrent_indexes": [],
+      "drops_on_down": true
+    }
+  ],
+  "ci": [
+    {
+      "baseRefName": "fabrika",
+      "headRefName": "custom/RUSL-2760-v081",
+      "headRefOid": "5c46f9a6767945af777d61645223edc532fb656e",
+      "mergeStateStatus": "CLEAN",
+      "number": 22,
+      "state": "OPEN",
+      "statusCheckRollup": [],
+      "title": "RUSL-2760: update self-host fork to v0.8.1",
+      "url": "https://github.com/nenkoru/multica/pull/22",
+      "actions_runs": {
+        "runs": [],
+        "total_count": 0
+      },
+      "checks_result": "no checks reported",
+      "checks_exit_code": 1
+    },
+    {
+      "baseRefName": "custom/RUSL-2760-v081",
+      "headRefName": "custom/RUSL-2779-maintenance-pr",
+      "headRefOid": "e9c3e7fce5e4b1db463a438bdf051c630b23d0e1",
+      "mergeStateStatus": "CLEAN",
+      "number": 23,
+      "state": "OPEN",
+      "statusCheckRollup": [],
+      "title": "RUSL-2779: add atomic daemon maintenance",
+      "url": "https://github.com/nenkoru/multica/pull/23",
+      "actions_runs": {
+        "runs": [],
+        "total_count": 0
+      },
+      "checks_result": "no checks reported",
+      "checks_exit_code": 1
+    },
+    {
+      "baseRefName": "fabrika",
+      "headRefName": "rusl-2711-fabrika-migration-tests",
+      "headRefOid": "6700d7de78cec0ce600d810466be4083a7234aca",
+      "mergeStateStatus": "CLEAN",
+      "number": 19,
+      "state": "OPEN",
+      "statusCheckRollup": [],
+      "title": "test(fabrika): fix 900x migration tests (cleanup + deletion manifest)",
+      "url": "https://github.com/nenkoru/multica/pull/19",
+      "actions_runs": {
+        "runs": [],
+        "total_count": 0
+      },
+      "checks_result": "no checks reported",
+      "checks_exit_code": 1
+    }
+  ],
+  "limits": [
+    "Static assessment only; no application build, test, migration rehearsal or rollout performed.",
+    "No checks or Actions runs exist for the three inspected PR branches. No CI wait is justified.",
+    "GitHub workflow file filters target main; Actions repository permission read returned HTTP 403, not used for conclusions about settings.",
+    "merge-tree is a text merge preview with an explicit common base, not a tested integration or production artifact."
+  ]
+}

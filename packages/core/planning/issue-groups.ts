@@ -101,4 +101,3 @@ export function groupPlanningIssues(
   ];
   return keys.map((key) => ({ key, nodes: toTree(byKey.get(key) ?? []) }));
 }
-

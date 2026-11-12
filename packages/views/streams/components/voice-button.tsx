@@ -162,7 +162,6 @@ export function VoiceButton({ onText }: { onText: (text: string) => void }) {
     <Button
       size="icon-sm"
       variant={phase === "recording" ? "destructive" : "ghost"}
-      className="rounded-full"
       aria-label={label}
       aria-busy={phase === "transcribing" || undefined}
       disabled={phase === "transcribing" || phase === "starting"}

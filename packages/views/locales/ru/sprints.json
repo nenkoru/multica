@@ -1,0 +1,56 @@
+{
+  "page": {
+    "title": "Спринты",
+    "new_sprint": "Новый спринт",
+    "empty": "Спринтов пока нет",
+    "create_first": "Создать первый спринт",
+    "search_placeholder": "Поиск спринтов...",
+    "no_search_results": "По вашему запросу ничего не найдено"
+  },
+  "table": {
+    "name": "Название",
+    "status": "Статус",
+    "dates": "Даты",
+    "progress": "Прогресс",
+    "created": "Создано",
+    "issues": "задач"
+  },
+  "status": {
+    "planned": "Запланирован",
+    "active": "Активен",
+    "completed": "Завершён",
+    "cancelled": "Отменено"
+  },
+  "detail": {
+    "not_found": "Спринт не найден",
+    "breadcrumb_fallback": "Спринты",
+    "title_placeholder": "Название спринта",
+    "copy_link": "Копировать ссылку",
+    "delete_action": "Удалить спринт",
+    "section_properties": "Свойства",
+    "section_description": "Описание",
+    "description_placeholder": "Добавить цель спринта...",
+    "no_issues_yet": "Задач пока нет",
+    "delete_confirm_title": "Удалить спринт",
+    "delete_confirm_description": "Удалить спринт? Его задачи останутся в рабочем пространстве.",
+    "date_range": "{{start}} — {{end}}"
+  },
+  "picker": {
+    "no_sprint": "Без спринта",
+    "remove_sprint": "Убрать спринт",
+    "no_sprints": "В рабочем пространстве нет спринтов"
+  },
+  "create": {
+    "title": "Создать спринт",
+    "label_name": "Название",
+    "name_placeholder": "Название спринта",
+    "label_goal": "Цель",
+    "goal_placeholder": "Добавить цель спринта...",
+    "start_date": "Дата начала",
+    "end_date": "Дата окончания",
+    "submit": "Создать спринт",
+    "cancel": "Отмена",
+    "success": "Создано",
+    "error": "Не удалось создать"
+  }
+}
