@@ -11,7 +11,7 @@ export GOFLAGS=-p=4
 export PATH=/usr/local/go/bin:$PATH
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq > validation/setup.log 2>&1
-apt-get install -y -qq --no-install-recommends curl ca-certificates gcc libc6-dev git python3 redis-server >> validation/setup.log 2>&1
+apt-get install -y -qq --no-install-recommends curl ca-certificates gcc libc6-dev git python3 procps redis-server >> validation/setup.log 2>&1
 curl -fsSL https://go.dev/dl/go1.26.9.linux-amd64.tar.gz -o /work/go.tar.gz
 tar -C /usr/local -xzf /work/go.tar.gz
 go version > validation/toolchain.txt
@@ -66,7 +66,10 @@ createdb tests
 export DATABASE_URL='postgres://postgres@127.0.0.1:5432/tests?sslmode=disable'
 (cd server && go run ./cmd/migrate up) > validation/fresh-migrate.log 2>&1
 (cd server && go test -json -count=1 ./internal/migrations ./cmd/migrate ./cmd/server ./internal/handler ./internal/service ./internal/streams/... ./internal/projectaccess) > validation/db-tests.jsonl 2>&1
-(cd server && go test -json -race -count=1 ./internal/daemon ./pkg/redact ./pkg/agent ./cmd/multica) > validation/race-tests.jsonl 2>&1
+# This is a genuine isolated pod; fake Claude launch tests need the documented
+# sandbox signal when its image runs as root. Production guards stay intact.
+# Serialize packages and bound test concurrency for millisecond timing fixtures.
+(cd server && IS_SANDBOX=1 go test -json -race -p=1 -parallel=2 -count=1 ./internal/daemon ./pkg/redact ./pkg/agent ./cmd/multica) > validation/race-tests.jsonl 2>&1
 (cd server && go build ./cmd/server ./cmd/multica ./cmd/migrate) > validation/build.log 2>&1
 python3 scripts/maintenance/test_operations.py > validation/maintenance.log 2>&1
 printf 'baseline=658 restored=678 invalid_indexes=0 counters=unchanged\n' > validation/result.txt
