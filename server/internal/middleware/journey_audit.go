@@ -67,8 +67,25 @@ func JourneyAudit(pool *pgxpool.Pool) func(http.Handler) http.Handler {
 }
 
 func journeyRequestKind(method, path string) string {
+	path = strings.TrimSuffix(path, "/")
 	if !(path == "/api/issues" || strings.HasPrefix(path, "/api/issues/") || strings.HasPrefix(path, "/api/comments/")) {
 		return ""
+	}
+	if method == http.MethodPost {
+		// These server routes read/preview without changing an issue. HTTP
+		// method alone cannot classify their semantics (oversized filters
+		// use POST rather than GET). Read receipts are emitted by readers.
+		switch path {
+		case "/api/issues/query", "/api/issues/table/groups", "/api/issues/table/rows", "/api/issues/table/facets", "/api/issues/preview-trigger":
+			return "issue_read"
+		}
+		parts := strings.Split(strings.TrimPrefix(path, "/api/issues/"), "/")
+		if len(parts) == 3 && parts[1] == "comments" && parts[2] == "trigger-preview" {
+			return "issue_read"
+		}
+		if len(parts) == 2 && parts[1] == "read" {
+			return "issue_read"
+		}
 	}
 	switch method {
 	case http.MethodGet:

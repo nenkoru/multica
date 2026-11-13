@@ -48,6 +48,18 @@ func TestJourneyAuthStripsForgedActorAndSource(t *testing.T) {
 func TestJourneyReadsAreNotBoardOpens(t *testing.T) {
 	for _, tc := range []struct{ method, path, kind string }{
 		{"GET", "/api/issues", "issue_read"}, {"GET", "/api/issues/test", "issue_read"},
+		{"POST", "/api/issues/query", "issue_read"},
+		{"POST", "/api/issues/query/", "issue_read"},
+		{"POST", "/api/issues/table/groups", "issue_read"},
+		{"POST", "/api/issues/table/rows", "issue_read"},
+		{"POST", "/api/issues/table/facets", "issue_read"},
+		{"POST", "/api/issues/preview-trigger", "issue_read"},
+		{"POST", "/api/issues/test/comments/trigger-preview", "issue_read"},
+		{"POST", "/api/issues/test/read", "issue_read"},
+		{"POST", "/api/issues", "issue_action"},
+		{"POST", "/api/issues/quick-create", "issue_action"},
+		{"POST", "/api/issues/batch-update", "issue_action"},
+		{"POST", "/api/issues/test/comments/trigger-preview/extra", "issue_action"},
 		{"POST", "/api/issues/test/comments", "issue_action"}, {"PATCH", "/api/issues/test", "issue_action"},
 		{"GET", "/api/streams/audit/report", ""}, {"GET", "/api/health", ""},
 	} {
