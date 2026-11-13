@@ -86,6 +86,9 @@ func journeyRequestKind(method, path string) string {
 		if len(parts) == 2 && parts[1] == "read" {
 			return "issue_read"
 		}
+		if len(parts) == 4 && parts[1] == "quick-actions" && parts[3] == "render" {
+			return "issue_read"
+		}
 	}
 	switch method {
 	case http.MethodGet:
