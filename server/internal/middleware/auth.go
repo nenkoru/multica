@@ -148,7 +148,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 				// this header is allowed to carry — strip anything else a
 				// client tried to send.
 				r.Header.Set("X-Actor-Source", "task_token")
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, authenticatedAuditRequest(r, tokenString, fromCookie))
 				return
 			}
 
@@ -208,7 +208,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 				// treated as the owner having approved an account-
 				// level action.
 				r.Header.Set("X-Actor-Source", "cloud_pat")
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, authenticatedAuditRequest(r, tokenString, fromCookie))
 				return
 			}
 
@@ -225,7 +225,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 						return
 					}
 					r.Header.Set("X-User-ID", userID)
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, authenticatedAuditRequest(r, tokenString, fromCookie))
 					return
 				}
 
@@ -260,7 +260,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 				// within the TTL window skip this write entirely.
 				go queries.UpdatePersonalAccessTokenLastUsed(context.Background(), pat.ID)
 
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, authenticatedAuditRequest(r, tokenString, fromCookie))
 				return
 			}
 
@@ -305,7 +305,7 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 			// (MUL-7436).
 			r = renewCookieSession(w, r, claims, fromCookie, cfSigner)
 
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, authenticatedAuditRequest(r, tokenString, fromCookie))
 		})
 	}
 }

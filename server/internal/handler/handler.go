@@ -36,6 +36,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/integrations/telegram"
 	"github.com/multica-ai/multica/server/internal/integrations/wecom"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/realtime"
@@ -789,6 +790,10 @@ func (h *Handler) channelDeliversFiles(channelType string) bool {
 		return false
 	}
 	return h.channelFileDelivery[channelType]
+}
+
+func (h *Handler) publishContext(ctx context.Context, eventType, workspaceID, actorType, actorID string, payload any) {
+	h.Bus.Publish(events.Event{Type: eventType, WorkspaceID: workspaceID, ActorType: actorType, ActorID: actorID, Payload: payload, Audit: journeyaudit.From(ctx)})
 }
 
 // publish sends a domain event through the event bus.

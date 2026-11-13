@@ -7,6 +7,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/handler"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -33,7 +34,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 			return
 		}
 
-		activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+		activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 			ID:          dbid.NewV7(),
 			WorkspaceID: parseUUID(issue.WorkspaceID),
 			IssueID:     parseUUID(issue.ID),
@@ -102,7 +103,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 				}
 			}
 			details, _ := json.Marshal(detailsMap)
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -125,7 +126,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 				"from": prevPriority,
 				"to":   issue.Priority,
 			})
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -161,7 +162,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 			}
 
 			details, _ := json.Marshal(detailsMap)
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -191,7 +192,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 				"from": prevStartDate,
 				"to":   newStartDate,
 			})
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -221,7 +222,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 				"from": prevDueDate,
 				"to":   newDueDate,
 			})
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -244,7 +245,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 				"from": prevTitle,
 				"to":   issue.Title,
 			})
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -262,7 +263,7 @@ func registerActivityListeners(bus *events.Bus, queries *db.Queries) {
 		}
 
 		if descriptionChanged {
-			activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+			activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 				ID:          dbid.NewV7(),
 				WorkspaceID: parseUUID(issue.WorkspaceID),
 				IssueID:     parseUUID(issue.ID),
@@ -311,7 +312,7 @@ func handleTaskActivity(ctx context.Context, bus *events.Bus, queries *db.Querie
 		return
 	}
 
-	activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+	activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 		ID:          dbid.NewV7(),
 		WorkspaceID: issue.WorkspaceID,
 		IssueID:     parseUUID(issueID),
@@ -373,7 +374,7 @@ func recordDuplicateMarkActivities(ctx context.Context, bus *events.Bus, queries
 	statusChanged, _ := payload["status_changed"].(bool)
 	record := func(issueID, action string, details map[string]string) bool {
 		body, _ := json.Marshal(details)
-		activity, err := queries.CreateActivity(ctx, db.CreateActivityParams{
+		activity, err := createJourneyActivity(ctx, queries, e, db.CreateActivityParams{
 			ID:          dbid.NewV7(),
 			WorkspaceID: parseUUID(issue.WorkspaceID),
 			IssueID:     parseUUID(issueID),
@@ -449,4 +450,9 @@ func lookupIssueIdentifier(ctx context.Context, queries *db.Queries, workspaceID
 		return "", false
 	}
 	return service.IssueIdentifier(ws.IssuePrefix, row.Number), true
+}
+
+func createJourneyActivity(ctx context.Context, q *db.Queries, e events.Event, p db.CreateActivityParams) (db.ActivityLog, error) {
+	p.Details = journeyaudit.ActivityDetails(p.Details, e.Audit, p.ActorType.String, util.UUIDToString(p.ActorID))
+	return q.CreateActivity(ctx, p)
 }

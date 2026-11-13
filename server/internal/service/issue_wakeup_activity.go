@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
@@ -89,6 +90,7 @@ func recordWakeupActivity(ctx context.Context, q *db.Queries, w db.IssueWakeup, 
 	}
 	details["wakeup"] = preview
 	raw, _ := json.Marshal(details)
+	raw = journeyaudit.ActivityDetails(raw, journeyaudit.From(ctx), actorType, util.UUIDToString(actorID))
 	row, err := q.CreateActivity(ctx, db.CreateActivityParams{
 		ID: dbid.NewV7(), WorkspaceID: w.WorkspaceID, IssueID: w.IssueID,
 		ActorType: pgtype.Text{String: actorType, Valid: true}, ActorID: actorID,
