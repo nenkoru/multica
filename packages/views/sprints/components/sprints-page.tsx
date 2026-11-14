@@ -120,7 +120,7 @@ export function SprintsPage() {
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="flex flex-col rounded-md border p-3 gap-2">
                   <div className="flex items-center gap-2">
-                    <Skeleton className="h-3.5 w-3.5 rounded" />
+                    <Skeleton className="h-3.5 w-3.5 rounded-sm" />
                     <Skeleton className="h-4 w-3/4" />
                   </div>
                   <Skeleton className="h-3 w-1/2" />
