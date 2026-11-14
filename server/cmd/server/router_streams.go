@@ -47,6 +47,8 @@ func registerStreamsRoutes(r chi.Router, sup *streams.Supervisor, access func(ht
 	r.Post("/api/streams/{slug}/manage", h.Manage)
 	r.Group(func(r chi.Router) {
 		r.Use(handler.RequireHumanActor)
+		r.Post("/api/streams/audit/board", h.AuditBoard)
+		r.Get("/api/streams/audit/report", h.AuditReport)
 		r.Put("/api/streams/multika/focus", h.MultikaFocus)
 		r.Post("/api/streams/multika/voice", h.MultikaVoice)
 		// Screen buttons are Руслан's presses; agents may not press them (§10.4).

@@ -206,6 +206,7 @@ func (s *Supervisor) OnMultikaClaim(ctx context.Context, taskID, sessionID, agen
 	if owner.AgentID != agentID || !s.multikaProjectAccess(ctx, taskID, sessionID, agentID, owner.WorkspaceID) {
 		return MultikaAccessDeniedText
 	}
+	ctx = s.auditChatContext(ctx, taskID, sessionID)
 	streams, err := s.Q.ListStreams(ctx, owner.WorkspaceID)
 	if err != nil {
 		slog.Warn("streams: multika streams lookup failed", "error", err)

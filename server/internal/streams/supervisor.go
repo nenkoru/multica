@@ -14,7 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // supervisorLockKey serialises scheduler ticks and bus-triggered kicks across
@@ -126,6 +128,21 @@ func (s *Supervisor) Tick(ctx context.Context) error {
 	}
 	if err := s.Q.RecordSupervisorTick(ctx, lastErr); err != nil {
 		errs = append(errs, err)
+	}
+	if journeyaudit.Enabled() {
+		seen := map[pgtype.UUID]bool{}
+		for _, st := range streams {
+			if seen[st.WorkspaceID] {
+				continue
+			}
+			seen[st.WorkspaceID] = true
+			_, err := journeyaudit.Record(ctx, db.New(s.Pool), st.WorkspaceID, journeyaudit.Entry{
+				Stamp: journeyaudit.Stamp{Source: "service", Route: "unknown", RouteEvidence: "server"}, Kind: "coverage", Outcome: "complete",
+			})
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
 	}
 	return errors.Join(errs...)
 }

@@ -54,3 +54,5 @@ export {
   formatAmount,
 } from "./screen-props";
 export type { ScreenComponentName, ScreenProps, ScreenButton, ScreenAction, ReadNode } from "./screen-props";
+
+export { useIssueSurfaceAudit } from "./use-issue-surface-audit";

@@ -21,6 +21,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/issueproperty"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
 	"github.com/multica-ai/multica/server/internal/issueworkflow"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -611,7 +612,7 @@ func (s *IssueService) createOnce(ctx context.Context, p IssueCreateParams, opts
 		}
 	}
 
-	s.publishIssueCreated(issue, attachments, labels, p.CreatorType, actorID, opts)
+	s.publishIssueCreated(ctx, issue, attachments, labels, p.CreatorType, actorID, opts)
 	s.captureCreatedAnalytics(issue, p.CreatorType, actorID, opts)
 	if opts.AssignedAgentRunFireAt.IsZero() {
 		assignedTaskID = s.maybeEnqueueOnAssign(ctx, issue, p.CreatorType, actorID, opts.AssignedAgentRunFireAt)
@@ -774,7 +775,7 @@ func (s *IssueService) linkAttachments(ctx context.Context, issue db.Issue, ids 
 	return list
 }
 
-func (s *IssueService) publishIssueCreated(issue db.Issue, attachments []db.Attachment, labels []db.IssueLabel, creatorType, actorID string, opts IssueCreateOpts) {
+func (s *IssueService) publishIssueCreated(ctx context.Context, issue db.Issue, attachments []db.Attachment, labels []db.IssueLabel, creatorType, actorID string, opts IssueCreateOpts) {
 	if s.Bus == nil {
 		return
 	}
@@ -789,6 +790,7 @@ func (s *IssueService) publishIssueCreated(issue db.Issue, attachments []db.Atta
 	}
 	s.Bus.Publish(events.Event{
 		Type:        protocol.EventIssueCreated,
+		Audit:       journeyaudit.From(ctx),
 		WorkspaceID: util.UUIDToString(issue.WorkspaceID),
 		ActorType:   creatorType,
 		ActorID:     actorID,
@@ -833,6 +835,7 @@ func (s *IssueService) PublishAttachmentsChanged(ctx context.Context, issue db.I
 	}
 	s.Bus.Publish(events.Event{
 		Type:        protocol.EventIssueUpdated,
+		Audit:       journeyaudit.From(ctx),
 		WorkspaceID: util.UUIDToString(issue.WorkspaceID),
 		ActorType:   "member",
 		ActorID:     util.UUIDToString(actorID),

@@ -24,6 +24,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/featureflags"
 	"github.com/multica-ai/multica/server/internal/inbox"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/runtimeapps"
@@ -2540,6 +2541,15 @@ func (s *TaskService) SendDirectChatMessage(
 		})
 		if err != nil {
 			return fmt.Errorf("create user chat message: %w", err)
+		}
+		stamp := journeyaudit.From(ctx)
+		if stamp.UserID == "" {
+			stamp.UserID = util.UUIDToString(initiatorUserID)
+		}
+		if _, err := journeyaudit.Record(ctx, qtx, session.WorkspaceID, journeyaudit.Entry{
+			Stamp: stamp, Kind: "chat_message", Outcome: "complete", SessionID: util.UUIDToString(session.ID), MessageID: util.UUIDToString(msg.ID),
+		}); err != nil {
+			return fmt.Errorf("audit direct chat message: %w", err)
 		}
 		out.Message = msg
 

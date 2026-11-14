@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
 )
@@ -187,6 +188,13 @@ func (s *Supervisor) PressAskButton(ctx context.Context, installationID pgtype.U
 	})
 	if err != nil {
 		return pressNotOurs, ""
+	}
+	if journeyaudit.Enabled() {
+		var user pgtype.UUID
+		err := s.Pool.QueryRow(ctx, `SELECT multica_user_id FROM channel_user_binding WHERE workspace_id=$1 AND installation_id=$2 AND channel_type='telegram' AND channel_user_id=$3`, ws, installationID, strconv.FormatInt(fromID, 10)).Scan(&user)
+		if err == nil {
+			ctx = journeyaudit.With(ctx, journeyaudit.Channel(uuidString(user), "telegram"))
+		}
 	}
 	ua, err := s.Q.GetUIActionByToken(ctx, data)
 	if err != nil || !ua.AskID.Valid {

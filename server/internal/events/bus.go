@@ -1,6 +1,7 @@
 package events
 
 import (
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	"log/slog"
 	"sync"
 )
@@ -15,9 +16,10 @@ type ChannelReactionTarget struct {
 
 // Event represents a domain event published by handlers or services.
 type Event struct {
-	Type        string // e.g. "issue:created", "inbox:new"
-	WorkspaceID string // routes to correct Hub room
-	ActorType   string // "member", "agent", or "system"
+	Audit       journeyaudit.Stamp `json:"-"`
+	Type        string             // e.g. "issue:created", "inbox:new"
+	WorkspaceID string             // routes to correct Hub room
+	ActorType   string             // "member", "agent", or "system"
 	ActorID     string
 	Payload     any // JSON-serializable, same shape as current WS payloads
 

@@ -123,7 +123,7 @@ export function EpicsPage() {
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="flex flex-col rounded-md border p-3 gap-2">
                   <div className="flex items-center gap-2">
-                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-4 w-4 rounded-sm" />
                     <Skeleton className="h-4 w-3/4" />
                   </div>
                   <Skeleton className="h-3 w-full" />

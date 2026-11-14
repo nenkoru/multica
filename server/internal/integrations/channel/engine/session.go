@@ -15,6 +15,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/channelmedia"
 	"github.com/multica-ai/multica/server/internal/integrations/channel"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
 )
@@ -147,7 +148,18 @@ func (a dbSessionQueries) InitializeChatSessionMediaTitle(ctx context.Context, a
 	return a.q.InitializeChatSessionMediaTitle(ctx, arg)
 }
 func (a dbSessionQueries) CreateChatMessage(ctx context.Context, arg db.CreateChatMessageParams) (db.ChatMessage, error) {
-	return a.q.CreateChatMessage(ctx, arg)
+	msg, err := a.q.CreateChatMessage(ctx, arg)
+	if err != nil || !journeyaudit.Enabled() {
+		return msg, err
+	}
+	session, err := a.q.GetChatSession(ctx, arg.ChatSessionID)
+	if err != nil {
+		return msg, err
+	}
+	_, err = journeyaudit.Record(ctx, a.q, session.WorkspaceID, journeyaudit.Entry{
+		Stamp: journeyaudit.From(ctx), Kind: "chat_message", Outcome: "complete", SessionID: utilUUID(session.ID), MessageID: utilUUID(msg.ID),
+	})
+	return msg, err
 }
 func (a dbSessionQueries) ListUnownedChannelChatContextRevisions(ctx context.Context, chatSessionID pgtype.UUID) ([]PendingContext, error) {
 	rows, err := a.q.ListUnownedChannelChatContextRevisions(ctx, chatSessionID)
@@ -438,6 +450,7 @@ type StartSessionInput struct {
 // explicitly visible Chat, installs the next generation, and optionally writes
 // the command body as its first ordinary user message.
 func (s *ChatSession) StartSession(ctx context.Context, in StartSessionInput) (StartSessionResult, error) {
+	ctx = journeyaudit.With(ctx, journeyaudit.Channel(utilUUID(in.Initiator), string(s.channelType)))
 	tx, err := s.tx.Begin(ctx)
 	if err != nil {
 		return StartSessionResult{}, fmt.Errorf("begin start chat tx: %w", err)
@@ -643,6 +656,7 @@ const channelCommandMessageKind = "channel_command"
 // the dedup token mid-flight, in which case the whole transaction rolls back
 // (no chat_message lands).
 func (s *ChatSession) AppendUserMessage(ctx context.Context, in AppendInput) (AppendResult, error) {
+	ctx = journeyaudit.With(ctx, journeyaudit.Channel(utilUUID(in.Sender), string(s.channelType)))
 	tx, err := s.tx.Begin(ctx)
 	if err != nil {
 		return AppendResult{}, fmt.Errorf("begin tx: %w", err)

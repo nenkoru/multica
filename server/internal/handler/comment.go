@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
 	"github.com/multica-ai/multica/server/internal/logger"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/service"
@@ -1924,13 +1925,20 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	comment := created.Comment()
+	if journeyaudit.Enabled() {
+		if _, err := journeyaudit.Record(r.Context(), h.Queries, issue.WorkspaceID, journeyaudit.Entry{
+			Stamp: journeyaudit.From(r.Context()), Kind: "comment_created", Outcome: "complete", CommentID: uuidToString(comment.ID), ProjectID: uuidToString(issue.ProjectID),
+		}); err != nil {
+			slog.Warn("comment audit unavailable")
+		}
+	}
 
 	// Fetch linked attachments so the response includes them.
 	groupedAtt := h.groupAttachments(r, []pgtype.UUID{comment.ID})
 	resp := commentToResponse(comment, nil, groupedAtt[uuidToString(comment.ID)])
 	resp.IssueRevision = created.IssueRevision
 	slog.Info("comment created", append(logger.RequestAttrs(r), "comment_id", uuidToString(comment.ID), "issue_id", issueID)...)
-	h.publish(protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), authorType, authorID, map[string]any{
+	h.publishContext(r.Context(), protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), authorType, authorID, map[string]any{
 		"comment":             resp,
 		"issue_title":         issue.Title,
 		"issue_assignee_type": textToPtr(issue.AssigneeType),
@@ -3603,7 +3611,7 @@ func (h *Handler) UpdateComment(w http.ResponseWriter, r *http.Request) {
 	if issueRevision > 0 {
 		eventPayload["issue_revision"] = issueRevision
 	}
-	h.publish(protocol.EventCommentUpdated, workspaceID, actorType, actorID, eventPayload)
+	h.publishContext(r.Context(), protocol.EventCommentUpdated, workspaceID, actorType, actorID, eventPayload)
 
 	// The broadcast above intentionally omits trigger_outcomes — it is the
 	// editor's private feedback, not shared timeline state (MUL-4525 §2).
@@ -3719,7 +3727,7 @@ func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 		if deleted.IssueRevision > 0 {
 			eventPayload["issue_revision"] = deleted.IssueRevision
 		}
-		h.publish(protocol.EventCommentUpdated, workspaceID, actorType, actorID, eventPayload)
+		h.publishContext(r.Context(), protocol.EventCommentUpdated, workspaceID, actorType, actorID, eventPayload)
 	}
 	for _, removedID := range deleted.RemovedIDs {
 		eventPayload := map[string]any{
@@ -3729,7 +3737,7 @@ func (h *Handler) DeleteComment(w http.ResponseWriter, r *http.Request) {
 		if deleted.IssueRevision > 0 {
 			eventPayload["issue_revision"] = deleted.IssueRevision
 		}
-		h.publish(protocol.EventCommentDeleted, workspaceID, actorType, actorID, eventPayload)
+		h.publishContext(r.Context(), protocol.EventCommentDeleted, workspaceID, actorType, actorID, eventPayload)
 	}
 	if hasIssue {
 		h.retriggerCancelledTaskSurvivors(r.Context(), issue, cancelled, comment.ID)
@@ -4139,7 +4147,7 @@ func (h *Handler) ResolveComment(w http.ResponseWriter, r *http.Request) {
 		clearedAtt := h.groupAttachments(r, []pgtype.UUID{c.ID})
 		clearedResp := commentToResponse(c, clearedReactions[clearedID], clearedAtt[clearedID])
 		slog.Info("comment unresolved (replaced)", append(logger.RequestAttrs(r), "comment_id", clearedID)...)
-		h.publish(protocol.EventCommentUnresolved, workspaceID, actorType, actorID, map[string]any{"comment": clearedResp})
+		h.publishContext(r.Context(), protocol.EventCommentUnresolved, workspaceID, actorType, actorID, map[string]any{"comment": clearedResp})
 	}
 
 	grouped := h.groupReactions(r, []pgtype.UUID{updated.ID})
@@ -4152,7 +4160,7 @@ func (h *Handler) ResolveComment(w http.ResponseWriter, r *http.Request) {
 	// still get their own events above — those rows did change.
 	if !wasResolved {
 		slog.Info("comment resolved", append(logger.RequestAttrs(r), "comment_id", cid)...)
-		h.publish(protocol.EventCommentResolved, workspaceID, actorType, actorID, map[string]any{"comment": resp})
+		h.publishContext(r.Context(), protocol.EventCommentResolved, workspaceID, actorType, actorID, map[string]any{"comment": resp})
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -4181,7 +4189,7 @@ func (h *Handler) UnresolveComment(w http.ResponseWriter, r *http.Request) {
 
 	if wasResolved {
 		slog.Info("comment unresolved", append(logger.RequestAttrs(r), "comment_id", cid)...)
-		h.publish(protocol.EventCommentUnresolved, workspaceID, actorType, actorID, map[string]any{"comment": resp})
+		h.publishContext(r.Context(), protocol.EventCommentUnresolved, workspaceID, actorType, actorID, map[string]any{"comment": resp})
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

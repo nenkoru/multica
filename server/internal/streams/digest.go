@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/journeyaudit"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 
 	"github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/streams/sdb"
@@ -383,7 +386,23 @@ func (s *Supervisor) applyReply(ctx context.Context, a sdb.Ask, r Reply, channel
 		return replyMismatch, nil
 	}
 	raw, _ := json.Marshal(answer)
-	n, err := s.Q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "answered", Answer: raw})
+	var n int64
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var err error
+		q := s.Q.WithTx(tx)
+		n, err = q.ResolveAsk(ctx, sdb.ResolveAskParams{ID: a.ID, Status: "answered", Answer: raw})
+		if err != nil || n == 0 || !journeyaudit.Enabled() {
+			return err
+		}
+		st, err := q.GetStream(ctx, a.StreamID)
+		if err != nil {
+			return err
+		}
+		_, err = journeyaudit.Record(ctx, db.New(tx), st.WorkspaceID, journeyaudit.Entry{
+			Stamp: journeyaudit.From(ctx), Kind: "ask_answer", Outcome: "complete", AskID: uuidString(a.ID), ProjectID: uuidString(st.CarrierProjectID),
+		})
+		return err
+	})
 	if err != nil {
 		return replyMismatch, err
 	}

@@ -4408,6 +4408,14 @@ export class ApiClient {
     });
   }
 
+  /** One metadata-only event per mounted issue surface. No issue IDs or text. */
+  async recordIssueSurfaceOpen(surfaceId: string, projectId?: string): Promise<void> {
+    await this.fetch<void>("/api/streams/audit/board", {
+      method: "POST",
+      body: JSON.stringify({ surface_id: surfaceId, project_id: projectId ?? "" }),
+    });
+  }
+
   // Fabrika streams (fork-owned)
   async listStreams(): Promise<ListStreamsResponse> {
     const raw = await this.fetch<unknown>(`/api/streams`);
