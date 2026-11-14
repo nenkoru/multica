@@ -32,7 +32,7 @@ export function SprintPicker({
 
   return (
     <DropdownMenu defaultOpen={defaultOpen}>
-      <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden">
+      <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer rounded-sm px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden">
         <Timer className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate">
           {current

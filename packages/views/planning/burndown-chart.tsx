@@ -45,7 +45,7 @@ export function BurndownChart({ burndown }: { burndown: PlanningBurndown }) {
         <span className="font-medium text-foreground">{t(($) => $.sprint.burndown)}</span>
         <span className="flex items-center gap-3">
           <span className="flex items-center gap-1">
-            <span className="h-0.5 w-3 rounded bg-info" />
+            <span className="h-0.5 w-3 rounded-sm bg-info" />
             {t(($) => $.sprint.burndown_remaining)}
           </span>
           <span className="flex items-center gap-1">

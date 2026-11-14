@@ -32,7 +32,7 @@ export function EpicPicker({
 
   return (
     <DropdownMenu defaultOpen={defaultOpen}>
-      <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden">
+      <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer rounded-sm px-1 -mx-1 hover:bg-accent/30 transition-colors overflow-hidden">
         {current ? (
           <span
             className="inline-block size-3 shrink-0 rounded-sm"
