@@ -85,6 +85,28 @@ export function indexDoc(doc: ScreenDoc): Map<string, ReadNode> {
   return out;
 }
 
+export const SCREEN_MAX_DEPTH = 12;
+
+/** A completed doc must have visible content reachable from its root. */
+export function screenHasContent(doc: ScreenDoc): boolean {
+  const nodes = indexDoc(doc);
+  function visit(id: string, path: string[]): boolean {
+    const n = nodes.get(id);
+    if (!n || path.includes(id) || path.length > SCREEN_MAX_DEPTH) return false;
+    const next = [...path, id];
+    switch (n.name) {
+      case "Stack": return n.props.children.some((c) => visit(c, next));
+      case "KpiStrip": return n.props.items.some((c) => visit(c, next));
+      case "Text": return n.props.text.trim().length > 0;
+      case "Table": return [...n.props.columns, ...n.props.rows.flat()].some((s) => s.trim().length > 0);
+      case "Actions": return n.props.buttons.length > 0;
+      case "AgentStack": return !!n.props.label || n.props.agents.length > 0;
+      default: return true;
+    }
+  }
+  return visit(doc.root, []);
+}
+
 /** Rows for a recharts chart: one object per label, one key per series. */
 export function chartRows(labels: string[], series: { name: string; values: number[] }[]) {
   return labels.map((label, i) => {

@@ -7,13 +7,33 @@ import {
   screensOfTask,
   standaloneScreens,
   stripScreenSource,
+  screenSources,
 } from "./screens";
 import type { ScreenBlock, ScreenDoc } from "./schemas";
-import { chartRows, formatAmount, indexDoc } from "./screen-props";
+import { chartRows, formatAmount, indexDoc, screenHasContent } from "./screen-props";
 
 const node = (id: string, name = "Text", props: Record<string, unknown> = { text: id }) => ({
   id,
   component: { [name]: props },
+});
+
+it("keeps source text for failed, missing and unfinished screens without interpreting it", () => {
+  expect(screenSources('before\n```openui\nroot = Broken("<script>x</script>")\n```\nafter\n```openui\nroot = Ta'))
+    .toEqual(['root = Broken("<script>x</script>")', 'root = Ta']);
+});
+
+it("recognizes empty, unknown, malformed and cyclic completed docs", () => {
+  for (const components of [
+    [node("root", "Stack", { children: [] })],
+    [node("root", "Stack", { children: ["missing"] })],
+    [node("root", "Unknown")],
+    [node("root", "Table", { rows: "broken" })],
+    [node("root", "Stack", { children: ["root"] })],
+    [node("root", "Text", { text: " " })],
+  ]) expect(screenHasContent({ version: "", root: "root", components })).toBe(false);
+  expect(screenHasContent({ version: "", root: "root", components: [
+    node("root", "Stack", { children: ["future"] }), node("future", "Table", { columns: ["c"], rows: [["cell"]] }),
+  ] })).toBe(true);
 });
 
 describe("screen cache", () => {

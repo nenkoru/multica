@@ -65,6 +65,11 @@ export function standaloneScreens(blocks: ScreenBlock[]): ScreenBlock[] {
 
 const SCREEN_FENCE = /```openui[^\n]*\n[\s\S]*?(?:```|$)/g;
 
+/** Original source for readable fallbacks; never interpreted by the client. */
+export function screenSources(content: string): string[] {
+  return [...content.matchAll(/```openui[^\n]*\n([\s\S]*?)(?:```|$)/g)].map((m) => (m[1] ?? "").trim());
+}
+
 /** Hides screen source in a reply's text: the screen itself is drawn. */
 export function stripScreenSource(content: string): string {
   if (!content.includes("```openui")) return content;

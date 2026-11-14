@@ -132,7 +132,7 @@ func TestFinalizeRepairs(t *testing.T) {
 	}
 	calls = 0
 	res = Finalize(bad, opts(), func(string, []Issue) (string, error) { calls++; return "", errors.New("down") })
-	if res.Status != StatusPruned || calls != 1 {
+	if res.Status != StatusFailed || calls != 1 {
 		t.Fatalf("failed repair: %+v calls %d", res, calls)
 	}
 	calls = 0

@@ -21,6 +21,7 @@
     "confirm": "Confirmar",
     "cancel": "Cancelar",
     "failed": "No se ha podido generar esta pantalla.",
+    "loading": "Creando esta pantalla…",
     "action_failed": "No se ha podido completar la acción.",
     "stale": "Este botón ya no está activo.",
     "done": "Hecho",

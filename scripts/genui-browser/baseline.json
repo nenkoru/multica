@@ -1,0 +1,30 @@
+{
+  "Doc": {
+    "version": "a2ui-0.8+fabrika-1",
+    "root": "root",
+    "components": [
+      {
+        "id": "root",
+        "component": {
+          "Stack": {
+            "children": []
+          }
+        }
+      }
+    ]
+  },
+  "Issues": [
+    {
+      "line": 1,
+      "id": "root",
+      "msg": "ссылка на неизвестный id \"history\""
+    },
+    {
+      "line": 2,
+      "id": "history",
+      "msg": "Table: надпись длиннее 80 символов"
+    }
+  ],
+  "Status": "pruned",
+  "Repairs": 0
+}
