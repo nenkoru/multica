@@ -1,0 +1,8 @@
+harness/src/remote/
+harness/src/atomic_writer.rs
+harness/target/
+__pycache__/
+probe-*/
+.cargo/
+.rustup/
+rustup-init

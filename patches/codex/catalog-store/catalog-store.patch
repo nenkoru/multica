@@ -1,0 +1,389 @@
+--- a/codex-rs/core-plugins/src/remote/catalog_cache.rs
++++ b/codex-rs/core-plugins/src/remote/catalog_cache.rs
+@@ -10,6 +10,8 @@
+ use std::path::PathBuf;
+ use std::time::Duration;
+ use tracing::warn;
++
++mod catalog_store;
+ 
+ // `plugin/list` and other callers that assume all plugins are available locally will be
+ // deprecated soon. Remove this catalog cache when those callers migrate to on-demand fetching.
+@@ -98,7 +100,17 @@
+             return None;
+         }
+     };
+-    let cache: RemotePluginCatalogDiskCache = match serde_json::from_slice(&bytes) {
++    // The binding includes native account/user/scope/collection identity and SKU.
++    let binding = serde_json::to_vec(&(&cache_key, &config.product_sku)).ok()?;
++    let (bytes, fetched_at) = match catalog_store::Store::from_home(codex_home, &binding) {
++        Ok(Some(store)) => {
++            let (bytes, fetched_at) = store.load(&bytes).ok()?;
++            (bytes, Some(fetched_at))
++        }
++        Ok(None) => (bytes, None),
++        Err(_) => return None, // Invalid opt-in configuration must fail closed.
++    };
++    let mut cache: RemotePluginCatalogDiskCache = match serde_json::from_slice(&bytes) {
+         Ok(cache) => cache,
+         Err(err) => {
+             warn!(
+@@ -114,6 +126,9 @@
+         return None;
+     }
+ 
++    if let Some(fetched_at) = fetched_at {
++        cache.fetched_at = Some(fetched_at);
++    }
+     let freshness = if is_fresh(cache.fetched_at, Utc::now()) {
+         RemotePluginCatalogCacheFreshness::Fresh
+     } else {
+@@ -137,6 +152,26 @@
+         return;
+     };
+     let cache_path = cache_path(codex_home, &cache_key);
++    let Ok(binding) = serde_json::to_vec(&(&cache_key, &config.product_sku)) else {
++        return;
++    };
++    match catalog_store::Store::from_home(codex_home, &binding) {
++        Ok(Some(store)) => {
++            // fetched_at remains per-home. Only unchanged typed catalog CONTENT is
++            // deduplicated; changing permissions/plugins produces a different blob.
++            let Ok(contents) = serde_json::to_vec(&RemotePluginCatalogDiskCache {
++                schema_version: REMOTE_PLUGIN_CATALOG_DISK_CACHE_SCHEMA_VERSION,
++                fetched_at: None,
++                plugins: plugins.to_vec(),
++            }) else {
++                return;
++            };
++            let _ = store.write(&cache_path, &contents, Utc::now());
++            return;
++        }
++        Ok(None) => (), // No launcher opt-in: retain upstream layout and behavior.
++        Err(_) => return, // Never fall back to a full copy on failed opt-in.
++    }
+     let Ok(contents) = serde_json::to_string_pretty(&RemotePluginCatalogDiskCache {
+         schema_version: REMOTE_PLUGIN_CATALOG_DISK_CACHE_SCHEMA_VERSION,
+         fetched_at: Some(Utc::now()),
+--- /dev/null
++++ b/codex-rs/core-plugins/src/remote/catalog_cache/catalog_store.rs
+@@ -0,0 +1,154 @@
++//! Optional write deduplication. A new home has no receipt and must fetch remotely.
++//! The launcher supplies a scope covering workspace, principal, permissions and config.
++//! No latest-catalog index, links, or cross-home cache lookup is maintained.
++use chrono::{DateTime, Utc};
++use serde::{Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++use std::fs;
++use std::io::{self, Write};
++use std::path::{Path, PathBuf};
++
++pub(super) const CONFIG_FILE: &str = ".remote_plugin_catalog_store.json";
++
++#[derive(Deserialize, Serialize)]
++pub(super) struct StoreConfig {
++    pub root: PathBuf,
++    pub scope: String,
++}
++
++#[derive(Deserialize, Serialize)]
++#[serde(deny_unknown_fields)]
++struct Receipt {
++    schema_version: u8,
++    scope: String,
++    binding: String,
++    digest: String,
++    fetched_at: DateTime<Utc>,
++}
++
++pub(super) struct Store {
++    directory: PathBuf,
++    scope: String,
++    binding: String,
++}
++
++fn invalid() -> io::Error {
++    io::Error::new(io::ErrorKind::InvalidData, "invalid catalog store binding or payload")
++}
++
++fn is_digest(value: &str) -> bool {
++    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++}
++
++pub(super) fn digest(contents: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(contents))
++}
++
++fn private_directory(path: &Path, create: bool) -> io::Result<()> {
++    if create {
++        let mut builder = fs::DirBuilder::new();
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::DirBuilderExt;
++            builder.mode(0o700);
++        }
++        match builder.create(path) {
++            Ok(()) => (),
++            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
++            Err(e) => return Err(e),
++        }
++    }
++    let metadata = fs::symlink_metadata(path)?;
++    if !metadata.is_dir() || metadata.file_type().is_symlink() {
++        return Err(invalid());
++    }
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::PermissionsExt;
++        if metadata.permissions().mode() & 0o077 != 0 {
++            return Err(invalid());
++        }
++    }
++    Ok(())
++}
++
++// Temporary file and publication are on the same filesystem. A receipt is only
++// published after its complete, synced blob. Readers verify every blob digest.
++fn publish(path: &Path, contents: &[u8]) -> io::Result<()> {
++    let parent = path.parent().ok_or_else(invalid)?;
++    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
++    staged.write_all(contents)?;
++    staged.as_file().sync_all()?;
++    staged.persist(path).map_err(|e| e.error)?;
++    #[cfg(unix)]
++    fs::File::open(parent)?.sync_all()?;
++    Ok(())
++}
++
++impl Store {
++    pub(super) fn from_home(home: &Path, binding: &[u8]) -> io::Result<Option<Self>> {
++        let path = home.join(CONFIG_FILE);
++        let raw = match fs::read(&path) {
++            Ok(raw) if raw.len() <= 4096 => raw,
++            Ok(_) => return Err(invalid()),
++            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
++            Err(e) => return Err(e),
++        };
++        let config: StoreConfig = serde_json::from_slice(&raw).map_err(|_| invalid())?;
++        if !config.root.is_absolute() || !is_digest(&config.scope)
++            || config.root.components().any(|p| matches!(p, std::path::Component::ParentDir))
++        {
++            return Err(invalid());
++        }
++        // Existing root is provisioned by the launcher, never silently chmod-ed.
++        private_directory(&config.root, false)?;
++        let directory = config.root.join(&config.scope);
++        private_directory(&directory, true)?;
++        let binding = digest(binding);
++        let directory = directory.join(&binding);
++        private_directory(&directory, true)?;
++        Ok(Some(Self { directory, scope: config.scope, binding }))
++    }
++
++    pub(super) fn load(&self, raw: &[u8]) -> io::Result<(Vec<u8>, DateTime<Utc>)> {
++        let receipt: Receipt = serde_json::from_slice(raw).map_err(|_| invalid())?;
++        if receipt.schema_version != 2 || receipt.scope != self.scope
++            || receipt.binding != self.binding || !is_digest(&receipt.digest)
++        {
++            return Err(invalid());
++        }
++        let path = self.directory.join(format!("{}.json", receipt.digest));
++        if !fs::symlink_metadata(&path)?.is_file() {
++            return Err(invalid());
++        }
++        let contents = fs::read(path)?;
++        if digest(&contents) != receipt.digest {
++            return Err(invalid());
++        }
++        Ok((contents, receipt.fetched_at))
++    }
++
++    pub(super) fn write(&self, receipt_path: &Path, contents: &[u8], fetched_at: DateTime<Utc>) -> io::Result<()> {
++        let hash = digest(contents);
++        let blob = self.directory.join(format!("{hash}.json"));
++        match fs::symlink_metadata(&blob) {
++            Ok(m) if !m.is_file() => return Err(invalid()),
++            Ok(_) => {
++                if digest(&fs::read(&blob)?) != hash {
++                    publish(&blob, contents)?;
++                }
++            },
++            Err(e) if e.kind() == io::ErrorKind::NotFound => publish(&blob, contents)?,
++            Err(e) => return Err(e),
++        }
++        let receipt = Receipt { schema_version: 2, scope: self.scope.clone(),
++            binding: self.binding.clone(), digest: hash, fetched_at };
++        let raw = serde_json::to_vec(&receipt).map_err(|_| invalid())?;
++        fs::create_dir_all(receipt_path.parent().ok_or_else(invalid)?)?;
++        publish(receipt_path, &raw)
++    }
++}
++
++#[cfg(test)]
++#[path = "catalog_store_tests.rs"]
++mod tests;
+--- /dev/null
++++ b/codex-rs/core-plugins/src/remote/catalog_cache/catalog_store_tests.rs
+@@ -0,0 +1,162 @@
++use super::*;
++use std::sync::{Arc, Barrier};
++
++fn configure(home: &Path, root: &Path, scope: &str) {
++    fs::create_dir_all(home).unwrap();
++    let config = StoreConfig { root: root.to_owned(), scope: digest(scope.as_bytes()) };
++    fs::write(home.join(CONFIG_FILE), serde_json::to_vec(&config).unwrap()).unwrap();
++}
++
++fn store(home: &Path) -> Store {
++    Store::from_home(home, b"native-account-user-scope-collection-sku").unwrap().unwrap()
++}
++
++#[test]
++fn two_new_homes_reuse_content_and_keep_independent_freshness() {
++    let root = tempfile::tempdir().unwrap();
++    let homes = tempfile::tempdir().unwrap();
++    let a = homes.path().join("a");
++    let b = homes.path().join("b");
++    configure(&a, root.path(), "workspace/principal/permissions/config/auth");
++    configure(&b, root.path(), "workspace/principal/permissions/config/auth");
++    let first = store(&a);
++    let second = store(&b);
++    assert_eq!(first.directory, second.directory);
++    let body = vec![b'x'; 256 * 1024];
++    let now = Utc::now();
++    first.write(&a.join("receipt"), &body, now).unwrap();
++    let blob = first.directory.join(format!("{}.json", digest(&body)));
++    let before = fs::metadata(&blob).unwrap().modified().unwrap();
++    assert!(!b.join("receipt").exists()); // New run cannot read another run's catalog.
++    let later = now + chrono::TimeDelta::seconds(10);
++    second.write(&b.join("receipt"), &body, later).unwrap();
++    assert_eq!(fs::read_dir(&first.directory).unwrap().count(), 1);
++    assert_eq!(fs::metadata(blob).unwrap().modified().unwrap(), before);
++    assert_eq!(first.load(&fs::read(a.join("receipt")).unwrap()).unwrap(), (body.clone(), now));
++    assert_eq!(second.load(&fs::read(b.join("receipt")).unwrap()).unwrap(), (body, later));
++    assert!(fs::metadata(b.join("receipt")).unwrap().len() < 1024);
++}
++
++#[test]
++fn workspace_principal_permission_config_and_native_keys_are_separate() {
++    let root = tempfile::tempdir().unwrap();
++    let homes = tempfile::tempdir().unwrap();
++    let original_home = homes.path().join("0");
++    configure(&original_home, root.path(), "w1/p1/permissions1/config1/auth1");
++    let original = store(&original_home);
++    let receipt = original_home.join("receipt");
++    original.write(&receipt, b"private catalog", Utc::now()).unwrap();
++    let raw = fs::read(&receipt).unwrap();
++    for (i, scope) in ["w2/p1/permissions1/config1/auth1", "w1/p2/permissions1/config1/auth1",
++        "w1/p1/permissions2/config1/auth1", "w1/p1/permissions1/config2/auth1",
++        "w1/p1/permissions1/config1/auth2"].iter().enumerate() {
++        let home = homes.path().join(format!("other-{i}"));
++        configure(&home, root.path(), scope);
++        let other = store(&home);
++        assert_ne!(other.directory, original.directory);
++        assert!(other.load(&raw).is_err());
++    }
++    let other = Store::from_home(&original_home, b"changed-account-user-scope-collection-sku").unwrap().unwrap();
++    assert_ne!(other.directory, original.directory);
++    assert!(other.load(&raw).is_err());
++}
++
++#[test]
++fn catalog_change_publishes_new_content_and_invalidation_removes_only_local_receipt() {
++    let root = tempfile::tempdir().unwrap();
++    let home = tempfile::tempdir().unwrap();
++    configure(home.path(), root.path(), "scope");
++    let store = store(home.path());
++    let receipt = home.path().join("receipt");
++    store.write(&receipt, b"allowed-before", Utc::now()).unwrap();
++    store.write(&receipt, b"revoked-after", Utc::now()).unwrap();
++    assert_eq!(store.load(&fs::read(&receipt).unwrap()).unwrap().0, b"revoked-after");
++    fs::remove_file(&receipt).unwrap();
++    assert!(!receipt.exists());
++    assert_eq!(fs::read_dir(&store.directory).unwrap().count(), 2);
++}
++
++#[test]
++fn failed_blob_publication_preserves_previous_receipt() {
++    let root = tempfile::tempdir().unwrap();
++    let home = tempfile::tempdir().unwrap();
++    configure(home.path(), root.path(), "scope");
++    let store = store(home.path());
++    let receipt = home.path().join("receipt");
++    store.write(&receipt, b"good", Utc::now()).unwrap();
++    let before = fs::read(&receipt).unwrap();
++    fs::create_dir(store.directory.join(format!("{}.json", digest(b"new")))).unwrap();
++    assert!(store.write(&receipt, b"new", Utc::now()).is_err());
++    assert_eq!(fs::read(&receipt).unwrap(), before);
++    assert_eq!(store.load(&before).unwrap().0, b"good");
++    assert!(!fs::read_dir(&store.directory).unwrap().any(|p| p.unwrap().file_name().to_string_lossy().starts_with(".tmp")));
++}
++
++#[test]
++fn corruption_and_escaping_receipts_fail_closed_and_corruption_can_be_repaired() {
++    let root = tempfile::tempdir().unwrap();
++    let home = tempfile::tempdir().unwrap();
++    configure(home.path(), root.path(), "scope");
++    let store = store(home.path());
++    let receipt = home.path().join("receipt");
++    store.write(&receipt, b"good", Utc::now()).unwrap();
++    let raw = fs::read(&receipt).unwrap();
++    fs::write(store.directory.join(format!("{}.json", digest(b"good"))), b"bad").unwrap();
++    assert!(store.load(&raw).is_err());
++    store.write(&receipt, b"good", Utc::now()).unwrap();
++    assert_eq!(store.load(&fs::read(&receipt).unwrap()).unwrap().0, b"good");
++    let mut escaping: serde_json::Value = serde_json::from_slice(&raw).unwrap();
++    escaping["digest"] = "../elsewhere".into();
++    assert!(store.load(&serde_json::to_vec(&escaping).unwrap()).is_err());
++}
++
++#[test]
++fn concurrent_publication_never_exposes_partial_catalog() {
++    let root = tempfile::tempdir().unwrap();
++    let home = tempfile::tempdir().unwrap();
++    configure(home.path(), root.path(), "scope");
++    let store = Arc::new(store(home.path()));
++    let receipt = home.path().join("receipt");
++    store.write(&receipt, &vec![0; 8192], Utc::now()).unwrap();
++    let barrier = Arc::new(Barrier::new(5));
++    std::thread::scope(|threads| {
++        for i in 1..=4 {
++            let store = store.clone();
++            let receipt = receipt.clone();
++            let barrier = barrier.clone();
++            threads.spawn(move || {
++                barrier.wait();
++                for _ in 0..8 { store.write(&receipt, &vec![i; 8192], Utc::now()).unwrap(); }
++            });
++        }
++        barrier.wait();
++        for _ in 0..64 {
++            let (body, _) = store.load(&fs::read(&receipt).unwrap()).unwrap();
++            assert_eq!(body.len(), 8192);
++            assert!(body.iter().all(|b| *b == body[0]));
++        }
++    });
++}
++
++#[test]
++fn disabled_and_malformed_config_have_distinct_results() {
++    let home = tempfile::tempdir().unwrap();
++    assert!(Store::from_home(home.path(), b"key").unwrap().is_none());
++    fs::write(home.path().join(CONFIG_FILE), b"{}").unwrap();
++    assert!(Store::from_home(home.path(), b"key").is_err());
++}
++
++#[cfg(unix)]
++#[test]
++fn symlink_and_public_store_roots_are_rejected() {
++    use std::os::unix::fs::{symlink, PermissionsExt};
++    let root = tempfile::tempdir().unwrap();
++    let home = tempfile::tempdir().unwrap();
++    let link = home.path().join("root-link");
++    symlink(root.path(), &link).unwrap();
++    configure(home.path(), &link, "scope");
++    assert!(Store::from_home(home.path(), b"key").is_err());
++    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o755)).unwrap();
++    configure(home.path(), root.path(), "scope");
++    assert!(Store::from_home(home.path(), b"key").is_err());
++}
