@@ -107,6 +107,27 @@ new live hetzner catalogs, nor proof of disk space reclaimed in RUSL-3768.
 The same compiled harness was SHA256-verified and run locally on hetzner-fsn1
 against isolated synthetic data only: both rows and deltas matched exactly.
 
+The patched **real upstream package** subsequently compiled with Rust 1.95.0:
+`cargo +1.95.0 test --locked -p codex-core-plugins remote::catalog_cache` passed
+12 tests, with 458 unrelated tests filtered, in 0.17s after compilation. This
+check uses the actual auth/service/catalog types, not harness adapters. The
+release tag's workspace version is 0.159.2 while its lockfile records internal
+packages as 0.0.0. Cargo's resolver refreshed that isolated fixture's internal
+versions/references; the external `(name, version, source)` sets were verified
+unchanged. Existing system OpenSSL headers/libraries were selected explicitly
+with `OPENSSL_INCLUDE_DIR=/usr/include` and
+`OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu` because pkg-config is absent.
+No system packages were installed. The cold build reached its 480s bound; the
+single warm continuation completed in 79s. No Codex CLI release build or live
+model session is claimed.
+
+Independent review RUSL-3774 accepted the source/repro checkpoint at Multica
+head `5813ad0fdf293d8b010fac81421ff8b6d9dbfa05`: reviewer reran 16 Rust + 2 Python
+checks and added three writer checks, all 19 Rust tests passed. The production
+source patch remains byte-identical after supplemental test/documentation
+updates: SHA256 `13a96beb68461b974b4c050fb99266dc2295f847a76fde7b9425892cd35c425e`.
+That verdict grants no production approval.
+
 ## Executable next step and release gate
 
 Owner: fork maintainer; independent reviewer: Ревьюер (DSH); acceptance: Mika.
@@ -120,8 +141,8 @@ cd codex-test/codex-rs
 cargo test -p codex-core-plugins remote::catalog_cache
 ```
 
-Do not enable in production until independent review, the full upstream package
-test/build, the real Multica task-scope adapter, scoped store lifecycle/budget
+Do not enable in production until release review, a Codex CLI release build,
+the real Multica task-scope adapter, scoped store lifecycle/budget
 review, current RUSL-3254 pause checks, and a bounded normal-run live measurement
 with adequate headroom. CAS content changes can retain old blobs: no automatic
 cleanup or retention change is introduced here. The source/repro checkpoint
