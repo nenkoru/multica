@@ -87,6 +87,8 @@ export function indexDoc(doc: ScreenDoc): Map<string, ReadNode> {
 
 export const SCREEN_MAX_DEPTH = 12;
 
+const hasText = (...values: (string | undefined)[]) => values.some((v) => !!v?.trim());
+
 /** A completed doc must have visible content reachable from its root. */
 export function screenHasContent(doc: ScreenDoc): boolean {
   const nodes = indexDoc(doc);
@@ -98,10 +100,20 @@ export function screenHasContent(doc: ScreenDoc): boolean {
       case "Stack": return n.props.children.some((c) => visit(c, next));
       case "KpiStrip": return n.props.items.some((c) => visit(c, next));
       case "Text": return n.props.text.trim().length > 0;
-      case "Table": return [...n.props.columns, ...n.props.rows.flat()].some((s) => s.trim().length > 0);
-      case "Actions": return n.props.buttons.length > 0;
-      case "AgentStack": return !!n.props.label || n.props.agents.length > 0;
-      default: return true;
+      case "Kpi": return hasText(n.props.label, n.props.value, n.props.delta);
+      case "IssueRow": return hasText(n.props.identifier, n.props.title, n.props.status);
+      case "Table": return hasText(...n.props.columns, ...n.props.rows.flat());
+      case "Actions": return n.props.buttons.some((b) => hasText(b.label));
+      case "AgentStack": return hasText(n.props.label, ...n.props.agents);
+      case "MilestoneCard": return hasText(n.props.text, n.props.evidence, n.props.at);
+      case "AskCard": return hasText(n.props.question, ...n.props.options);
+      case "StreamCard": return hasText(n.props.title, n.props.state, n.props.goal, n.props.now, ...n.props.next)
+        || (!!n.props.kpis && visit(n.props.kpis, next)) || (!!n.props.trend && visit(n.props.trend, next));
+      case "TrendChart":
+      case "StackedBars": return hasText(n.props.title, ...n.props.labels)
+        || (n.props.series.length > 1 && n.props.series.some((s) => hasText(s.name)))
+        || (n.props.labels.length > 0 && n.props.series.some((s) => s.values.length > 0));
+      default: return false;
     }
   }
   return visit(doc.root, []);

@@ -131,6 +131,17 @@ it("replaces an old pruned empty Stack with an escaped readable fallback", () =>
   expect(container.querySelector("script")).toBeNull();
 });
 
+it.each(["Kpi", "IssueRow"])("shows readable source for a completed empty %s", (name) => {
+  const props = name === "Kpi" ? { label: "", value: "" } : { identifier: "", title: "" };
+  const empty = { ...block("valid"), a2ui: { version: "", root: "root", components: [
+    { id: "root", component: { [name]: props } },
+  ] } };
+  const source = `root = ${name}("", "")`;
+  renderWithI18n(<ScreenView block={empty} source={source} />);
+  expect(screen.getByRole("status").textContent).toContain("This screen could not be built.");
+  expect(screen.getByText(source)).toBeTruthy();
+});
+
 it("shows loading for a forward reference then renders the completed Table", () => {
   const live = { ...block("live"), a2ui: { version: "", root: "root", components: [
     { id: "root", component: { Stack: { children: ["history"] } } },

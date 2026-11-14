@@ -13,6 +13,9 @@ the screen cannot render or its delivery record is missing. The client never
 evaluates the source. Stored screens and source fallbacks retain sequence order.
 Old pruned records are not rewritten: reloading them displays their original
 source, without re-running model repairs or creating new action records.
+Content checks cover every catalog leaf's visible fields. Tooltip-only hints,
+links without labels and whitespace do not make a screen readable; displayed
+zero values, status icons, chart data and content reached through references do.
 
 ## Fork inventory
 

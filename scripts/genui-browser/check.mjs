@@ -25,7 +25,7 @@ try {
   if (evidence.rows !== 4 || evidence.columns !== 3 || evidence.cells !== 12 || errors.length || !evidence.ordinaryText.includes("Да, оба направления") || !evidence.ordinaryText.includes("говорить, что он оказался быстрее или медленнее")) process.exitCode = 1;
   {
     const checks = [];
-    for (const mode of ["old", "unknown", "broken", "missing"]) {
+    for (const mode of ["old", "unknown", "broken", "missing", "empty-kpi", "empty-issue", "empty-text", "empty-table", "empty-agents", "empty-actions", "empty-milestone", "empty-ask", "empty-stream", "empty-trend", "empty-bars"]) {
       await page.goto(`http://127.0.0.1:4173/?mode=${mode}`, { waitUntil: "networkidle" });
       await page.getByText("This screen could not be built.", { exact: true }).waitFor();
       if (mode === "old") {
@@ -34,6 +34,11 @@ try {
       }
       const safe = await page.evaluate(() => ({ source: document.querySelector("pre")?.textContent, executed: Boolean(window.pwned), scriptNodes: document.querySelectorAll("pre script").length, buttons: document.querySelectorAll("button").length }));
       if (!safe.source || safe.executed || safe.scriptNodes || safe.buttons) throw Error(`${mode}: unsafe or invisible fallback`);
+      const visible = await page.locator('[role="status"]').evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && !!el.textContent?.trim();
+      });
+      if (!visible) throw Error(`${mode}: fallback is not visible`);
       await page.screenshot({ path: `${out}/${mode}.png`, fullPage: true });
       checks.push({ mode, safe });
     }

@@ -24,6 +24,24 @@ if (mode === "unknown" || mode === "broken") {
   initial = { blocks: [ScreenBlockSchema.parse({ ...block, a2ui: mode === "broken" ? "bad doc" : { root: "root", components: [{ id: "root", component: { Unknown: {} } }] } })] };
 }
 if (mode === "missing") initial = { blocks: [] };
+const emptyLeaves: Record<string, { name: string; props: Record<string, unknown>; source: string }> = {
+  "empty-kpi": { name: "Kpi", props: { label: "", value: "", hint: "tooltip only" }, source: 'Kpi("", "")' },
+  "empty-issue": { name: "IssueRow", props: { identifier: "", title: "", link: "/issues/one" }, source: 'IssueRow("", "")' },
+  "empty-text": { name: "Text", props: { text: " " }, source: 'Text(" ")' },
+  "empty-table": { name: "Table", props: { columns: [" "], rows: [[" "]] }, source: 'Table([" "], [[" "]])' },
+  "empty-agents": { name: "AgentStack", props: { agents: [" "] }, source: 'AgentStack([" "])' },
+  "empty-actions": { name: "Actions", props: { buttons: [{ label: " ", action: { name: "followup", args: { text: "hidden" } } }] }, source: 'Actions([Button(" ", followup("hidden"))])' },
+  "empty-milestone": { name: "MilestoneCard", props: { text: "", stream: "hidden" }, source: 'MilestoneCard("")' },
+  "empty-ask": { name: "AskCard", props: { question: " ", options: [" "] }, source: 'AskCard(" ", [" "])' },
+  "empty-stream": { name: "StreamCard", props: { title: "", state: "", stream: "hidden" }, source: 'StreamCard("hidden", "", "")' },
+  "empty-trend": { name: "TrendChart", props: { title: "", labels: [], series: [{ name: "tooltip only", values: [] }] }, source: 'TrendChart("", [], [Series("tooltip only", [])])' },
+  "empty-bars": { name: "StackedBars", props: { title: "", labels: [], series: [] }, source: 'StackedBars("", [], [])' },
+};
+if (emptyLeaves[mode]) {
+  const { name, props, source } = emptyLeaves[mode];
+  content = `before\n\`\`\`openui\nroot = ${source}\n\`\`\`\nafter`;
+  initial = { blocks: [ScreenBlockSchema.parse({ ...block, status: "valid", a2ui: { root: "root", components: [{ id: "root", component: { [name]: props } }] } })] };
+}
 if (mode === "order") {
   content = 'before\n```openui\nroot = First()\n```\n```openui\nroot = Second()\n```\nafter';
   initial = { blocks: [ScreenBlockSchema.parse({ ...block, seq: 11, status: baseline.Status, a2ui: baseline.Doc })] };
