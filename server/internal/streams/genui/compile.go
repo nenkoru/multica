@@ -238,6 +238,10 @@ func Build(source string, opts Options) (doc Doc, issues []Issue, ok bool) {
 					}
 				}
 				props[p.Name] = kept
+				if len(kept) == 0 && !p.Optional {
+					issues = append(issues, Issue{Line: lines[owner[id]].Line, ID: id, Msg: "контейнер не содержит видимых компонентов"})
+					return false
+				}
 			}
 		}
 		keep[id] = true

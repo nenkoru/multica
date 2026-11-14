@@ -89,7 +89,7 @@ interface ChatMessageListProps {
   /** Transform assistant task text for embedded chat protocols before render/copy. */
   transformContent?: (content: string) => string;
   /** Extra content under an assistant turn, e.g. Fabrika screens (fork). */
-  renderTaskExtras?: (taskId: string) => ReactNode;
+  renderTaskExtras?: (taskId: string, content?: string) => ReactNode;
   /** Send the full hidden prompt behind an assistant follow-up chip. */
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled?: boolean;
@@ -481,7 +481,7 @@ const MessageBubble = memo(function MessageBubble({
   item: ChatRenderItem;
   isPending: boolean;
   transformContent?: (content: string) => string;
-  renderTaskExtras?: (taskId: string) => ReactNode;
+  renderTaskExtras?: (taskId: string, content?: string) => ReactNode;
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled: boolean;
   onRegenerateQuickActions?: (message: ChatMessage) => void | Promise<unknown>;
@@ -617,7 +617,7 @@ function AssistantMessage({
   message?: ChatMessage;
   isPending: boolean;
   transformContent?: (content: string) => string;
-  renderTaskExtras?: (taskId: string) => ReactNode;
+  renderTaskExtras?: (taskId: string, content?: string) => ReactNode;
   onQuickAction?: (action: ChatQuickAction) => void | Promise<unknown>;
   quickActionsDisabled: boolean;
   onRegenerateQuickActions?: (message: ChatMessage) => void | Promise<unknown>;
@@ -698,7 +698,7 @@ function AssistantMessage({
           className="leading-relaxed"
         />
       ) : null}
-      {renderTaskExtras && taskId ? renderTaskExtras(taskId) : null}
+      {renderTaskExtras && taskId ? renderTaskExtras(taskId, message?.content) : null}
       {message && (
         <>
           <AttachmentList

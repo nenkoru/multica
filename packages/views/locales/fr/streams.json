@@ -21,6 +21,7 @@
     "confirm": "Confirmer",
     "cancel": "Annuler",
     "failed": "Impossible de construire cet écran.",
+    "loading": "Création de cet écran…",
     "action_failed": "L’action n’a pas abouti.",
     "stale": "Ce bouton n’est plus actif.",
     "done": "Fait",

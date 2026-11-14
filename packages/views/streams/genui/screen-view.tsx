@@ -12,9 +12,11 @@ import {
 } from "@multica/ui/components/ui/chart";
 import {
   LIVE_SCREEN_STATUS,
+  SCREEN_MAX_DEPTH,
   chartRows,
   formatAmount,
   indexDoc,
+  screenHasContent,
   type ReadNode,
   type ScreenBlock,
   type ScreenProps,
@@ -25,7 +27,6 @@ import { streamStateDotClass } from "../components/stream-state";
 import { ScreenActionButton } from "./screen-actions";
 import { ScreenEnvContext, type ScreenEnv } from "./screen-context";
 
-const MAX_DEPTH = 12;
 const CHART_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 // Each node fades in as its line arrives; nodes already shown keep their key
 // and do not animate again.
@@ -35,16 +36,15 @@ type Nodes = Map<string, ReadNode>;
 
 /** One screen from Мультика's reply, drawn while it is written and live
  *  once it is stored. */
-export function ScreenView({ block, onFollowup }: { block: ScreenBlock; onFollowup?: (text: string) => void }) {
-  const { t } = useT("streams");
+export function ScreenView({ block, source, onFollowup }: { block: ScreenBlock; source?: string; onFollowup?: (text: string) => void }) {
   const doc = block.a2ui;
   const nodes = useMemo(() => (doc ? indexDoc(doc) : new Map<string, ReadNode>()), [doc]);
   const env = useMemo<ScreenEnv>(
     () => ({ interactive: block.status !== LIVE_SCREEN_STATUS, onFollowup }),
     [block.status, onFollowup],
   );
-  if (block.status === "failed" || !doc) {
-    return <p className="text-caption text-muted-foreground">{t(($) => $.screen.failed)}</p>;
+  if (block.status === "failed" || !doc || !screenHasContent(doc)) {
+    return <div data-screen={block.id}><ScreenFallback source={source} loading={block.status === LIVE_SCREEN_STATUS} /></div>;
   }
   return (
     <ScreenEnvContext.Provider value={env}>
@@ -55,10 +55,20 @@ export function ScreenView({ block, onFollowup }: { block: ScreenBlock; onFollow
   );
 }
 
+export function ScreenFallback({ source, loading = false }: { source?: string; loading?: boolean }) {
+  const { t } = useT("streams");
+  return (
+    <div className="text-caption text-muted-foreground" role="status">
+      <p>{loading ? t(($) => $.screen.loading) : t(($) => $.screen.failed)}</p>
+      {source ? <pre className="whitespace-pre-wrap break-words">{source}</pre> : null}
+    </div>
+  );
+}
+
 function NodeView({ id, nodes, path }: { id: string; nodes: Nodes; path: string[] }) {
   const node = nodes.get(id);
   // A node not written yet (live), unknown, or a reference loop.
-  if (!node || path.includes(id) || path.length > MAX_DEPTH) return null;
+  if (!node || path.includes(id) || path.length > SCREEN_MAX_DEPTH) return null;
   const sub = [...path, id];
   return <div className={APPEAR}>{renderNode(node, nodes, sub)}</div>;
 }

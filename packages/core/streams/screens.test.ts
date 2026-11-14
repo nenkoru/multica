@@ -7,13 +7,67 @@ import {
   screensOfTask,
   standaloneScreens,
   stripScreenSource,
+  screenSources,
 } from "./screens";
 import type { ScreenBlock, ScreenDoc } from "./schemas";
-import { chartRows, formatAmount, indexDoc } from "./screen-props";
+import { chartRows, formatAmount, indexDoc, screenHasContent } from "./screen-props";
 
 const node = (id: string, name = "Text", props: Record<string, unknown> = { text: id }) => ({
   id,
   component: { [name]: props },
+});
+
+it("keeps source text for failed, missing and unfinished screens without interpreting it", () => {
+  expect(screenSources('before\n```openui\nroot = Broken("<script>x</script>")\n```\nafter\n```openui\nroot = Ta'))
+    .toEqual(['root = Broken("<script>x</script>")', 'root = Ta']);
+});
+
+it("recognizes empty, unknown, malformed and cyclic completed docs", () => {
+  for (const components of [
+    [node("root", "Stack", { children: [] })],
+    [node("root", "Stack", { children: ["missing"] })],
+    [node("root", "Unknown")],
+    [node("root", "Table", { rows: "broken" })],
+    [node("root", "Stack", { children: ["root"] })],
+    [node("root", "Text", { text: " " })],
+    [node("root", "Kpi", { label: "", value: "" })],
+    [node("root", "Kpi", { label: " ", value: "\t", delta: " ", hint: "tooltip only" })],
+    [node("root", "IssueRow", { identifier: "", title: "" })],
+    [node("root", "IssueRow", { identifier: " ", title: "\t", link: "/issues/one" })],
+    [node("root", "Actions", { buttons: [{ label: " ", action: { name: "followup", args: { text: "hidden" } } }] })],
+    [node("root", "AgentStack", { agents: [" "] })],
+    [node("root", "MilestoneCard", { text: " ", stream: "not displayed" })],
+    [node("root", "AskCard", { question: " ", options: [" "] })],
+    [node("root", "StreamCard", { title: " ", state: "", stream: "not displayed", kpis: "missing" })],
+    [node("root", "TrendChart", { title: "", labels: [], series: [{ name: "tooltip only", values: [1] }] })],
+    [node("root", "StackedBars", { title: "", labels: [], series: [] })],
+  ]) expect(screenHasContent({ version: "", root: "root", components })).toBe(false);
+  expect(screenHasContent({ version: "", root: "root", components: [
+    node("root", "Stack", { children: ["future"] }), node("future", "Table", { columns: ["c"], rows: [["cell"]] }),
+  ] })).toBe(true);
+});
+
+it("recognizes visible fields across the leaf catalog", () => {
+  for (const component of [
+    node("root", "Kpi", { label: "Total", value: "" }),
+    node("root", "Kpi", { label: "", value: "0" }),
+    node("root", "Kpi", { label: "", value: "", delta: "+2" }),
+    node("root", "IssueRow", { identifier: "RUSL-3752", title: "" }),
+    node("root", "IssueRow", { identifier: "", title: "Fix screens" }),
+    node("root", "IssueRow", { identifier: "", title: "", status: "done" }),
+    node("root", "Actions", { buttons: [{ label: "Ask", action: { name: "followup", args: { text: "next" } } }] }),
+    node("root", "AgentStack", { agents: ["Mika"] }),
+    node("root", "MilestoneCard", { text: "Complete" }),
+    node("root", "AskCard", { question: "Continue?" }),
+    node("root", "StreamCard", { title: "Factory", state: "running" }),
+    node("root", "TrendChart", { labels: [""], series: [{ name: "hidden", values: [0] }] }),
+    node("root", "StackedBars", { title: "Progress" }),
+  ]) expect(screenHasContent({ version: "", root: "root", components: [component] })).toBe(true);
+  expect(screenHasContent({ version: "", root: "root", components: [
+    node("root", "StreamCard", { kpis: "kpis" }),
+    node("kpis", "KpiStrip", { items: ["k"] }),
+    node("k", "Kpi", { value: "0" }),
+  ] })).toBe(true);
 });
 
 describe("screen cache", () => {

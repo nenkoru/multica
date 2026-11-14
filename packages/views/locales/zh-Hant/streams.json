@@ -21,6 +21,7 @@
     "confirm": "確認",
     "cancel": "取消",
     "failed": "無法產生此畫面。",
+    "loading": "正在產生此畫面…",
     "action_failed": "操作未能完成。",
     "stale": "此按鈕已失效。",
     "done": "已完成",

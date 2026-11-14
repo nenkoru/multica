@@ -3,32 +3,43 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "@multica/ui/icons";
-import { screenBlocksOptions, screensOfTask, standaloneScreens } from "@multica/core/streams";
+import { screenBlocksOptions, screenSources, screensOfTask, standaloneScreens, type ScreenBlock } from "@multica/core/streams";
 import { useT } from "../../i18n";
-import { ScreenView } from "./screen-view";
+import { ScreenFallback, ScreenView } from "./screen-view";
 
 /** The screens of one reply, under its text. */
 export function TaskScreens({
   wsId,
   sessionId,
   taskId,
+  content,
   onFollowup,
 }: {
   wsId: string;
   sessionId: string;
   taskId: string;
+  content?: string;
   onFollowup?: (text: string) => void;
 }) {
-  const { data: blocks = [] } = useQuery({
+  const { data: blocks = [], isPending } = useQuery({
     ...screenBlocksOptions(wsId, sessionId),
     select: (d) => screensOfTask(d.blocks, taskId),
   });
-  if (blocks.length === 0) return null;
+  const sources = screenSources(content ?? "");
+  if (blocks.length === 0 && sources.length === 0) return null;
+  const modelSeqs = new Set(blocks.filter((b) => b.kind === "model").map((b) => b.seq));
+  const entries: { seq: number; block?: ScreenBlock; source?: string }[] = blocks.map((block) => ({
+    seq: block.seq, block, source: block.kind === "model" ? sources[block.seq - 10] : undefined,
+  }));
+  sources.forEach((source, i) => {
+    if (!modelSeqs.has(10 + i)) entries.push({ seq: 10 + i, source });
+  });
+  entries.sort((a, b) => a.seq - b.seq);
   return (
     <div className="mt-2 flex flex-col gap-3">
-      {blocks.map((b) => (
-        <ScreenView key={b.id} block={b} onFollowup={onFollowup} />
-      ))}
+      {entries.map(({ seq, block, source }) => block ? (
+        <ScreenView key={block.id} block={block} source={source} onFollowup={onFollowup} />
+      ) : <ScreenFallback key={`source:${seq}`} source={source} loading={isPending} />)}
     </div>
   );
 }

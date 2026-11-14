@@ -98,8 +98,8 @@ export function ChatPage() {
   const renderTaskExtras = useMemo(
     () =>
       screenSession
-        ? (taskId: string) => (
-            <TaskScreens wsId={wsId} sessionId={screenSession} taskId={taskId} onFollowup={sendFollowup} />
+        ? (taskId: string, content?: string) => (
+            <TaskScreens wsId={wsId} sessionId={screenSession} taskId={taskId} content={content} onFollowup={sendFollowup} />
           )
         : undefined,
     [screenSession, wsId, sendFollowup],

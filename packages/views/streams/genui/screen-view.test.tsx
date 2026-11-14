@@ -119,3 +119,40 @@ it("says so when the screen could not be built", () => {
   );
   expect(screen.getByText("This screen could not be built.")).toBeTruthy();
 });
+
+it("replaces an old pruned empty Stack with an escaped readable fallback", () => {
+  const empty = { ...block("pruned"), a2ui: { version: "", root: "root", components: [
+    { id: "root", component: { Stack: { children: [] } } },
+  ] } };
+  const source = 'root = Unknown("<script>alert(1)</script>")';
+  const { container } = renderWithI18n(<ScreenView block={empty} source={source} />);
+  expect(screen.getByText("This screen could not be built.")).toBeTruthy();
+  expect(screen.getByText(source)).toBeTruthy();
+  expect(container.querySelector("script")).toBeNull();
+});
+
+it.each(["Kpi", "IssueRow"])("shows readable source for a completed empty %s", (name) => {
+  const props = name === "Kpi" ? { label: "", value: "" } : { identifier: "", title: "" };
+  const empty = { ...block("valid"), a2ui: { version: "", root: "root", components: [
+    { id: "root", component: { [name]: props } },
+  ] } };
+  const source = `root = ${name}("", "")`;
+  renderWithI18n(<ScreenView block={empty} source={source} />);
+  expect(screen.getByRole("status").textContent).toContain("This screen could not be built.");
+  expect(screen.getByText(source)).toBeTruthy();
+});
+
+it("shows loading for a forward reference then renders the completed Table", () => {
+  const live = { ...block("live"), a2ui: { version: "", root: "root", components: [
+    { id: "root", component: { Stack: { children: ["history"] } } },
+  ] } };
+  const { rerender } = renderWithI18n(<ScreenView block={live} />);
+  expect(screen.getByText("Building this screen…")).toBeTruthy();
+  const completed = { ...live, status: "valid", a2ui: { ...live.a2ui, components: [
+    ...live.a2ui.components, { id: "history", component: { Table: { columns: ["one", "two", "three"], rows: [["a", "b", "c"], ["d", "e", "f"], ["g", "h", "i"], ["j", "k", "l"]] } } },
+  ] } };
+  rerender(<ScreenView block={completed} />);
+  expect(screen.queryByText("Building this screen…")).toBeNull();
+  expect(screen.getAllByRole("columnheader")).toHaveLength(3);
+  expect(screen.getAllByRole("cell")).toHaveLength(12);
+});

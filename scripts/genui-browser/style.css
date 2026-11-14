@@ -1,0 +1,8 @@
+/* Controlled layout; production renderer and schemas are imported unchanged. */
+body { margin: 0; background: #0c1011; color: #ddd; font: 17px system-ui; }
+main { margin: 32px auto; width: min(95vw, 1500px); }
+[data-message] { white-space: pre-wrap; }
+[data-screen] { background: #111619; border: 1px solid #222; border-radius: 12px; padding: 16px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #333; overflow-wrap: anywhere; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -291,11 +291,18 @@ func (c *converter) convert(p param, v Value) (any, error) {
 		}
 		out := make([][]string, 0, len(v.Items))
 		for _, row := range v.Items {
-			cells, err := c.convert(req(p.Name, pStrList), row)
-			if err != nil {
-				return nil, err
+			if row.Kind != KArray || len(row.Items) > MaxListItems {
+				return nil, fmt.Errorf("%s: нужен список ячеек (до %d)", p.Name, MaxListItems)
 			}
-			out = append(out, cells.([]string))
+			cells := make([]string, 0, len(row.Items))
+			for _, cell := range row.Items {
+				text, err := c.convert(req(p.Name, pText), cell)
+				if err != nil {
+					return nil, err
+				}
+				cells = append(cells, text.(string))
+			}
+			out = append(out, cells)
 		}
 		return out, nil
 	}

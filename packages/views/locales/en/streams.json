@@ -21,6 +21,7 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "failed": "This screen could not be built.",
+    "loading": "Building this screen…",
     "action_failed": "The action did not go through.",
     "stale": "This button is no longer active.",
     "done": "Done",
