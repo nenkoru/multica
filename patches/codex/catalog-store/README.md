@@ -42,6 +42,16 @@ including user/workspace permission revisions; missing inputs must keep opt-in
 disabled. Native binding additionally covers service URL, account, user,
 workspace-account flag, catalog scope, collection and product SKU.
 
+The confirmed Multica integration seam is
+`server/internal/daemon/execenv/execenv.go:650,950`, where both preparation paths
+call `prepareCodexHomeWithOpts`. `TaskContextForEnv` already carries task
+`InitiatorType`/`InitiatorID`; preparation also has `WorkspaceID`. These identify
+actor inputs without using the human's name/email or assuming the runtime
+owner is the actor. Their mapping to the actual authenticated principal, and a
+stable effective plugin-policy/config fingerprint, still need an explicit
+adapter contract; session-store keys, incidental run paths and
+filenames cannot substitute for it. No such adapter is enabled by this PR.
+
 There is no shared "latest catalog" index: a new home has no receipt, cannot load
 another home's response, and must fetch from the service. Deduplication happens
 **after** a successful response. Scope/config/binding changes make existing
@@ -76,6 +86,10 @@ the app-server dependency graph; plugin payloads are synthetic JSON. This is
 the two writers, eight new Rust tests cover the store, and two Python tests
 cover scope construction.
 
+`cluster_check.py` also exercises a real partial staged write failure in a
+separate subprocess: RLIMIT_FSIZE=32KiB, SIGXFSZ ignored, a 128KiB response.
+The previous catalog remains readable and no partial staging file remains.
+
 On 2026-11-14, kjob's node/pod external DNS failed before compilation. The same
 synthetic files were transferred through the documented ru-exec file tools and
 run synchronously on buvg01, with `CARGO_BUILD_JOBS=2`, Rust 1.90.0. No GPU or
@@ -90,6 +104,8 @@ failed as expected with `RED: unchanged scope wrote another complete catalog`.
 These use `st_blocks * 512` over synthetic regular files, including test-home
 config and receipts, excluding directory blocks. They are not observations of
 new live hetzner catalogs, nor proof of disk space reclaimed in RUSL-3768.
+The same compiled harness was SHA256-verified and run locally on hetzner-fsn1
+against isolated synthetic data only: both rows and deltas matched exactly.
 
 ## Executable next step and release gate
 

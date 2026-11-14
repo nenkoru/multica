@@ -86,8 +86,51 @@ pub fn probe(root: &std::path::Path, patched: bool) -> serde_json::Value {
         "first_delta": first_delta, "second_delta": second_delta,
         "payload_plugins": payload.len(), "full_codex_build": false, "live_process_measurement": false})
 }
+
+pub fn failed_write_probe(root: &std::path::Path) -> serde_json::Value {
+    use crate::{AuthHeaders, CodexAuth};
+    use std::{fs, os::unix::fs::PermissionsExt};
+    fs::create_dir(root).unwrap();
+    let blobs = root.join("blobs");
+    fs::create_dir(&blobs).unwrap();
+    fs::set_permissions(&blobs, fs::Permissions::from_mode(0o700)).unwrap();
+    let home = root.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join(".remote_plugin_catalog_store.json"), serde_json::to_vec(&serde_json::json!({
+        "root": blobs, "scope": "a".repeat(64)
+    })).unwrap()).unwrap();
+    let config = RemotePluginServiceConfig::new("https://synthetic.invalid".into(), (), None);
+    let auth = CodexAuth::Headers(AuthHeaders::new(http::HeaderMap::new()));
+    let good = vec![serde_json::json!({"id": "good"})];
+    catalog_cache::write_cached_directory_plugins(&home, &config, &auth, RemotePluginScope::Global, None, &good);
+    // Parent process sets RLIMIT_FSIZE=32KiB and ignores SIGXFSZ. This second
+    // write fails after a partial staged write, not before opening the file.
+    let large = vec![serde_json::json!({"id": "large", "data": "x".repeat(128 * 1024)})];
+    catalog_cache::write_cached_directory_plugins(&home, &config, &auth, RemotePluginScope::Global, None, &large);
+    let read = catalog_cache::load_cached_directory_plugins(&home, &config, &auth, RemotePluginScope::Global, None).unwrap();
+    assert_eq!(read.plugins, good);
+    fn validate(path: &std::path::Path) -> usize {
+        fs::read_dir(path).unwrap().map(|entry| {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() { validate(&entry.path()) }
+            else {
+                assert!(!entry.file_name().to_string_lossy().starts_with(".tmp"));
+                let raw = fs::read(entry.path()).unwrap();
+                serde_json::from_slice::<serde_json::Value>(&raw).unwrap();
+                1
+            }
+        }).sum()
+    }
+    assert_eq!(validate(&blobs), 1);
+    serde_json::json!({"synthetic": true, "partial_write_failure": "RLIMIT_FSIZE 32KiB / EFBIG",
+        "previous_receipt_readable": true, "partial_staging_files": 0})
+}
 }
 
 pub fn probe(root: &std::path::Path, patched: bool) -> serde_json::Value {
     remote::probe(root, patched)
+}
+
+pub fn failed_write_probe(root: &std::path::Path) -> serde_json::Value {
+    remote::failed_write_probe(root)
 }
